@@ -13,10 +13,10 @@ mod host;
 mod interpreter;
 mod vm;
 
-pub use abi::{callback_codec, fast_codec, result_codec};
 pub use abi::{
-    default_value_for_type_tag, encode_integer, new_array_default_value_for_type_tag,
-    normalize_stack_item_type_tag, pop_byte_arg, BackendKind, ExecutionResult, StackValue, VmState,
+    byte_sequence_bytes, byte_sequence_len, concat_byte_sequences, default_value_for_type_tag,
+    encode_integer, new_array_default_value_for_type_tag, normalize_stack_item_type_tag,
+    pop_byte_arg, slice_byte_sequence, BackendKind, ExecutionResult, StackValue, VmState,
     COMPACT_TAG_ARRAY, COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_BOOLEAN, COMPACT_TAG_BUFFER,
     COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER, COMPACT_TAG_INTEROP, COMPACT_TAG_ITERATOR,
     COMPACT_TAG_MAP, COMPACT_TAG_NULL, COMPACT_TAG_POINTER, COMPACT_TAG_STRUCT,
@@ -24,6 +24,7 @@ pub use abi::{
     NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER, NEOVM_STACK_ITEM_TYPE_MAP,
     NEOVM_STACK_ITEM_TYPE_STRUCT,
 };
+pub use abi::{callback_codec, fast_codec, result_codec};
 pub use host::{interop_hash, syscall_arg_count};
 pub use interpreter::{
     interpret, interpret_with_stack_and_syscalls, interpret_with_stack_and_syscalls_at,

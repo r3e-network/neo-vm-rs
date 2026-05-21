@@ -99,6 +99,64 @@ pub fn pop_byte_arg(stack: &mut Vec<StackValue>, context: &str) -> Result<Vec<u8
     }
 }
 
+/// Borrow the content of NeoVM byte sequence values.
+///
+/// This is intentionally narrower than [`StackValue::as_bytes`]: NeoVM string
+/// and byte-array opcodes accept only `ByteString` and `Buffer`, while integer
+/// byte representations are valid only for conversion paths.
+#[must_use]
+pub fn byte_sequence_bytes(value: &StackValue) -> Option<&[u8]> {
+    match value {
+        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => Some(bytes),
+        _ => None,
+    }
+}
+
+/// Return the byte length of a NeoVM `ByteString` or `Buffer`.
+#[must_use]
+pub fn byte_sequence_len(value: &StackValue) -> Option<usize> {
+    byte_sequence_bytes(value).map(<[u8]>::len)
+}
+
+/// Concatenate two NeoVM byte sequence values.
+///
+/// NeoVM preserves the left operand's mutability class: `ByteString + Buffer`
+/// yields `ByteString`, while `Buffer + ByteString` yields `Buffer`.
+#[must_use]
+pub fn concat_byte_sequences(left: StackValue, right: StackValue) -> Option<StackValue> {
+    let (left_is_buffer, mut left_bytes) = match left {
+        StackValue::ByteString(bytes) => (false, bytes),
+        StackValue::Buffer(bytes) => (true, bytes),
+        _ => return None,
+    };
+    let right_bytes = match right {
+        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => bytes,
+        _ => return None,
+    };
+
+    left_bytes.extend_from_slice(&right_bytes);
+    Some(if left_is_buffer {
+        StackValue::Buffer(left_bytes)
+    } else {
+        StackValue::ByteString(left_bytes)
+    })
+}
+
+/// Slice a NeoVM byte sequence value while preserving its source type.
+#[must_use]
+pub fn slice_byte_sequence(value: StackValue, index: usize, count: usize) -> Option<StackValue> {
+    let end = index.checked_add(count)?;
+    match value {
+        StackValue::ByteString(bytes) => bytes
+            .get(index..end)
+            .map(|slice| StackValue::ByteString(slice.to_vec())),
+        StackValue::Buffer(bytes) => bytes
+            .get(index..end)
+            .map(|slice| StackValue::Buffer(slice.to_vec())),
+        _ => None,
+    }
+}
+
 /// Encode an integer using NeoVM's minimal little-endian two's-complement form.
 #[must_use]
 pub fn encode_integer(value: i64) -> Vec<u8> {
@@ -297,7 +355,7 @@ mod tests {
 
     #[test]
     fn integer_encoding_uses_minimal_little_endian_twos_complement() {
-        assert_eq!(super::encode_integer(0), vec![]);
+        assert_eq!(super::encode_integer(0), Vec::<u8>::new());
         assert_eq!(super::encode_integer(1), vec![0x01]);
         assert_eq!(super::encode_integer(127), vec![0x7f]);
         assert_eq!(super::encode_integer(128), vec![0x80, 0x00]);
@@ -537,5 +595,71 @@ mod tests {
         let error = super::pop_byte_arg(&mut empty_stack, "System.Crypto.SHA256")
             .expect_err("empty stack should report missing argument");
         assert_eq!(error, "System.Crypto.SHA256 expects one stack argument");
+    }
+
+    #[test]
+    fn byte_sequence_helpers_accept_only_bytestring_and_buffer() {
+        let byte_string = StackValue::ByteString(b"neo".to_vec());
+        let buffer = StackValue::Buffer(b"n4".to_vec());
+
+        assert_eq!(super::byte_sequence_bytes(&byte_string), Some(&b"neo"[..]));
+        assert_eq!(super::byte_sequence_bytes(&buffer), Some(&b"n4"[..]));
+        assert_eq!(super::byte_sequence_len(&byte_string), Some(3));
+        assert_eq!(super::byte_sequence_len(&buffer), Some(2));
+        assert_eq!(
+            super::byte_sequence_bytes(&StackValue::BigInteger(vec![1])),
+            None
+        );
+        assert_eq!(super::byte_sequence_len(&StackValue::Integer(1)), None);
+    }
+
+    #[test]
+    fn concat_byte_sequences_preserves_left_sequence_type() {
+        assert_eq!(
+            super::concat_byte_sequences(
+                StackValue::ByteString(b"neo".to_vec()),
+                StackValue::Buffer(b"n4".to_vec())
+            ),
+            Some(StackValue::ByteString(b"neon4".to_vec()))
+        );
+        assert_eq!(
+            super::concat_byte_sequences(
+                StackValue::Buffer(b"neo".to_vec()),
+                StackValue::ByteString(b"n4".to_vec())
+            ),
+            Some(StackValue::Buffer(b"neon4".to_vec()))
+        );
+        assert_eq!(
+            super::concat_byte_sequences(StackValue::Integer(1), StackValue::Buffer(vec![2])),
+            None
+        );
+        assert_eq!(
+            super::concat_byte_sequences(StackValue::Buffer(vec![1]), StackValue::Integer(2)),
+            None
+        );
+    }
+
+    #[test]
+    fn slice_byte_sequence_preserves_source_type_and_checks_bounds() {
+        assert_eq!(
+            super::slice_byte_sequence(StackValue::ByteString(b"hello".to_vec()), 1, 3),
+            Some(StackValue::ByteString(b"ell".to_vec()))
+        );
+        assert_eq!(
+            super::slice_byte_sequence(StackValue::Buffer(b"hello".to_vec()), 2, 2),
+            Some(StackValue::Buffer(b"ll".to_vec()))
+        );
+        assert_eq!(
+            super::slice_byte_sequence(StackValue::Buffer(b"hello".to_vec()), 5, 0),
+            Some(StackValue::Buffer(Vec::new()))
+        );
+        assert_eq!(
+            super::slice_byte_sequence(StackValue::Buffer(b"hello".to_vec()), 4, 2),
+            None
+        );
+        assert_eq!(
+            super::slice_byte_sequence(StackValue::Integer(7), 0, 1),
+            None
+        );
     }
 }
