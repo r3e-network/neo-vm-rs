@@ -1,0 +1,255 @@
+{
+  "neo_node_tag": "v3.9.2",
+  "neo_package_version": "Neo 3.9.1",
+  "neo_vm_package_version": "Neo.VM 3.9.0",
+  "source": "Generated with NuGet Neo.VM 3.9.0. neo-node v3.9.2 depends on Neo 3.9.1, which depends on Neo.VM 3.9.0.",
+  "vectors": [
+    {
+      "name": "add_small_integers",
+      "description": "PUSH2 PUSH3 ADD RET",
+      "script_hex": "12139e40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 5
+        }
+      ]
+    },
+    {
+      "name": "pushint16_little_endian",
+      "description": "PUSHINT16 0x1234 RET",
+      "script_hex": "01341240",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 4660
+        }
+      ]
+    },
+    {
+      "name": "negate_then_abs",
+      "description": "PUSHINT8 -7 ABS RET",
+      "script_hex": "00f99a40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 7
+        }
+      ]
+    },
+    {
+      "name": "integer_division_truncates",
+      "description": "PUSH10 PUSH3 DIV RET",
+      "script_hex": "1a13a140",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 3
+        }
+      ]
+    },
+    {
+      "name": "integer_modulo",
+      "description": "PUSH10 PUSH3 MOD RET",
+      "script_hex": "1a13a240",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 1
+        }
+      ]
+    },
+    {
+      "name": "boolean_and_false",
+      "description": "PUSHT PUSHF BOOLAND RET",
+      "script_hex": "0809ab40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Boolean": false
+        }
+      ]
+    },
+    {
+      "name": "boolean_or_true",
+      "description": "PUSHT PUSHF BOOLOR RET",
+      "script_hex": "0809ac40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Boolean": true
+        }
+      ]
+    },
+    {
+      "name": "numeric_less_than",
+      "description": "PUSH2 PUSH3 LT RET",
+      "script_hex": "1213b540",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Boolean": true
+        }
+      ]
+    },
+    {
+      "name": "numeric_within",
+      "description": "PUSH5 PUSH0 PUSH10 WITHIN RET",
+      "script_hex": "15101abb40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Boolean": true
+        }
+      ]
+    },
+    {
+      "name": "bitwise_and",
+      "description": "PUSHINT8 0x0f PUSHINT8 0x33 AND RET",
+      "script_hex": "000f00339140",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 3
+        }
+      ]
+    },
+    {
+      "name": "bytes_cat",
+      "description": "PUSHDATA1 0102 PUSHDATA1 0304 CAT RET",
+      "script_hex": "0c0201020c0203048b40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Buffer": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bytes_left",
+      "description": "PUSHDATA1 abcdef PUSH3 LEFT RET",
+      "script_hex": "0c06616263646566138d40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Buffer": [
+            97,
+            98,
+            99
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bytes_right",
+      "description": "PUSHDATA1 abcdef PUSH2 RIGHT RET",
+      "script_hex": "0c06616263646566128e40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Buffer": [
+            101,
+            102
+          ]
+        }
+      ]
+    },
+    {
+      "name": "bytes_substr",
+      "description": "PUSHDATA1 abcdef PUSH2 PUSH3 SUBSTR RET",
+      "script_hex": "0c0661626364656612138c40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Buffer": [
+            99,
+            100,
+            101
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pack_array_order",
+      "description": "PUSH1 PUSH2 PUSH2 PACK RET",
+      "script_hex": "111212c040",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Array": [
+            {
+              "Integer": 2
+            },
+            {
+              "Integer": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "newarray_nulls",
+      "description": "PUSH3 NEWARRAY RET",
+      "script_hex": "13c340",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Array": [
+            "Null",
+            "Null",
+            "Null"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "array_pickitem",
+      "description": "PUSH10 PUSH20 PUSH2 PACK PUSH1 PICKITEM RET",
+      "script_hex": "1a001412c011ce40",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 10
+        }
+      ]
+    },
+    {
+      "name": "local_slot_roundtrip",
+      "description": "INITSLOT STLOC0 LDLOC0 RET",
+      "script_hex": "57010015706840",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 5
+        }
+      ]
+    },
+    {
+      "name": "static_slot_roundtrip",
+      "description": "INITSSLOT STSFLD0 LDSFLD0 RET",
+      "script_hex": "560116605840",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 6
+        }
+      ]
+    },
+    {
+      "name": "jmpif_true",
+      "description": "PUSHT JMPIF skips PUSH1 and returns PUSH2",
+      "script_hex": "08240411401240",
+      "expected_state": "Halt",
+      "expected_stack": [
+        {
+          "Integer": 2
+        }
+      ]
+    }
+  ]
+}
