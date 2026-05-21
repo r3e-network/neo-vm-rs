@@ -1,93 +1,23 @@
-#![feature(associated_type_defaults)]
-#![feature(linked_list_remove)]
-#![feature(exclusive_range_pattern)]
+//! Shared NeoVM semantics for Neo N4 execution profiles.
+//!
+//! This crate is intentionally small and `no_std + alloc` compatible. Host
+//! runtimes such as PolkaVM and proving runtimes such as SP1 can share these
+//! definitions without inheriting each other's execution or proving stack.
 
-extern crate core;
+#![cfg_attr(not(feature = "std"), no_std)]
 
-pub use num_bigint::BigInt;
-pub mod exception;
-pub mod script;
-// pub mod types;
+extern crate alloc;
 
-mod jump_table;
-mod types;
-pub mod vm;
+mod execution;
+mod limits;
+mod opcode;
+mod stack_value;
+mod syscall;
 
-pub use exception::*;
-pub use script::*;
-// pub use types::*;
-pub use vm::*;
-
-pub mod utility {
-	use super::*;
-
-	pub fn strict_utf8_decode(bytes: &[u8]) -> Option<String> {
-		std::str::from_utf8(bytes).ok().map(|s| s.to_string())
-	}
-
-	pub fn mod_inverse(value: &BigInt, modulus: &BigInt) -> Option<BigInt> {
-		if value <= &BigInt::from(0) || modulus < &BigInt::from(2) {
-			return None;
-		}
-		let (mut r, mut old_r) = (value.clone(), modulus.clone());
-		let (mut s, mut old_s) = (BigInt::from(1), BigInt::from(0));
-		while r > BigInt::from(0) {
-			let q = &old_r / &r;
-			let temp_r = r.clone();
-			r = old_r - &q * &temp_r;
-			old_r = temp_r;
-			let temp_s = s.clone();
-			s = old_s - &q * &temp_s;
-			old_s = temp_s;
-		}
-		let mut result = old_s % modulus;
-		if result < BigInt::from(0) {
-			result += modulus;
-		}
-		if (&value * &result % modulus) != BigInt::from(1) {
-			return None;
-		}
-		Some(result)
-	}
-
-	pub fn sqrt(value: &BigInt) -> Option<BigInt> {
-		if value < &BigInt::from(0) {
-			return None;
-		}
-		if value == &BigInt::from(0) {
-			return Some(BigInt::from(0));
-		}
-		if value < &BigInt::from(4) {
-			return Some(BigInt::from(1));
-		}
-		let mut z = value.clone();
-		let mut x = (BigInt::from(1) << (((value - 1) as BigInt).bits() as u32 + 1) >> 1);
-		while &x < &z {
-			z = x.clone();
-			x = (value / &x + &x) / 2;
-		}
-		Some(z)
-	}
-
-	pub fn get_bit_length(value: &BigInt) -> u32 {
-		if value == &BigInt::from(0) || value == &BigInt::from(-1) {
-			return 0;
-		}
-		value.bits() as u32
-	}
-}
-
-pub fn add(left: usize, right: usize) -> usize {
-	left + right
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn it_works() {
-		let result = add(2, 2);
-		assert_eq!(result, 4);
-	}
-}
+pub use execution::{BackendKind, ExecutionResult, VmState};
+pub use limits::{
+    DEFAULT_MAX_INVOCATION_DEPTH, DEFAULT_MAX_STACK_DEPTH, MAX_ITEM_SIZE, MAX_SCRIPT_SIZE,
+};
+pub use opcode::OpCode;
+pub use stack_value::StackValue;
+pub use syscall::{interop_hash, syscall_arg_count};
