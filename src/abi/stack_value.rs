@@ -1,6 +1,6 @@
 //! Canonical NeoVM stack value types.
 
-use alloc::vec::Vec;
+use alloc::{format, string::String, vec::Vec};
 use serde::{Deserialize, Serialize};
 
 /// Compact integer tag used by generated RISC-V runtime helpers.
@@ -81,6 +81,21 @@ pub fn new_array_default_value_for_type_tag(type_tag: u8) -> StackValue {
         COMPACT_TAG_INTEGER => StackValue::Integer(0),
         COMPACT_TAG_BYTESTRING => StackValue::ByteString(Vec::new()),
         _ => StackValue::Null,
+    }
+}
+
+/// Pop a syscall-style byte argument from the top of a stack.
+///
+/// NeoVM byte syscalls accept ByteString and Buffer values as raw bytes. This
+/// deliberately does not accept BigInteger, even though it has a byte
+/// representation, because syscall argument validation is type based.
+pub fn pop_byte_arg(stack: &mut Vec<StackValue>, context: &str) -> Result<Vec<u8>, String> {
+    match stack.pop() {
+        Some(StackValue::ByteString(bytes)) | Some(StackValue::Buffer(bytes)) => Ok(bytes),
+        Some(other) => Err(format!(
+            "{context} expects ByteString or Buffer, got {other:?}"
+        )),
+        None => Err(format!("{context} expects one stack argument")),
     }
 }
 
@@ -493,5 +508,34 @@ mod tests {
             super::new_array_default_value_for_type_tag(0xff),
             StackValue::Null
         );
+    }
+
+    #[test]
+    fn byte_arg_pop_accepts_only_bytestring_and_buffer() {
+        let mut byte_string_stack = vec![
+            StackValue::Integer(7),
+            StackValue::ByteString(b"neo".to_vec()),
+        ];
+        assert_eq!(
+            super::pop_byte_arg(&mut byte_string_stack, "System.Crypto.SHA256"),
+            Ok(b"neo".to_vec())
+        );
+        assert_eq!(byte_string_stack, vec![StackValue::Integer(7)]);
+
+        let mut buffer_stack = vec![StackValue::Buffer(b"n4".to_vec())];
+        assert_eq!(
+            super::pop_byte_arg(&mut buffer_stack, "System.Crypto.SHA256"),
+            Ok(b"n4".to_vec())
+        );
+
+        let mut integer_stack = vec![StackValue::Integer(1)];
+        let error = super::pop_byte_arg(&mut integer_stack, "System.Crypto.SHA256")
+            .expect_err("integer is not a byte syscall argument");
+        assert!(error.contains("System.Crypto.SHA256 expects ByteString or Buffer"));
+
+        let mut empty_stack = Vec::new();
+        let error = super::pop_byte_arg(&mut empty_stack, "System.Crypto.SHA256")
+            .expect_err("empty stack should report missing argument");
+        assert_eq!(error, "System.Crypto.SHA256 expects one stack argument");
     }
 }
