@@ -442,8 +442,9 @@ impl OpCode {
             | Self::STSFLD
             | Self::ISTYPE
             | Self::CONVERT
+            | Self::INITSSLOT
             | Self::NEWARRAY_T => 1,
-            Self::CALLT | Self::PUSHINT16 => 2,
+            Self::CALLT | Self::INITSLOT | Self::PUSHINT16 => 2,
             Self::JMP_L
             | Self::JMPIF_L
             | Self::JMPIFNOT_L
