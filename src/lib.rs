@@ -15,9 +15,10 @@ mod vm;
 
 pub use abi::fast_codec;
 pub use abi::{
-    encode_integer, BackendKind, ExecutionResult, StackValue, VmState, TAG_ARRAY, TAG_BIG_INTEGER,
-    TAG_BOOLEAN, TAG_BUFFER, TAG_BYTESTRING, TAG_INTEGER, TAG_INTEROP, TAG_ITERATOR, TAG_MAP,
-    TAG_NULL, TAG_POINTER, TAG_STRUCT,
+    encode_integer, BackendKind, ExecutionResult, StackValue, VmState, COMPACT_TAG_ARRAY,
+    COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_BOOLEAN, COMPACT_TAG_BUFFER, COMPACT_TAG_BYTESTRING,
+    COMPACT_TAG_INTEGER, COMPACT_TAG_INTEROP, COMPACT_TAG_ITERATOR, COMPACT_TAG_MAP,
+    COMPACT_TAG_NULL, COMPACT_TAG_POINTER, COMPACT_TAG_STRUCT,
 };
 pub use host::{interop_hash, syscall_arg_count};
 pub use interpreter::{

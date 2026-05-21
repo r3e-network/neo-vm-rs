@@ -4,29 +4,29 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 /// Compact integer tag used by generated RISC-V runtime helpers.
-pub const TAG_INTEGER: u8 = 0;
+pub const COMPACT_TAG_INTEGER: u8 = 0;
 /// Compact boolean tag used by generated RISC-V runtime helpers.
-pub const TAG_BOOLEAN: u8 = 1;
+pub const COMPACT_TAG_BOOLEAN: u8 = 1;
 /// Compact byte string tag used by generated RISC-V runtime helpers.
-pub const TAG_BYTESTRING: u8 = 2;
+pub const COMPACT_TAG_BYTESTRING: u8 = 2;
 /// Compact big integer tag used by generated RISC-V runtime helpers.
-pub const TAG_BIG_INTEGER: u8 = 3;
+pub const COMPACT_TAG_BIG_INTEGER: u8 = 3;
 /// Compact array tag used by generated RISC-V runtime helpers.
-pub const TAG_ARRAY: u8 = 4;
+pub const COMPACT_TAG_ARRAY: u8 = 4;
 /// Compact struct tag used by generated RISC-V runtime helpers.
-pub const TAG_STRUCT: u8 = 5;
+pub const COMPACT_TAG_STRUCT: u8 = 5;
 /// Compact map tag used by generated RISC-V runtime helpers.
-pub const TAG_MAP: u8 = 6;
+pub const COMPACT_TAG_MAP: u8 = 6;
 /// Compact null tag used by generated RISC-V runtime helpers.
-pub const TAG_NULL: u8 = 7;
+pub const COMPACT_TAG_NULL: u8 = 7;
 /// Compact interop handle tag used by generated RISC-V runtime helpers.
-pub const TAG_INTEROP: u8 = 8;
+pub const COMPACT_TAG_INTEROP: u8 = 8;
 /// Compact iterator handle tag used by generated RISC-V runtime helpers.
-pub const TAG_ITERATOR: u8 = 9;
+pub const COMPACT_TAG_ITERATOR: u8 = 9;
 /// Compact buffer tag used by generated RISC-V runtime helpers.
-pub const TAG_BUFFER: u8 = 10;
+pub const COMPACT_TAG_BUFFER: u8 = 10;
 /// Compact pointer tag used by generated RISC-V runtime helpers.
-pub const TAG_POINTER: u8 = 11;
+pub const COMPACT_TAG_POINTER: u8 = 11;
 
 /// Encode an integer using NeoVM's minimal little-endian two's-complement form.
 #[must_use]
@@ -87,20 +87,20 @@ pub enum StackValue {
 impl StackValue {
     /// Return the compact runtime tag for this stack value.
     #[must_use]
-    pub fn type_tag(&self) -> u8 {
+    pub fn compact_type_tag(&self) -> u8 {
         match self {
-            Self::Integer(_) => TAG_INTEGER,
-            Self::Boolean(_) => TAG_BOOLEAN,
-            Self::ByteString(_) => TAG_BYTESTRING,
-            Self::BigInteger(_) => TAG_BIG_INTEGER,
-            Self::Array(_) => TAG_ARRAY,
-            Self::Struct(_) => TAG_STRUCT,
-            Self::Map(_) => TAG_MAP,
-            Self::Null => TAG_NULL,
-            Self::Interop(_) => TAG_INTEROP,
-            Self::Iterator(_) => TAG_ITERATOR,
-            Self::Buffer(_) => TAG_BUFFER,
-            Self::Pointer(_) => TAG_POINTER,
+            Self::Integer(_) => COMPACT_TAG_INTEGER,
+            Self::Boolean(_) => COMPACT_TAG_BOOLEAN,
+            Self::ByteString(_) => COMPACT_TAG_BYTESTRING,
+            Self::BigInteger(_) => COMPACT_TAG_BIG_INTEGER,
+            Self::Array(_) => COMPACT_TAG_ARRAY,
+            Self::Struct(_) => COMPACT_TAG_STRUCT,
+            Self::Map(_) => COMPACT_TAG_MAP,
+            Self::Null => COMPACT_TAG_NULL,
+            Self::Interop(_) => COMPACT_TAG_INTEROP,
+            Self::Iterator(_) => COMPACT_TAG_ITERATOR,
+            Self::Buffer(_) => COMPACT_TAG_BUFFER,
+            Self::Pointer(_) => COMPACT_TAG_POINTER,
         }
     }
 
@@ -196,23 +196,50 @@ mod tests {
 
     #[test]
     fn stack_values_expose_stable_runtime_type_tags() {
-        assert_eq!(StackValue::Integer(1).type_tag(), super::TAG_INTEGER);
-        assert_eq!(StackValue::Boolean(true).type_tag(), super::TAG_BOOLEAN);
         assert_eq!(
-            StackValue::ByteString(vec![]).type_tag(),
-            super::TAG_BYTESTRING
+            StackValue::Integer(1).compact_type_tag(),
+            super::COMPACT_TAG_INTEGER
         );
         assert_eq!(
-            StackValue::BigInteger(vec![]).type_tag(),
-            super::TAG_BIG_INTEGER
+            StackValue::Boolean(true).compact_type_tag(),
+            super::COMPACT_TAG_BOOLEAN
         );
-        assert_eq!(StackValue::Array(vec![]).type_tag(), super::TAG_ARRAY);
-        assert_eq!(StackValue::Struct(vec![]).type_tag(), super::TAG_STRUCT);
-        assert_eq!(StackValue::Map(vec![]).type_tag(), super::TAG_MAP);
-        assert_eq!(StackValue::Null.type_tag(), super::TAG_NULL);
-        assert_eq!(StackValue::Interop(1).type_tag(), super::TAG_INTEROP);
-        assert_eq!(StackValue::Iterator(1).type_tag(), super::TAG_ITERATOR);
-        assert_eq!(StackValue::Buffer(vec![]).type_tag(), super::TAG_BUFFER);
-        assert_eq!(StackValue::Pointer(0).type_tag(), super::TAG_POINTER);
+        assert_eq!(
+            StackValue::ByteString(vec![]).compact_type_tag(),
+            super::COMPACT_TAG_BYTESTRING
+        );
+        assert_eq!(
+            StackValue::BigInteger(vec![]).compact_type_tag(),
+            super::COMPACT_TAG_BIG_INTEGER
+        );
+        assert_eq!(
+            StackValue::Array(vec![]).compact_type_tag(),
+            super::COMPACT_TAG_ARRAY
+        );
+        assert_eq!(
+            StackValue::Struct(vec![]).compact_type_tag(),
+            super::COMPACT_TAG_STRUCT
+        );
+        assert_eq!(
+            StackValue::Map(vec![]).compact_type_tag(),
+            super::COMPACT_TAG_MAP
+        );
+        assert_eq!(StackValue::Null.compact_type_tag(), super::COMPACT_TAG_NULL);
+        assert_eq!(
+            StackValue::Interop(1).compact_type_tag(),
+            super::COMPACT_TAG_INTEROP
+        );
+        assert_eq!(
+            StackValue::Iterator(1).compact_type_tag(),
+            super::COMPACT_TAG_ITERATOR
+        );
+        assert_eq!(
+            StackValue::Buffer(vec![]).compact_type_tag(),
+            super::COMPACT_TAG_BUFFER
+        );
+        assert_eq!(
+            StackValue::Pointer(0).compact_type_tag(),
+            super::COMPACT_TAG_POINTER
+        );
     }
 }
