@@ -28,6 +28,52 @@ pub const COMPACT_TAG_BUFFER: u8 = 10;
 /// Compact pointer tag used by generated RISC-V runtime helpers.
 pub const COMPACT_TAG_POINTER: u8 = 11;
 
+/// NeoVM `StackItemType.Boolean`.
+pub const NEOVM_STACK_ITEM_TYPE_BOOLEAN: u8 = 0x20;
+/// NeoVM `StackItemType.Integer`.
+pub const NEOVM_STACK_ITEM_TYPE_INTEGER: u8 = 0x21;
+/// NeoVM `StackItemType.ByteString`.
+pub const NEOVM_STACK_ITEM_TYPE_BYTESTRING: u8 = 0x28;
+/// NeoVM `StackItemType.Buffer`.
+pub const NEOVM_STACK_ITEM_TYPE_BUFFER: u8 = 0x30;
+/// NeoVM `StackItemType.Array`.
+pub const NEOVM_STACK_ITEM_TYPE_ARRAY: u8 = 0x40;
+/// NeoVM `StackItemType.Struct`.
+pub const NEOVM_STACK_ITEM_TYPE_STRUCT: u8 = 0x41;
+/// NeoVM `StackItemType.Map`.
+pub const NEOVM_STACK_ITEM_TYPE_MAP: u8 = 0x48;
+
+/// Normalize NeoVM StackItemType tags and compact runtime tags into one compact tag space.
+#[must_use]
+pub fn normalize_stack_item_type_tag(type_tag: u8) -> u8 {
+    match type_tag {
+        NEOVM_STACK_ITEM_TYPE_BOOLEAN => COMPACT_TAG_BOOLEAN,
+        NEOVM_STACK_ITEM_TYPE_INTEGER => COMPACT_TAG_INTEGER,
+        NEOVM_STACK_ITEM_TYPE_BYTESTRING => COMPACT_TAG_BYTESTRING,
+        NEOVM_STACK_ITEM_TYPE_BUFFER => COMPACT_TAG_BUFFER,
+        NEOVM_STACK_ITEM_TYPE_ARRAY => COMPACT_TAG_ARRAY,
+        NEOVM_STACK_ITEM_TYPE_STRUCT => COMPACT_TAG_STRUCT,
+        NEOVM_STACK_ITEM_TYPE_MAP => COMPACT_TAG_MAP,
+        other => other,
+    }
+}
+
+/// Return the shared default value for a compact runtime or NeoVM StackItemType tag.
+#[must_use]
+pub fn default_value_for_type_tag(type_tag: u8) -> StackValue {
+    match normalize_stack_item_type_tag(type_tag) {
+        COMPACT_TAG_BOOLEAN => StackValue::Boolean(false),
+        COMPACT_TAG_INTEGER | COMPACT_TAG_BIG_INTEGER => StackValue::Integer(0),
+        COMPACT_TAG_BYTESTRING => StackValue::ByteString(Vec::new()),
+        COMPACT_TAG_BUFFER => StackValue::Buffer(Vec::new()),
+        COMPACT_TAG_ARRAY => StackValue::Array(Vec::new()),
+        COMPACT_TAG_STRUCT => StackValue::Struct(Vec::new()),
+        COMPACT_TAG_MAP => StackValue::Map(Vec::new()),
+        COMPACT_TAG_NULL => StackValue::Null,
+        _ => StackValue::Null,
+    }
+}
+
 /// Encode an integer using NeoVM's minimal little-endian two's-complement form.
 #[must_use]
 pub fn encode_integer(value: i64) -> Vec<u8> {
@@ -332,5 +378,82 @@ mod tests {
             Some(StackValue::Null)
         );
         assert_eq!(StackValue::Array(vec![]).convert_to_buffer_value(), None);
+    }
+
+    #[test]
+    fn neovm_type_tags_normalize_to_compact_runtime_tags() {
+        assert_eq!(
+            super::normalize_stack_item_type_tag(0x20),
+            super::COMPACT_TAG_BOOLEAN
+        );
+        assert_eq!(
+            super::normalize_stack_item_type_tag(0x21),
+            super::COMPACT_TAG_INTEGER
+        );
+        assert_eq!(
+            super::normalize_stack_item_type_tag(0x28),
+            super::COMPACT_TAG_BYTESTRING
+        );
+        assert_eq!(
+            super::normalize_stack_item_type_tag(0x30),
+            super::COMPACT_TAG_BUFFER
+        );
+        assert_eq!(
+            super::normalize_stack_item_type_tag(0x40),
+            super::COMPACT_TAG_ARRAY
+        );
+        assert_eq!(
+            super::normalize_stack_item_type_tag(0x41),
+            super::COMPACT_TAG_STRUCT
+        );
+        assert_eq!(
+            super::normalize_stack_item_type_tag(0x48),
+            super::COMPACT_TAG_MAP
+        );
+        assert_eq!(
+            super::normalize_stack_item_type_tag(super::COMPACT_TAG_POINTER),
+            super::COMPACT_TAG_POINTER
+        );
+    }
+
+    #[test]
+    fn default_values_follow_shared_type_tag_rules() {
+        assert_eq!(
+            super::default_value_for_type_tag(0x20),
+            StackValue::Boolean(false)
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(0x21),
+            StackValue::Integer(0)
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(super::COMPACT_TAG_BIG_INTEGER),
+            StackValue::Integer(0)
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(0x28),
+            StackValue::ByteString(Vec::new())
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(0x30),
+            StackValue::Buffer(Vec::new())
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(0x40),
+            StackValue::Array(Vec::new())
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(0x41),
+            StackValue::Struct(Vec::new())
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(0x48),
+            StackValue::Map(Vec::new())
+        );
+        assert_eq!(
+            super::default_value_for_type_tag(super::COMPACT_TAG_NULL),
+            StackValue::Null
+        );
+        assert_eq!(super::default_value_for_type_tag(0xff), StackValue::Null);
     }
 }
