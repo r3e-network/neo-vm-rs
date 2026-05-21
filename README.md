@@ -1,26 +1,44 @@
-# NEO Virtual Machine in Rust
-The NEO Virtual Machine in Rust is an open-source project aimed at improving the performance and security of the NEO ecosystem by implementing the NEO Virtual Machine in Rust. By leveraging the strengths of the Rust programming language, we aim to create a more efficient and secure environment for NEO developers to build their applications.
+# neo-vm-rs
 
-## Motivation
-The field of blockchain technology is constantly evolving, with new developments and advancements being made on a regular basis. One of the most significant areas of growth in recent years has been the adoption of Rust as a preferred programming language for blockchain development due to its performance, efficiency, and security features.
+`neo-vm-rs` is the shared NeoVM semantics crate used by the Neo N4 Rust execution
+profile crates. It intentionally stays small, deterministic, and `no_std +
+alloc` compatible so PolkaVM/RISC-V runtimes and zkVM/proving runtimes can reuse
+the same VM-facing types without inheriting each other's host or prover stack.
 
-By implementing the NEO Virtual Machine in Rust, we can take advantage of Rust's memory safety and thread safety features, making it an ideal choice for developing applications in the blockchain space, where security is of the utmost importance.
+## Scope
 
-Furthermore, by implementing NEO modules, such as the NEO-VM, in Rust, we can attract a new pool of developers who are experienced in the language and can contribute to the growth of the platform. This can also help NEO developers to implement layer two applications that can execute NEO smart contracts off-chain in Rust efficiently.
+This crate owns the common semantics that must stay identical across N4 VM
+consumers:
 
-## Goals
-The main goals of this project are to:
+- canonical NeoVM opcode metadata and byte decoding
+- shared execution result and VM state reporting types
+- shared stack value representation used at ABI/proof boundaries
+- shared Neo syscall hashing and fixed argument-count metadata
+- shared execution limit constants
 
-- Implement the NEO Virtual Machine in Rust
-- Deliver a set of Rust crates that will provide various NEO-VM functions, cryptography operations, and exception handling
-- Improve the performance and security of the NEO ecosystem
-- Attract a new pool of developers to the NEO ecosystem
+It does not contain a full interpreter, host runtime, storage engine, verifier,
+or prover. Those remain in the consuming crates:
 
-## Deliverables
-The project will deliver a set of Rust crates that will implement various NEO-VM functions, cryptography operations, and exception handling. Specifically, the crates will include:
+- `neo-riscv-vm`: canonical N4 Layer-2 NeoVM2/RISC-V execution profile
+- `neo-zkvm`: proof-oriented zkVM integration and verifier tooling
 
-- Cryptography crate that performs bit operations and Murmur32. Test cases will be implemented to ensure correct functionality.
-- Neo virtual machine Types crate that implements various types used in Neo-VM such as array, boolean, buffer, bytestring, etc. Test cases will be included to validate the implementation.
-- Script-related functions crate that includes the OpCode and Script functions, which handle script building and format checking. Test cases will be provided for verification.
-- Exception handling crate that handles exceptions that may occur during the execution of the VM. Test cases will be available for validation.
-- The main body of the VM, including the stack, context, and engine, will be implemented as the final crate of this project.
+## Validation
+
+Run the same commands used by CI:
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --locked --all-targets
+cargo check --locked --no-default-features --all-targets
+cargo bench --locked --no-run
+```
+
+The test suite covers canonical opcode byte acceptance and gap rejection,
+metadata round trips, syscall hash vectors, stack value conversion semantics,
+and serde wire compatibility for execution results.
+
+The benchmark target compiles Criterion benchmarks for opcode decode,
+metadata lookup, syscall helpers, and stack value conversions. CI compiles the
+benchmarks with `--no-run`; performance tracking jobs can run the same target on
+dedicated hardware.
