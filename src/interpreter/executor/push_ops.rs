@@ -1,4 +1,4 @@
-use super::super::helpers::{pop_item, trim_le_bytes_slice};
+use super::super::helpers::trim_le_bytes_slice;
 use super::super::opcodes::*;
 use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
@@ -13,7 +13,6 @@ pub(super) fn execute(
     script: &[u8],
     ip_ref: &mut usize,
     stack: &mut Vec<StackValue>,
-    alt_stack: &mut Vec<StackValue>,
 ) -> Result<Dispatch, String> {
     let mut ip = *ip_ref;
     macro_rules! finish {
@@ -163,16 +162,6 @@ pub(super) fn execute(
             finish!(Dispatch::Continue);
         }
         PUSHM1 => stack.push(StackValue::Integer(-1)),
-        TOALTSTACK => {
-            let value = pop_item(stack)?;
-            alt_stack.push(value);
-        }
-        FROMALTSTACK => {
-            let value = alt_stack
-                .pop()
-                .ok_or_else(|| "alt stack underflow".to_string())?;
-            stack.push(value);
-        }
         PUSH0 => stack.push(StackValue::Integer(0)),
         PUSH1..=PUSH16 => stack.push(StackValue::Integer(i64::from(opcode - PUSH0))),
         PUSHA => {

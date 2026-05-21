@@ -20,7 +20,6 @@ pub(super) fn execute(
     locals: &mut [StackValue],
     args: &mut [StackValue],
     static_fields: &mut [StackValue],
-    alt_stack: &mut [StackValue],
     consumed_mutations: &mut Vec<StackValue>,
 ) -> Result<Dispatch, String> {
     match opcode {
@@ -128,15 +127,7 @@ pub(super) fn execute(
             dst_bytes[di..di + count].copy_from_slice(&src_bytes[si..si + count]);
             let updated = StackValue::Buffer(dst_id, dst_bytes);
             remember_consumed_mutation(consumed_mutations, &updated);
-            propagate_update(
-                &updated,
-                stack,
-                locals,
-                args,
-                static_fields,
-                alt_stack,
-                None,
-            );
+            propagate_update(&updated, stack, locals, args, static_fields, None);
         }
         _ => unreachable!("opcode routed to byte_ops: 0x{opcode:02x}"),
     }

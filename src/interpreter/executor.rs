@@ -60,7 +60,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     let mut static_fields: Vec<StackValue> = Vec::with_capacity(16);
     let mut slots_initialized = false;
     let mut static_fields_initialized = false;
-    let mut alt_stack: Vec<StackValue> = Vec::with_capacity(16);
     let mut try_frames = TryStack::new();
     let mut call_stack = CallStack::new();
     let mut consumed_mutations: Vec<StackValue> = Vec::with_capacity(16);
@@ -95,7 +94,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                             &locals,
                             &args,
                             &static_fields,
-                            &alt_stack,
                             &current_mutations,
                         );
                         locals = saved_locals;
@@ -169,18 +167,10 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             | PUSHDATA2
             | PUSHDATA4
             | PUSHM1
-            | TOALTSTACK
-            | FROMALTSTACK
             | PUSH0
             | PUSH1..=PUSH16
             | PUSHA => {
-                apply_dispatch!(push_ops::execute(
-                    opcode,
-                    script,
-                    &mut ip,
-                    &mut stack,
-                    &mut alt_stack,
-                )?);
+                apply_dispatch!(push_ops::execute(opcode, script, &mut ip, &mut stack)?);
             }
             // FLOW CONTROL OPCODES (0x21-0x40)
             JMP | JMP_L => {
@@ -292,7 +282,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut args,
                     &mut locals,
                     &mut static_fields,
-                    &mut alt_stack,
                     &mut consumed_mutations,
                     &mut ids,
                 ) {
@@ -318,7 +307,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut args,
                     &mut locals,
                     &mut static_fields,
-                    &mut alt_stack,
                     &mut consumed_mutations,
                     &mut ids,
                 ) {
@@ -368,7 +356,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut locals,
                     &mut args,
                     &mut static_fields,
-                    &mut alt_stack,
                     &mut consumed_mutations,
                 )?);
             }
@@ -389,13 +376,12 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut locals,
                     &mut args,
                     &mut static_fields,
-                    &mut alt_stack,
                     &mut consumed_mutations,
                     &mut try_frames,
                     &mut pending_error,
                 )?);
             }
-            // EXCEPTION HANDLING OPCODES (0xf0-0xf1)
+            // EXCEPTION HANDLING OPCODES
             THROW => {
                 let msg = pop_item(&mut stack)?;
                 let err_msg = match &msg {
@@ -423,27 +409,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 pending_error = Some(PendingException::thrown_value(msg));
                 continue;
             }
-            THROWIFNOT => {
-                let condition = pop_boolean(&mut stack)?;
-                if !condition {
-                    let err_msg = "THROWIFNOT".to_string();
-                    if try_frames.is_empty() {
-                        return Ok(ExecutionResult {
-                            fee_consumed_pico: 0,
-                            state: VmState::Fault,
-                            stack: to_abi_stack(&stack),
-                            fault_message: Some(err_msg),
-                            fault_ip: Some(ip as u32),
-                            fault_locals: {
-                                let cloned = locals.clone();
-                                Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(&cloned)))
-                            },
-                        });
-                    }
-                    pending_error = Some(PendingException::message(err_msg));
-                    continue;
-                }
-            }
             MUL | DIV | MOD | DEC | BOOLAND | BOOLOR | NZ | MIN | MAX | WITHIN => {
                 apply_dispatch!(numeric_ops::execute(opcode, &mut stack)?);
             }
@@ -455,7 +420,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut locals,
                     &mut args,
                     &mut static_fields,
-                    &mut alt_stack,
                     &mut consumed_mutations,
                 )?);
             }
@@ -469,7 +433,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut locals,
                     &mut args,
                     &mut static_fields,
-                    &mut alt_stack,
                     &mut consumed_mutations,
                     &mut try_frames,
                     &mut pending_error,
@@ -743,7 +706,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                         &locals,
                         &args,
                         &static_fields,
-                        &alt_stack,
                         &current_mutations,
                     );
                     locals = saved_locals;
@@ -775,7 +737,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     locals = Vec::with_capacity(16);
                     args = Vec::with_capacity(16);
                     slots_initialized = false;
-                    alt_stack = Vec::with_capacity(16);
                     try_frames = TryStack::new();
                     call_stack = CallStack::new();
                     pending_error = None;
@@ -972,7 +933,6 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     core::mem::forget(locals);
     core::mem::forget(args);
     core::mem::forget(static_fields);
-    core::mem::forget(alt_stack);
     core::mem::forget(method_initial_stack);
     core::mem::forget(consumed_mutations);
     core::mem::forget(pending_error);

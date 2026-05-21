@@ -66,8 +66,6 @@ pub(crate) const RET: u8 = 0x40;
 pub(crate) const SYSCALL: u8 = 0x41;
 
 // Stack
-pub(crate) const TOALTSTACK: u8 = 0x06;
-pub(crate) const FROMALTSTACK: u8 = 0x07;
 pub(crate) const DEPTH: u8 = 0x43;
 pub(crate) const DROP: u8 = 0x45;
 pub(crate) const DUP: u8 = 0x4a;
@@ -211,7 +209,6 @@ pub(crate) const CALLT: u8 = 0x37;
 
 // Exceptions
 pub(crate) const THROW: u8 = 0x3a;
-pub(crate) const THROWIFNOT: u8 = 0xf1;
 
 // Exception handling
 pub(crate) const TRY: u8 = 0x3b;

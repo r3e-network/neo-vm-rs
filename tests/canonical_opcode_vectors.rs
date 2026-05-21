@@ -2,7 +2,8 @@ use neo_vm_rs::OpCode;
 
 fn canonical_opcode_bytes() -> Vec<u8> {
     let mut bytes = Vec::new();
-    bytes.extend(0x00..=0x41);
+    bytes.extend(0x00..=0x05);
+    bytes.extend(0x08..=0x41);
     bytes.extend([0x43, 0x45, 0x46]);
     bytes.extend(0x48..=0x4b);
     bytes.extend([0x4d, 0x4e]);
@@ -17,9 +18,8 @@ fn canonical_opcode_bytes() -> Vec<u8> {
     bytes.extend(0xbe..=0xc6);
     bytes.push(0xc8);
     bytes.extend(0xca..=0xd4);
-    bytes.extend(0xd8..=0xdb);
+    bytes.extend([0xd8, 0xd9, 0xdb]);
     bytes.extend(0xe0..=0xe1);
-    bytes.push(0xf1);
     bytes
 }
 
@@ -47,6 +47,17 @@ fn canonical_opcode_byte_table_is_complete_and_rejects_gaps() {
             accepted[byte as usize],
             "unexpected decode result for byte {byte:#04x}"
         );
+    }
+}
+
+#[test]
+fn legacy_and_non_canonical_opcode_gaps_are_rejected() {
+    for byte in [0x06, 0x07, 0xda, 0xf1] {
+        assert!(
+            OpCode::try_from(byte).is_err(),
+            "byte {byte:#04x} is not a NeoVM 3.9.x opcode"
+        );
+        assert_eq!(OpCode::from_u8(byte), None);
     }
 }
 

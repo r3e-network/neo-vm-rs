@@ -45,7 +45,6 @@ static RETAINED_STACK_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();
 pub(crate) static RETAINED_ARGS_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();
 static RETAINED_LOCALS_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();
 static RETAINED_STATIC_FIELDS_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();
-static RETAINED_ALT_STACK_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();
 static RETAINED_CONSUMED_MUTATIONS_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();
 #[cfg(target_arch = "riscv32")]
 static RETAINED_INITIAL_STACK_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();

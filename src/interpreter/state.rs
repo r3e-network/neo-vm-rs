@@ -49,7 +49,6 @@ pub(super) fn propagate_active_aliases_into_saved_frame(
     locals: &[StackValue],
     args: &[StackValue],
     static_fields: &[StackValue],
-    alt_stack: &[StackValue],
     consumed_mutations: &[StackValue],
 ) {
     for targets in [saved_locals, saved_args] {
@@ -57,7 +56,6 @@ pub(super) fn propagate_active_aliases_into_saved_frame(
         propagate_aliases_from_sources(targets, locals);
         propagate_aliases_from_sources(targets, args);
         propagate_aliases_from_sources(targets, static_fields);
-        propagate_aliases_from_sources(targets, alt_stack);
         propagate_aliases_from_sources(targets, consumed_mutations);
     }
 }

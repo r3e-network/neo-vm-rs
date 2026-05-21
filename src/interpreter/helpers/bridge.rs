@@ -15,7 +15,6 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
     args: &mut Vec<StackValue>,
     locals: &mut Vec<StackValue>,
     static_fields: &mut Vec<StackValue>,
-    alt_stack: &mut Vec<StackValue>,
     consumed_mutations: &mut Vec<StackValue>,
     ids: &mut CompoundIds,
 ) -> Result<(), String> {
@@ -48,12 +47,6 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
     let retained_static_fields_len = if cfg!(target_arch = "riscv32") && !static_fields.is_empty() {
         let buf = unsafe { RETAINED_STATIC_FIELDS_BUF.as_mut_slice() };
         Some(encode_retained_prefix_to_slice(static_fields, buf)?)
-    } else {
-        None
-    };
-    let retained_alt_stack_len = if cfg!(target_arch = "riscv32") && !alt_stack.is_empty() {
-        let buf = unsafe { RETAINED_ALT_STACK_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(alt_stack, buf)?)
     } else {
         None
     };
@@ -90,12 +83,6 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
                     static_fields,
                     retained_static_fields_len,
                     &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    alt_stack,
-                    retained_alt_stack_len,
-                    &RETAINED_ALT_STACK_BUF,
                     POST_SYSCALL_STACK_HEADROOM,
                 )?;
                 restore_retained_values(
@@ -144,12 +131,6 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
                     static_fields,
                     retained_static_fields_len,
                     &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
-                    alt_stack,
-                    retained_alt_stack_len,
-                    &RETAINED_ALT_STACK_BUF,
                     POST_SYSCALL_STACK_HEADROOM,
                 );
                 let _ = restore_retained_values(
@@ -285,7 +266,6 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
     args: &mut Vec<StackValue>,
     locals: &mut Vec<StackValue>,
     static_fields: &mut Vec<StackValue>,
-    alt_stack: &mut Vec<StackValue>,
     consumed_mutations: &mut Vec<StackValue>,
     ids: &mut CompoundIds,
 ) -> Result<(), String> {
@@ -311,12 +291,6 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
     let retained_static_fields_len = if cfg!(target_arch = "riscv32") && !static_fields.is_empty() {
         let buf = unsafe { RETAINED_STATIC_FIELDS_BUF.as_mut_slice() };
         Some(encode_retained_prefix_to_slice(static_fields, buf)?)
-    } else {
-        None
-    };
-    let retained_alt_stack_len = if cfg!(target_arch = "riscv32") && !alt_stack.is_empty() {
-        let buf = unsafe { RETAINED_ALT_STACK_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(alt_stack, buf)?)
     } else {
         None
     };
@@ -353,12 +327,6 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
                     static_fields,
                     retained_static_fields_len,
                     &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    alt_stack,
-                    retained_alt_stack_len,
-                    &RETAINED_ALT_STACK_BUF,
                     POST_SYSCALL_STACK_HEADROOM,
                 )?;
                 restore_retained_values(
@@ -442,12 +410,6 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
                     static_fields,
                     retained_static_fields_len,
                     &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
-                    alt_stack,
-                    retained_alt_stack_len,
-                    &RETAINED_ALT_STACK_BUF,
                     POST_SYSCALL_STACK_HEADROOM,
                 );
                 let _ = restore_retained_values(

@@ -23,7 +23,6 @@ pub(super) fn execute(
     locals: &mut [StackValue],
     args: &mut [StackValue],
     static_fields: &mut [StackValue],
-    alt_stack: &mut [StackValue],
     consumed_mutations: &mut Vec<StackValue>,
     try_frames: &mut TryStack,
     pending_error: &mut Option<PendingException>,
@@ -265,7 +264,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -280,7 +278,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -410,7 +407,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -429,7 +425,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -448,7 +443,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -474,7 +468,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -500,7 +493,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -519,7 +511,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -539,7 +530,6 @@ pub(super) fn execute(
                         locals,
                         args,
                         static_fields,
-                        alt_stack,
                         Some(&affected),
                     );
                 }
@@ -552,54 +542,22 @@ pub(super) fn execute(
                 StackValue::Array(id, _) => {
                     let updated = StackValue::Array(id, Vec::new());
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                 }
                 StackValue::Struct(id, _) => {
                     let updated = StackValue::Struct(id, Vec::new());
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                 }
                 StackValue::Map(id, _) => {
                     let updated = StackValue::Map(id, Vec::new());
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                 }
                 StackValue::Buffer(id, _) => {
                     let updated = StackValue::Buffer(id, Vec::new());
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                 }
                 _ => return Err("CLEARITEMS expects a compound value".to_string()),
             }
@@ -613,15 +571,7 @@ pub(super) fn execute(
                         .ok_or_else(|| "POPITEM on empty array".to_string())?;
                     let updated = StackValue::Array(id, items);
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                     stack.push(popped);
                 }
                 StackValue::Struct(id, mut items) => {
@@ -630,15 +580,7 @@ pub(super) fn execute(
                         .ok_or_else(|| "POPITEM on empty struct".to_string())?;
                     let updated = StackValue::Struct(id, items);
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                     stack.push(popped);
                 }
                 StackValue::Map(id, mut entries) => {
@@ -647,15 +589,7 @@ pub(super) fn execute(
                         .ok_or_else(|| "POPITEM on empty map".to_string())?;
                     let updated = StackValue::Map(id, entries);
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                     stack.push(key);
                     stack.push(value);
                 }
@@ -665,15 +599,7 @@ pub(super) fn execute(
                         .ok_or_else(|| "POPITEM on empty buffer".to_string())?;
                     let updated = StackValue::Buffer(id, bytes);
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                     stack.push(StackValue::Integer(byte as i64));
                 }
                 _ => return Err("POPITEM expects a compound value".to_string()),
@@ -697,43 +623,19 @@ pub(super) fn execute(
                     items.reverse();
                     let updated = StackValue::Array(id, items);
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                 }
                 StackValue::Struct(id, mut items) => {
                     items.reverse();
                     let updated = StackValue::Struct(id, items);
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                 }
                 StackValue::Buffer(id, mut bytes) => {
                     bytes.reverse();
                     let updated = StackValue::Buffer(id, bytes);
                     remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        alt_stack,
-                        None,
-                    );
+                    propagate_update(&updated, stack, locals, args, static_fields, None);
                 }
                 _ => {
                     return Err(format!(

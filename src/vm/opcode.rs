@@ -2,9 +2,9 @@
 
 /// NeoVM operation codes.
 ///
-/// Values follow the canonical Neo N3/N4 opcode assignment, including the slot
-/// opcodes through index 6. Execution engines may support additional host-level
-/// pseudo operations, but shared bytecode decoding should use this table.
+/// Values follow the canonical Neo N3 opcode assignment used by Neo.VM 3.9.x.
+/// Execution engines may support additional host-level pseudo operations, but
+/// shared bytecode decoding should use this table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 #[allow(non_camel_case_types)]
@@ -15,8 +15,6 @@ pub enum OpCode {
     PUSHINT64 = 0x03,
     PUSHINT128 = 0x04,
     PUSHINT256 = 0x05,
-    TOALTSTACK = 0x06,
-    FROMALTSTACK = 0x07,
     PUSHT = 0x08,
     PUSHF = 0x09,
     PUSHA = 0x0A,
@@ -204,24 +202,20 @@ pub enum OpCode {
     POPITEM = 0xD4,
     ISNULL = 0xD8,
     ISTYPE = 0xD9,
-    TYPE = 0xDA,
     CONVERT = 0xDB,
     ABORTMSG = 0xE0,
     ASSERTMSG = 0xE1,
-    THROWIFNOT = 0xF1,
 }
 
 impl OpCode {
     /// All canonical opcodes accepted by this shared metadata table.
-    pub const ALL: [Self; 200] = [
+    pub const ALL: [Self; 196] = [
         Self::PUSHINT8,
         Self::PUSHINT16,
         Self::PUSHINT32,
         Self::PUSHINT64,
         Self::PUSHINT128,
         Self::PUSHINT256,
-        Self::TOALTSTACK,
-        Self::FROMALTSTACK,
         Self::PUSHT,
         Self::PUSHF,
         Self::PUSHA,
@@ -409,11 +403,9 @@ impl OpCode {
         Self::POPITEM,
         Self::ISNULL,
         Self::ISTYPE,
-        Self::TYPE,
         Self::CONVERT,
         Self::ABORTMSG,
         Self::ASSERTMSG,
-        Self::THROWIFNOT,
     ];
 
     /// Convert a byte to an opcode.
@@ -450,8 +442,7 @@ impl OpCode {
             | Self::STSFLD
             | Self::ISTYPE
             | Self::CONVERT
-            | Self::NEWARRAY_T
-            | Self::THROWIFNOT => 1,
+            | Self::NEWARRAY_T => 1,
             Self::CALLT | Self::PUSHINT16 => 2,
             Self::JMP_L
             | Self::JMPIF_L
@@ -501,8 +492,6 @@ impl OpCode {
             Self::PUSHINT64 => "PUSHINT64",
             Self::PUSHINT128 => "PUSHINT128",
             Self::PUSHINT256 => "PUSHINT256",
-            Self::TOALTSTACK => "TOALTSTACK",
-            Self::FROMALTSTACK => "FROMALTSTACK",
             Self::PUSHT => "PUSHT",
             Self::PUSHF => "PUSHF",
             Self::PUSHA => "PUSHA",
@@ -690,11 +679,9 @@ impl OpCode {
             Self::POPITEM => "POPITEM",
             Self::ISNULL => "ISNULL",
             Self::ISTYPE => "ISTYPE",
-            Self::TYPE => "TYPE",
             Self::CONVERT => "CONVERT",
             Self::ABORTMSG => "ABORTMSG",
             Self::ASSERTMSG => "ASSERTMSG",
-            Self::THROWIFNOT => "THROWIFNOT",
         }
     }
 }
@@ -710,8 +697,6 @@ impl TryFrom<u8> for OpCode {
             0x03 => Self::PUSHINT64,
             0x04 => Self::PUSHINT128,
             0x05 => Self::PUSHINT256,
-            0x06 => Self::TOALTSTACK,
-            0x07 => Self::FROMALTSTACK,
             0x08 => Self::PUSHT,
             0x09 => Self::PUSHF,
             0x0A => Self::PUSHA,
@@ -899,11 +884,9 @@ impl TryFrom<u8> for OpCode {
             0xD4 => Self::POPITEM,
             0xD8 => Self::ISNULL,
             0xD9 => Self::ISTYPE,
-            0xDA => Self::TYPE,
             0xDB => Self::CONVERT,
             0xE0 => Self::ABORTMSG,
             0xE1 => Self::ASSERTMSG,
-            0xF1 => Self::THROWIFNOT,
             _ => return Err(value),
         };
         Ok(opcode)

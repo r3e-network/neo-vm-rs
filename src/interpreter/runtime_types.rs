@@ -248,7 +248,6 @@ pub(crate) fn propagate_update(
     locals: &mut [StackValue],
     args: &mut [StackValue],
     static_fields: &mut [StackValue],
-    alt_stack: &mut [StackValue],
     affected_stack_indices: Option<&[usize]>,
 ) {
     match affected_stack_indices {
@@ -275,9 +274,6 @@ pub(crate) fn propagate_update(
         replace_alias(value, updated);
     }
     for value in static_fields {
-        replace_alias(value, updated);
-    }
-    for value in alt_stack {
         replace_alias(value, updated);
     }
 }
