@@ -13,7 +13,7 @@ mod host;
 mod interpreter;
 mod vm;
 
-pub use abi::fast_codec;
+pub use abi::{callback_codec, fast_codec, result_codec};
 pub use abi::{
     encode_integer, BackendKind, ExecutionResult, StackValue, VmState, COMPACT_TAG_ARRAY,
     COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_BOOLEAN, COMPACT_TAG_BUFFER, COMPACT_TAG_BYTESTRING,
