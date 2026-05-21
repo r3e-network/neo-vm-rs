@@ -14,7 +14,11 @@ mod interpreter;
 mod vm;
 
 pub use abi::fast_codec;
-pub use abi::{encode_integer, BackendKind, ExecutionResult, StackValue, VmState};
+pub use abi::{
+    encode_integer, BackendKind, ExecutionResult, StackValue, VmState, TAG_ARRAY, TAG_BIG_INTEGER,
+    TAG_BOOLEAN, TAG_BUFFER, TAG_BYTESTRING, TAG_INTEGER, TAG_INTEROP, TAG_ITERATOR, TAG_MAP,
+    TAG_NULL, TAG_POINTER, TAG_STRUCT,
+};
 pub use host::{interop_hash, syscall_arg_count};
 pub use interpreter::{
     interpret, interpret_with_stack_and_syscalls, interpret_with_stack_and_syscalls_at,
