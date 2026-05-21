@@ -165,6 +165,24 @@ impl StackValue {
             | Self::Pointer(_) => None,
         }
     }
+
+    /// Convert this value as NeoVM `CONVERT` would for a ByteString target.
+    #[must_use]
+    pub fn convert_to_byte_string_value(&self) -> Option<Self> {
+        if matches!(self, Self::Null) {
+            return Some(Self::Null);
+        }
+        self.to_byte_string_bytes().map(Self::ByteString)
+    }
+
+    /// Convert this value as NeoVM `CONVERT` would for a Buffer target.
+    #[must_use]
+    pub fn convert_to_buffer_value(&self) -> Option<Self> {
+        if matches!(self, Self::Null) {
+            return Some(Self::Null);
+        }
+        self.to_byte_string_bytes().map(Self::Buffer)
+    }
 }
 
 fn little_endian_twos_complement_i128(bytes: &[u8]) -> Option<i128> {
@@ -289,5 +307,30 @@ mod tests {
         );
         assert_eq!(StackValue::Null.to_byte_string_bytes(), Some(vec![]));
         assert_eq!(StackValue::Array(vec![]).to_byte_string_bytes(), None);
+    }
+
+    #[test]
+    fn conversion_values_follow_neovm_primitive_rules() {
+        assert_eq!(
+            StackValue::Integer(128).convert_to_byte_string_value(),
+            Some(StackValue::ByteString(vec![0x80, 0x00]))
+        );
+        assert_eq!(
+            StackValue::Boolean(false).convert_to_buffer_value(),
+            Some(StackValue::Buffer(vec![0]))
+        );
+        assert_eq!(
+            StackValue::BigInteger(vec![0xff, 0x00]).convert_to_buffer_value(),
+            Some(StackValue::Buffer(vec![0xff, 0x00]))
+        );
+        assert_eq!(
+            StackValue::Null.convert_to_byte_string_value(),
+            Some(StackValue::Null)
+        );
+        assert_eq!(
+            StackValue::Null.convert_to_buffer_value(),
+            Some(StackValue::Null)
+        );
+        assert_eq!(StackValue::Array(vec![]).convert_to_buffer_value(), None);
     }
 }
