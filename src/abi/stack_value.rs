@@ -143,6 +143,28 @@ impl StackValue {
             _ => None,
         }
     }
+
+    /// Convert this value into bytes for NeoVM ByteString-compatible paths.
+    ///
+    /// This is the shared rule used by runtimes that need byte content without
+    /// owning a private StackValue conversion table.
+    #[must_use]
+    pub fn to_byte_string_bytes(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::ByteString(bytes) | Self::Buffer(bytes) | Self::BigInteger(bytes) => {
+                Some(bytes.clone())
+            }
+            Self::Integer(value) => Some(encode_integer(*value)),
+            Self::Boolean(value) => Some(alloc::vec![u8::from(*value)]),
+            Self::Null => Some(Vec::new()),
+            Self::Array(_)
+            | Self::Struct(_)
+            | Self::Map(_)
+            | Self::Interop(_)
+            | Self::Iterator(_)
+            | Self::Pointer(_) => None,
+        }
+    }
 }
 
 fn little_endian_twos_complement_i128(bytes: &[u8]) -> Option<i128> {
@@ -241,5 +263,31 @@ mod tests {
             StackValue::Pointer(0).compact_type_tag(),
             super::COMPACT_TAG_POINTER
         );
+    }
+
+    #[test]
+    fn byte_string_conversion_bytes_follow_shared_stack_value_rules() {
+        assert_eq!(
+            StackValue::ByteString(b"neo".to_vec()).to_byte_string_bytes(),
+            Some(b"neo".to_vec())
+        );
+        assert_eq!(
+            StackValue::Buffer(b"n4".to_vec()).to_byte_string_bytes(),
+            Some(b"n4".to_vec())
+        );
+        assert_eq!(
+            StackValue::Integer(128).to_byte_string_bytes(),
+            Some(vec![0x80, 0x00])
+        );
+        assert_eq!(
+            StackValue::Boolean(true).to_byte_string_bytes(),
+            Some(vec![1])
+        );
+        assert_eq!(
+            StackValue::BigInteger(vec![0xff, 0x00]).to_byte_string_bytes(),
+            Some(vec![0xff, 0x00])
+        );
+        assert_eq!(StackValue::Null.to_byte_string_bytes(), Some(vec![]));
+        assert_eq!(StackValue::Array(vec![]).to_byte_string_bytes(), None);
     }
 }
