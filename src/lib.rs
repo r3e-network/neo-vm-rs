@@ -11,6 +11,7 @@ extern crate alloc;
 mod abi;
 mod host;
 mod interpreter;
+pub mod semantics;
 mod vm;
 
 pub use abi::{

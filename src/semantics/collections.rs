@@ -1,0 +1,305 @@
+//! Shared collection semantics for ABI-level NeoVM runtimes.
+
+use alloc::{string::String, vec, vec::Vec};
+
+use crate::{new_array_default_value_for_type_tag, StackValue};
+
+/// Create a null-filled array.
+pub fn new_array(count: i64) -> Result<StackValue, String> {
+    let count = non_negative_count(count, "NEWARRAY: negative count")?;
+    Ok(StackValue::Array(vec![StackValue::Null; count]))
+}
+
+/// Create a type-filled array using NeoVM `NEWARRAY_T` defaults.
+pub fn new_array_t(count: i64, type_tag: u8) -> Result<StackValue, String> {
+    let count = non_negative_count(count, "NEWARRAY_T: negative count")?;
+    Ok(StackValue::Array(vec![
+        new_array_default_value_for_type_tag(
+            type_tag
+        );
+        count
+    ]))
+}
+
+/// Create a null-filled struct.
+pub fn new_struct(count: i64) -> Result<StackValue, String> {
+    let count = non_negative_count(count, "NEWSTRUCT: negative count")?;
+    Ok(StackValue::Struct(vec![StackValue::Null; count]))
+}
+
+/// Create a zero-filled buffer.
+pub fn new_buffer(size: i64) -> Result<StackValue, String> {
+    let size = non_negative_count(size, "NEWBUFFER: negative size")?;
+    Ok(StackValue::Buffer(vec![0u8; size]))
+}
+
+/// Append a value to an array or struct.
+pub fn append(collection: &mut StackValue, value: StackValue) -> Result<(), String> {
+    match collection {
+        StackValue::Array(items) | StackValue::Struct(items) => {
+            items.push(value);
+            Ok(())
+        }
+        _ => Err("APPEND: top-1 is not an array or struct".into()),
+    }
+}
+
+/// Set a collection item.
+pub fn set_item(
+    collection: &mut StackValue,
+    key: StackValue,
+    value: StackValue,
+) -> Result<(), String> {
+    match collection {
+        StackValue::Array(items) | StackValue::Struct(items) => {
+            let idx = array_index(
+                &key,
+                "SETITEM: non-integer index for array/struct",
+                "SETITEM: index out of range",
+            )?;
+            if idx >= items.len() {
+                return Err("SETITEM: index out of range".into());
+            }
+            items[idx] = value;
+            Ok(())
+        }
+        StackValue::Map(pairs) => {
+            for pair in pairs.iter_mut() {
+                if pair.0 == key {
+                    pair.1 = value;
+                    return Ok(());
+                }
+            }
+            pairs.push((key, value));
+            Ok(())
+        }
+        StackValue::Buffer(bytes) => {
+            let idx = buffer_index(&key, "SETITEM: buffer requires integer key and value")?;
+            let value = match value {
+                StackValue::Integer(value) => value,
+                _ => return Err("SETITEM: buffer requires integer key and value".into()),
+            };
+            if idx >= bytes.len() {
+                return Err("SETITEM: buffer index out of range".into());
+            }
+            #[allow(clippy::cast_sign_loss)]
+            {
+                bytes[idx] = value as u8;
+            }
+            Ok(())
+        }
+        _ => Err("SETITEM: not a collection".into()),
+    }
+}
+
+/// Pick an item from a collection-like value.
+pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue, String> {
+    match (collection, key) {
+        (StackValue::Array(items) | StackValue::Struct(items), StackValue::Integer(index)) => {
+            let Some(index) = non_negative_index(*index) else {
+                return Err("PICKITEM: index out of range".into());
+            };
+            items
+                .get(index)
+                .cloned()
+                .ok_or_else(|| "PICKITEM: index out of range".into())
+        }
+        (StackValue::Map(pairs), _) => pairs
+            .iter()
+            .find(|(map_key, _)| map_key == key)
+            .map(|(_, value)| value.clone())
+            .ok_or_else(|| "PICKITEM: key not found in map".into()),
+        (StackValue::ByteString(bytes), StackValue::Integer(index)) => {
+            pick_byte(bytes, *index, "PICKITEM: byte index out of range")
+        }
+        (StackValue::Buffer(bytes), StackValue::Integer(index)) => {
+            pick_byte(bytes, *index, "PICKITEM: buffer index out of range")
+        }
+        _ => Err("PICKITEM: unsupported types".into()),
+    }
+}
+
+/// Remove a key from a mutable collection.
+pub fn remove(collection: &mut StackValue, key: &StackValue) -> Result<(), String> {
+    match collection {
+        StackValue::Array(items) | StackValue::Struct(items) => {
+            let idx = array_index(
+                key,
+                "REMOVE: non-integer index for array/struct",
+                "REMOVE: index out of range",
+            )?;
+            if idx >= items.len() {
+                return Err("REMOVE: index out of range".into());
+            }
+            items.remove(idx);
+            Ok(())
+        }
+        StackValue::Map(pairs) => {
+            pairs.retain(|(map_key, _)| map_key != key);
+            Ok(())
+        }
+        _ => Err("REMOVE: not a collection".into()),
+    }
+}
+
+/// Return collection/string/buffer size.
+pub fn size(value: &StackValue) -> Result<i64, String> {
+    match value {
+        StackValue::Array(items) | StackValue::Struct(items) => Ok(items.len() as i64),
+        StackValue::Map(pairs) => Ok(pairs.len() as i64),
+        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => Ok(bytes.len() as i64),
+        _ => Err("SIZE: unsupported type".into()),
+    }
+}
+
+/// Return whether a key exists in a collection-like value.
+pub fn has_key(collection: &StackValue, key: &StackValue) -> Result<bool, String> {
+    match (collection, key) {
+        (StackValue::Array(items) | StackValue::Struct(items), StackValue::Integer(index)) => {
+            Ok(non_negative_index(*index).is_some_and(|index| index < items.len()))
+        }
+        (StackValue::Map(pairs), _) => Ok(pairs.iter().any(|(map_key, _)| map_key == key)),
+        (StackValue::ByteString(bytes) | StackValue::Buffer(bytes), StackValue::Integer(index)) => {
+            Ok(non_negative_index(*index).is_some_and(|index| index < bytes.len()))
+        }
+        _ => Err("HASKEY: unsupported types".into()),
+    }
+}
+
+/// Return map keys as an array.
+pub fn keys(value: StackValue) -> Result<StackValue, String> {
+    match value {
+        StackValue::Map(pairs) => Ok(StackValue::Array(
+            pairs.into_iter().map(|(key, _)| key).collect(),
+        )),
+        _ => Err("KEYS: not a map".into()),
+    }
+}
+
+/// Return map values or array/struct values as an array.
+pub fn values(value: StackValue) -> Result<StackValue, String> {
+    match value {
+        StackValue::Map(pairs) => Ok(StackValue::Array(
+            pairs.into_iter().map(|(_, value)| value).collect(),
+        )),
+        StackValue::Array(items) | StackValue::Struct(items) => Ok(StackValue::Array(items)),
+        _ => Err("VALUES: not a map or array".into()),
+    }
+}
+
+/// Pack already ordered values as an array.
+#[must_use]
+pub fn pack(items: Vec<StackValue>) -> StackValue {
+    StackValue::Array(items)
+}
+
+/// Unpack array/struct values followed by their count.
+pub fn unpack(value: StackValue) -> Result<Vec<StackValue>, String> {
+    match value {
+        StackValue::Array(mut items) | StackValue::Struct(mut items) => {
+            let count = items.len() as i64;
+            items.push(StackValue::Integer(count));
+            Ok(items)
+        }
+        _ => Err("UNPACK: not an array or struct".into()),
+    }
+}
+
+/// Reverse an array or struct in place.
+pub fn reverse_items(collection: &mut StackValue) -> Result<(), String> {
+    match collection {
+        StackValue::Array(items) | StackValue::Struct(items) => {
+            items.reverse();
+            Ok(())
+        }
+        _ => Err("REVERSEITEMS: not an array or struct".into()),
+    }
+}
+
+/// Clear array, struct, or map items.
+pub fn clear_items(collection: &mut StackValue) -> Result<(), String> {
+    match collection {
+        StackValue::Array(items) | StackValue::Struct(items) => {
+            items.clear();
+            Ok(())
+        }
+        StackValue::Map(pairs) => {
+            pairs.clear();
+            Ok(())
+        }
+        _ => Err("CLEARITEMS: not a collection".into()),
+    }
+}
+
+/// Pop one item from a collection-like value, returning values to push in order.
+pub fn pop_item(value: StackValue) -> Result<Vec<StackValue>, String> {
+    match value {
+        StackValue::Array(mut items) => items
+            .pop()
+            .map(|value| vec![value])
+            .ok_or_else(|| "POPITEM: array is empty".into()),
+        StackValue::Struct(mut items) => items
+            .pop()
+            .map(|value| vec![value])
+            .ok_or_else(|| "POPITEM: struct is empty".into()),
+        StackValue::Map(mut pairs) => pairs
+            .pop()
+            .map(|(key, value)| vec![key, value])
+            .ok_or_else(|| "POPITEM: map is empty".into()),
+        StackValue::Buffer(mut bytes) => bytes
+            .pop()
+            .map(|value| vec![StackValue::Integer(i64::from(value))])
+            .ok_or_else(|| "POPITEM: buffer is empty".into()),
+        _ => Err("POPITEM: not a collection".into()),
+    }
+}
+
+/// Pack values as a struct.
+#[must_use]
+pub fn pack_struct(items: Vec<StackValue>) -> StackValue {
+    StackValue::Struct(items)
+}
+
+/// Pack key/value pairs as a map.
+#[must_use]
+pub fn pack_map(pairs: Vec<(StackValue, StackValue)>) -> StackValue {
+    StackValue::Map(pairs)
+}
+
+fn non_negative_count(value: i64, error: &'static str) -> Result<usize, String> {
+    usize::try_from(value).map_err(|_| error.into())
+}
+
+fn non_negative_index(value: i64) -> Option<usize> {
+    usize::try_from(value).ok()
+}
+
+fn array_index(
+    key: &StackValue,
+    type_error: &'static str,
+    range_error: &'static str,
+) -> Result<usize, String> {
+    match key {
+        StackValue::Integer(index) => non_negative_index(*index).ok_or_else(|| range_error.into()),
+        _ => Err(type_error.into()),
+    }
+}
+
+fn buffer_index(key: &StackValue, type_error: &'static str) -> Result<usize, String> {
+    match key {
+        StackValue::Integer(index) => {
+            non_negative_index(*index).ok_or_else(|| "SETITEM: buffer index out of range".into())
+        }
+        _ => Err(type_error.into()),
+    }
+}
+
+fn pick_byte(bytes: &[u8], index: i64, range_error: &'static str) -> Result<StackValue, String> {
+    let Some(index) = non_negative_index(index) else {
+        return Err(range_error.into());
+    };
+    bytes
+        .get(index)
+        .map(|value| StackValue::Integer(i64::from(*value)))
+        .ok_or_else(|| range_error.into())
+}
