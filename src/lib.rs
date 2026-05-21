@@ -8,16 +8,12 @@
 
 extern crate alloc;
 
-mod execution;
-mod limits;
-mod opcode;
-mod stack_value;
-mod syscall;
+mod abi;
+mod host;
+mod vm;
 
-pub use execution::{BackendKind, ExecutionResult, VmState};
-pub use limits::{
-    DEFAULT_MAX_INVOCATION_DEPTH, DEFAULT_MAX_STACK_DEPTH, MAX_ITEM_SIZE, MAX_SCRIPT_SIZE,
+pub use abi::{BackendKind, ExecutionResult, StackValue, VmState};
+pub use host::{interop_hash, syscall_arg_count};
+pub use vm::{
+    OpCode, DEFAULT_MAX_INVOCATION_DEPTH, DEFAULT_MAX_STACK_DEPTH, MAX_ITEM_SIZE, MAX_SCRIPT_SIZE,
 };
-pub use opcode::OpCode;
-pub use stack_value::StackValue;
-pub use syscall::{interop_hash, syscall_arg_count};

@@ -22,6 +22,12 @@ or prover. Those remain in the consuming crates:
 - `neo-riscv-vm`: canonical N4 Layer-2 NeoVM2/RISC-V execution profile
 - `neo-zkvm`: proof-oriented zkVM integration and verifier tooling
 
+## Layout
+
+- `src/vm`: opcode metadata and execution constants
+- `src/abi`: stack values and execution result wire types
+- `src/host`: syscall hash and stack argument metadata
+
 ## Validation
 
 Run the same commands used by CI:

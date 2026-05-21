@@ -3,7 +3,7 @@
 use alloc::{string::String, vec::Vec};
 use serde::{Deserialize, Serialize};
 
-use crate::StackValue;
+use super::stack_value::StackValue;
 
 /// VM execution state after script completion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
