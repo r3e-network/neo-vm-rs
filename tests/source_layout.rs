@@ -1,7 +1,6 @@
 use std::{fs, path::Path};
 
 const MAX_INTERPRETER_SOURCE_LINES: usize = 1_000;
-const MAX_EXECUTOR_SOURCE_LINES: usize = 2_600;
 
 #[test]
 fn interpreter_sources_stay_small_enough_to_review() {
@@ -30,11 +29,7 @@ fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
 
         let source = fs::read_to_string(&path).expect("source file should be UTF-8");
         let line_count = source.lines().count();
-        let limit = if path.file_name().and_then(|name| name.to_str()) == Some("executor.rs") {
-            MAX_EXECUTOR_SOURCE_LINES
-        } else {
-            MAX_INTERPRETER_SOURCE_LINES
-        };
+        let limit = MAX_INTERPRETER_SOURCE_LINES;
 
         if line_count > limit {
             oversized.push((

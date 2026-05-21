@@ -1,21 +1,23 @@
 use super::api::SyscallProvider;
-use super::helpers;
+mod byte_ops;
+mod compound_ops;
+mod control;
+mod numeric_ops;
+mod push_ops;
+mod result_ops;
+mod slot_ops;
+mod stack_ops;
 use super::helpers::*;
 use super::opcodes::*;
-use super::runtime_types::{
-    find_affected_indices, propagate_update, to_abi_stack, CompoundIds, StackValue,
-};
+use super::runtime_types::{to_abi_stack, CompoundIds, StackValue};
 use super::state::*;
 use crate::{ExecutionResult, StackValue as AbiStackValue, VmState};
 use alloc::{
     format,
     string::{String, ToString},
-    vec,
     vec::Vec,
 };
 use core::sync::atomic::Ordering;
-use num_bigint::BigInt;
-use num_traits::{ToPrimitive, Zero};
 
 pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     script: &[u8],
@@ -64,6 +66,14 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     let mut consumed_mutations: Vec<StackValue> = Vec::with_capacity(16);
     let mut pending_error: Option<PendingException> = None;
     let mut previous_opcode_was_callt = false;
+
+    macro_rules! apply_dispatch {
+        ($dispatch:expr) => {
+            if let control::Dispatch::Continue = $dispatch {
+                continue;
+            }
+        };
+    }
 
     'main_loop: loop {
         if pending_error.is_some() {
@@ -146,160 +156,33 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
         let callt_result_pending_store = previous_opcode_was_callt;
         previous_opcode_was_callt = false;
         match opcode {
-            // =============================================================================
-            // PUSH OPCODES (0x00-0x20)
-            // =============================================================================
-            PUSHINT8 => {
-                if ip + 2 > script.len() {
-                    return Err("truncated PUSHINT8 operand".to_string());
-                }
-                let value = i8::from_le_bytes([script[ip + 1]]) as i64;
-                stack.push(StackValue::Integer(value));
-                ip += 2;
-                continue;
+            PUSHINT8
+            | PUSHINT16
+            | PUSHINT32
+            | PUSHINT64
+            | PUSHINT128
+            | PUSHINT256
+            | PUSHT
+            | PUSHF
+            | PUSHNULL
+            | PUSHDATA1
+            | PUSHDATA2
+            | PUSHDATA4
+            | PUSHM1
+            | TOALTSTACK
+            | FROMALTSTACK
+            | PUSH0
+            | PUSH1..=PUSH16
+            | PUSHA => {
+                apply_dispatch!(push_ops::execute(
+                    opcode,
+                    script,
+                    &mut ip,
+                    &mut stack,
+                    &mut alt_stack,
+                )?);
             }
-            PUSHINT16 => {
-                if ip + 3 > script.len() {
-                    return Err("truncated PUSHINT16 operand".to_string());
-                }
-                let value = i16::from_le_bytes([script[ip + 1], script[ip + 2]]) as i64;
-                stack.push(StackValue::Integer(value));
-                ip += 3;
-                continue;
-            }
-            PUSHINT32 => {
-                if ip + 5 > script.len() {
-                    return Err("truncated PUSHINT32 operand".to_string());
-                }
-                let value = i32::from_le_bytes([
-                    script[ip + 1],
-                    script[ip + 2],
-                    script[ip + 3],
-                    script[ip + 4],
-                ]) as i64;
-                stack.push(StackValue::Integer(value));
-                ip += 5;
-                continue;
-            }
-            PUSHINT64 => {
-                if ip + 9 > script.len() {
-                    return Err("truncated PUSHINT64 operand".to_string());
-                }
-                let value = i64::from_le_bytes([
-                    script[ip + 1],
-                    script[ip + 2],
-                    script[ip + 3],
-                    script[ip + 4],
-                    script[ip + 5],
-                    script[ip + 6],
-                    script[ip + 7],
-                    script[ip + 8],
-                ]);
-                stack.push(StackValue::Integer(value));
-                ip += 9;
-                continue;
-            }
-            PUSHINT128 => {
-                if ip + 17 > script.len() {
-                    return Err("truncated PUSHINT128 operand".to_string());
-                }
-                stack.push(StackValue::BigInteger(trim_le_bytes_slice(
-                    &script[ip + 1..ip + 17],
-                )));
-                ip += 17;
-                continue;
-            }
-            PUSHINT256 => {
-                if ip + 33 > script.len() {
-                    return Err("truncated PUSHINT256 operand".to_string());
-                }
-                stack.push(StackValue::BigInteger(trim_le_bytes_slice(
-                    &script[ip + 1..ip + 33],
-                )));
-                ip += 33;
-                continue;
-            }
-            PUSHT => {
-                stack.push(StackValue::Boolean(true));
-                ip += 1;
-                continue;
-            }
-            PUSHF => {
-                stack.push(StackValue::Boolean(false));
-                ip += 1;
-                continue;
-            }
-            PUSHNULL => stack.push(StackValue::Null),
-            PUSHDATA1 => {
-                if ip + 2 > script.len() {
-                    return Err("truncated PUSHDATA1 length".to_string());
-                }
-                let len = script[ip + 1] as usize;
-                let start = ip + 2;
-                let end = start + len;
-                if end > script.len() {
-                    return Err("truncated PUSHDATA1 payload".to_string());
-                }
-                stack.push(StackValue::ByteString(script[start..end].to_vec()));
-                ip = end;
-                continue;
-            }
-            PUSHDATA2 => {
-                if ip + 3 > script.len() {
-                    return Err("truncated PUSHDATA2 length".to_string());
-                }
-                let len = u16::from_le_bytes([script[ip + 1], script[ip + 2]]) as usize;
-                let start = ip + 3;
-                let end = start + len;
-                if end > script.len() {
-                    return Err("truncated PUSHDATA2 payload".to_string());
-                }
-                stack.push(StackValue::ByteString(script[start..end].to_vec()));
-                ip = end;
-                continue;
-            }
-            PUSHDATA4 => {
-                if ip + 5 > script.len() {
-                    return Err("truncated PUSHDATA4 length".to_string());
-                }
-                let raw_len = u32::from_le_bytes([
-                    script[ip + 1],
-                    script[ip + 2],
-                    script[ip + 3],
-                    script[ip + 4],
-                ]);
-                // NeoVM: negative (high bit set) or oversized lengths are invalid
-                if raw_len > 0x0010_0000 {
-                    return Err("PUSHDATA4 length exceeds maximum".to_string());
-                }
-                let len = raw_len as usize;
-                let start = ip + 5;
-                let end = start
-                    .checked_add(len)
-                    .ok_or_else(|| "PUSHDATA4 length overflow".to_string())?;
-                if end > script.len() {
-                    return Err("truncated PUSHDATA4 payload".to_string());
-                }
-                stack.push(StackValue::ByteString(script[start..end].to_vec()));
-                ip = end;
-                continue;
-            }
-            PUSHM1 => stack.push(StackValue::Integer(-1)),
-            TOALTSTACK => {
-                let value = pop_item(&mut stack)?;
-                alt_stack.push(value);
-            }
-            FROMALTSTACK => {
-                let value = alt_stack
-                    .pop()
-                    .ok_or_else(|| "alt stack underflow".to_string())?;
-                stack.push(value);
-            }
-            PUSH0 => stack.push(StackValue::Integer(0)),
-            PUSH1..=PUSH16 => stack.push(StackValue::Integer(i64::from(opcode - PUSH0))),
-            // =============================================================================
             // FLOW CONTROL OPCODES (0x21-0x40)
-            // =============================================================================
             JMP | JMP_L => {
                 let is_long = opcode == JMP_L;
                 let (offset, _advance) = read_offset(
@@ -450,1177 +333,69 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             NOP => {}
-            // =============================================================================
-            // STACK OPERATIONS (0x43-0x54)
-            // =============================================================================
-            DEPTH => {
-                stack.push(StackValue::Integer(stack.len() as i64));
+            DEPTH | DROP | DUP | SWAP => {
+                apply_dispatch!(stack_ops::execute(opcode, &mut stack)?);
             }
-            DROP => {
-                pop_item(&mut stack)?;
-            }
-            DUP => {
-                let value = peek_item(&stack)?;
-                stack.push(value);
-            }
-            SWAP => {
-                if stack.len() < 2 {
-                    return Err("stack underflow for SWAP".to_string());
-                }
-                let last = stack.len() - 1;
-                stack.swap(last, last - 1);
-            }
-            // =============================================================================
-            // SLOT OPERATIONS (0x56-0x87)
-            // =============================================================================
-            INITSSLOT => {
-                if ip + 2 > script.len() {
-                    return Err("truncated INITSSLOT operand".to_string());
-                }
-                let static_count = script[ip + 1] as usize;
-                if static_count == 0 {
-                    return Err("INITSSLOT with 0 items is not allowed".to_string());
-                }
-                if static_fields_initialized {
-                    return Err("static fields already initialized".to_string());
-                }
-                static_fields = vec![StackValue::Null; static_count];
-                static_fields_initialized = true;
-                ip += 2;
-                continue;
-            }
-            INITSLOT => {
-                if ip + 3 > script.len() {
-                    return Err("truncated INITSLOT operands".to_string());
-                }
-                let local_count = script[ip + 1] as usize;
-                let arg_count = script[ip + 2] as usize;
-                // NeoVM: INITSLOT with 0 args AND 0 locals is invalid
-                if local_count == 0 && arg_count == 0 {
-                    return Err("INITSLOT with 0 args and 0 locals is not allowed".to_string());
-                }
-                if slots_initialized {
-                    return Err("slots already initialized".to_string());
-                }
-                // NeoVM keeps arguments and locals in separate slot arrays. Arguments
-                // are consumed from the evaluation stack before local slots are created.
-                let new_args = if cfg!(target_arch = "riscv32") && arg_count > 0 {
-                    let buf = unsafe { RETAINED_ARGS_BUF.as_mut_slice() };
-                    ensure_retained_capacity(buf, 0, 4)?;
-                    buf[0..4].copy_from_slice(&(arg_count as u32).to_le_bytes());
-                    let mut pos = 4;
-                    for _ in 0..arg_count {
-                        let value = stack
-                            .pop()
-                            .ok_or_else(|| "stack underflow for INITSLOT args".to_string())?;
-                        pos = encode_retained_value_to_slice(&value, buf, pos)?;
-                    }
-                    let mut restored = Vec::with_capacity(arg_count);
-                    decode_retained_prefix_into(&buf[..pos], &mut restored)?;
-                    restored
-                } else {
-                    let mut restored = Vec::with_capacity(arg_count);
-                    for _ in 0..arg_count {
-                        restored.push(
-                            stack
-                                .pop()
-                                .ok_or_else(|| "stack underflow for INITSLOT args".to_string())?,
-                        );
-                    }
-                    restored
-                };
-                let new_locals = vec![StackValue::Null; local_count];
-                args = new_args;
-                locals = new_locals;
-                slots_initialized = true;
-                ip += 3;
-                continue;
-            }
-            LDSFLD0..=LDSFLD6 => {
-                let index = (opcode - LDSFLD0) as usize;
-                if index >= static_fields.len() {
-                    return Err("invalid static field index".to_string());
-                }
-                let value = static_fields
-                    .get(index)
-                    .cloned()
-                    .ok_or_else(|| "invalid static field index".to_string())?;
-                stack.push(value);
-            }
-            LDSFLD => {
-                if ip + 2 > script.len() {
-                    return Err("truncated LDSFLD operand".to_string());
-                }
-                let index = script[ip + 1] as usize;
-                if index >= static_fields.len() {
-                    return Err("invalid static field index".to_string());
-                }
-                let value = static_fields
-                    .get(index)
-                    .cloned()
-                    .ok_or_else(|| "invalid static field index".to_string())?;
-                stack.push(value);
-                ip += 2;
-                continue;
-            }
-            LDLOC0..=LDLOC6 => {
-                let index = (opcode - LDLOC0) as usize;
-                let value = locals
-                    .get(index)
-                    .cloned()
-                    .ok_or_else(|| "invalid local index".to_string())?;
-                stack.push(value);
-            }
-            LDLOC => {
-                if ip + 2 > script.len() {
-                    return Err("truncated LDLOC operand".to_string());
-                }
-                let index = script[ip + 1] as usize;
-                let value = locals
-                    .get(index)
-                    .cloned()
-                    .ok_or_else(|| "invalid local index".to_string())?;
-                stack.push(value);
-                ip += 2;
-                continue;
-            }
-            STLOC0..=STLOC6 => {
-                let index = (opcode - STLOC0) as usize;
-                let value = pop_item(&mut stack)?;
-                let value = if callt_result_pending_store
-                    && cfg!(target_arch = "riscv32")
-                    && matches!(
-                        value,
-                        StackValue::Array(..)
-                            | StackValue::Struct(..)
-                            | StackValue::Map(..)
-                            | StackValue::Buffer(..)
-                    ) {
-                    ids.deep_clone(&value)
-                } else {
-                    value
-                };
-                let slot = locals
-                    .get_mut(index)
-                    .ok_or_else(|| "invalid local index".to_string())?;
-                *slot = value;
-            }
-            STSFLD0..=STSFLD6 => {
-                let index = (opcode - STSFLD0) as usize;
-                let value = pop_item(&mut stack)?;
-                let value = if callt_result_pending_store
-                    && cfg!(target_arch = "riscv32")
-                    && matches!(
-                        value,
-                        StackValue::Array(..)
-                            | StackValue::Struct(..)
-                            | StackValue::Map(..)
-                            | StackValue::Buffer(..)
-                    ) {
-                    ids.deep_clone(&value)
-                } else {
-                    value
-                };
-                if index >= static_fields.len() {
-                    return Err("invalid static field index".to_string());
-                }
-                let slot = static_fields
-                    .get_mut(index)
-                    .ok_or_else(|| "invalid static field index".to_string())?;
-                *slot = value;
-            }
-            STSFLD => {
-                if ip + 2 > script.len() {
-                    return Err("truncated STSFLD operand".to_string());
-                }
-                let index = script[ip + 1] as usize;
-                let value = pop_item(&mut stack)?;
-                if index >= static_fields.len() {
-                    return Err("invalid static field index".to_string());
-                }
-                let slot = static_fields
-                    .get_mut(index)
-                    .ok_or_else(|| "invalid static field index".to_string())?;
-                *slot = value;
-                ip += 2;
-                continue;
-            }
-            STLOC => {
-                if ip + 2 > script.len() {
-                    return Err("truncated STLOC operand".to_string());
-                }
-                let index = script[ip + 1] as usize;
-                let value = pop_item(&mut stack)?;
-                let value = if callt_result_pending_store
-                    && cfg!(target_arch = "riscv32")
-                    && matches!(
-                        value,
-                        StackValue::Array(..)
-                            | StackValue::Struct(..)
-                            | StackValue::Map(..)
-                            | StackValue::Buffer(..)
-                    ) {
-                    ids.deep_clone(&value)
-                } else {
-                    value
-                };
-                let slot = locals
-                    .get_mut(index)
-                    .ok_or_else(|| "invalid local index".to_string())?;
-                *slot = value;
-                ip += 2;
-                continue;
-            }
-            // =============================================================================
-            // SPLICE OPERATIONS (0x88-0x8e)
-            // =============================================================================
-            CAT => {
-                let right_item = pop_item(&mut stack)?;
-                let left_item = pop_item(&mut stack)?;
-                let left_bytes = helpers::stack_item_to_bytes(left_item)?;
-                let right_bytes = helpers::stack_item_to_bytes(right_item)?;
-                let mut result_bytes = left_bytes;
-                result_bytes.extend_from_slice(&right_bytes);
-                // NeoVM: CAT result must not exceed max item size (1024*1024)
-                const MAX_ITEM_SIZE: usize = 1024 * 1024;
-                if result_bytes.len() > MAX_ITEM_SIZE {
-                    return Err("CAT result exceeds max item size".to_string());
-                }
-                // NeoVM: CAT always produces a Buffer
-                stack.push(ids.buffer(result_bytes));
-            }
-            LEFT => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for LEFT".to_string());
-                }
-                let bytes = pop_bytes(&mut stack)?;
-                let count = count as usize;
-                if count > bytes.len() {
-                    return Err("count out of range for LEFT".to_string());
-                }
-                // NeoVM splice operations materialize a mutable Buffer result.
-                stack.push(ids.buffer(bytes[..count].to_vec()));
-            }
-            NEWBUFFER => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for NEWBUFFER".to_string());
-                }
-                if count > 1_048_576 {
-                    return Err("buffer size exceeds MaxItemSize (1MB)".to_string());
-                }
-                stack.push(ids.buffer(vec![0u8; count as usize]));
-            }
-            // =============================================================================
-            // BITWISE LOGIC OPERATIONS (0x90-0x98)
-            // =============================================================================
-            INVERT => {
-                let value = pop_item(&mut stack)?;
-                match value {
-                    StackValue::Integer(v) => stack.push(StackValue::Integer(!v)),
-                    StackValue::BigInteger(v) | StackValue::ByteString(v) => {
-                        let n = decode_signed_le_bytes_bigint(&v)?;
-                        stack.push(numeric_result_bigint(!n, "integer overflow for INVERT")?);
-                    }
-                    StackValue::Boolean(v) => {
-                        stack.push(StackValue::Integer(if v { -2 } else { -1 }))
-                    }
-                    _ => return Err("INVERT expects an integer or boolean".to_string()),
-                }
-            }
-            AND => {
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                stack.push(bitwise_result(&left, &right, |l, r| l & r)?);
-            }
-            OR => {
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                stack.push(bitwise_result(&left, &right, |l, r| l | r)?);
-            }
-            XOR => {
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                stack.push(bitwise_result(&left, &right, |l, r| l ^ r)?);
-            }
-            NUMEQUAL => {
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                stack.push(StackValue::Boolean(num_equal(&left, &right)?));
-            }
-            NUMNOTEQUAL => {
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                stack.push(StackValue::Boolean(!num_equal(&left, &right)?));
-            }
-            EQUAL => {
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                stack.push(StackValue::Boolean(vm_equal(&left, &right)));
-            }
-            NOTEQUAL => {
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                stack.push(StackValue::Boolean(!vm_equal(&left, &right)));
-            }
-            LT => {
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                stack.push(StackValue::Boolean(
-                    matches!(comparison, Some((left, right)) if left < right),
-                ));
-            }
-            LE => {
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                stack.push(StackValue::Boolean(
-                    matches!(comparison, Some((left, right)) if left <= right),
-                ));
-            }
-            GT => {
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                stack.push(StackValue::Boolean(
-                    matches!(comparison, Some((left, right)) if left > right),
-                ));
-            }
-            GE => {
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                stack.push(StackValue::Boolean(
-                    matches!(comparison, Some((left, right)) if left >= right),
-                ));
-            }
-            // =============================================================================
-            // ARITHMETIC OPERATIONS (0x99-0xbb)
-            // =============================================================================
-            SIGN => {
-                let value = pop_numeric_bigint(&mut stack)?;
-                stack.push(StackValue::Integer(bigint_sign(&value)));
-            }
-            ABS => {
-                let value = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    bigint_abs(value),
-                    "integer overflow for ABS",
+            INITSSLOT
+            | INITSLOT
+            | LDSFLD0..=LDSFLD6
+            | LDSFLD
+            | LDLOC0..=LDLOC6
+            | LDLOC
+            | STLOC0..=STLOC6
+            | STSFLD0..=STSFLD6
+            | STSFLD
+            | STLOC => {
+                apply_dispatch!(slot_ops::execute(
+                    opcode,
+                    script,
+                    &mut ip,
+                    &mut stack,
+                    &mut locals,
+                    &mut args,
+                    &mut static_fields,
+                    &mut slots_initialized,
+                    &mut static_fields_initialized,
+                    &mut ids,
+                    callt_result_pending_store,
                 )?);
             }
-            NEGATE => {
-                let value = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    -value,
-                    "integer overflow for NEGATE",
+            CAT | LEFT | NEWBUFFER => {
+                apply_dispatch!(byte_ops::execute(
+                    opcode,
+                    &mut stack,
+                    &mut ids,
+                    &mut locals,
+                    &mut args,
+                    &mut static_fields,
+                    &mut alt_stack,
+                    &mut consumed_mutations,
                 )?);
             }
-            ADD => {
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    left + right,
-                    "integer overflow for ADD",
+            INVERT | AND | OR | XOR | NUMEQUAL | NUMNOTEQUAL | EQUAL | NOTEQUAL | LT | LE | GT
+            | GE | SIGN | ABS | NEGATE | ADD | INC | SUB | POW | SQRT | MODMUL | MODPOW | SHL
+            | SHR | NOT => {
+                apply_dispatch!(numeric_ops::execute(opcode, &mut stack)?);
+            }
+            PACKMAP | PACKSTRUCT | PACK | UNPACK | NEWARRAY0 | NEWARRAY | NEWARRAY_T
+            | NEWSTRUCT0 | NEWSTRUCT | NEWMAP | SIZE | HASKEY | KEYS | VALUES | APPEND
+            | PICKITEM | SETITEM | REMOVE | CLEARITEMS | POPITEM | CONVERT | REVERSEITEMS => {
+                apply_dispatch!(compound_ops::execute(
+                    opcode,
+                    script,
+                    &mut ip,
+                    &mut stack,
+                    &mut ids,
+                    &mut locals,
+                    &mut args,
+                    &mut static_fields,
+                    &mut alt_stack,
+                    &mut consumed_mutations,
+                    &mut try_frames,
+                    &mut pending_error,
                 )?);
             }
-            INC => {
-                let value = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    value + BigInt::from(1),
-                    "integer overflow for INC",
-                )?);
-            }
-            SUB => {
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    left - right,
-                    "integer overflow for SUB",
-                )?);
-            }
-            POW => {
-                let exponent = pop_numeric_bigint(&mut stack)?;
-                if exponent < BigInt::from(0) {
-                    return Err("negative exponent for POW".to_string());
-                }
-                let exponent = exponent
-                    .to_u32()
-                    .ok_or_else(|| "exponent too large for POW".to_string())?;
-                let base = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    base.pow(exponent),
-                    "integer overflow for POW",
-                )?);
-            }
-            SQRT => {
-                let value = pop_numeric_bigint(&mut stack)?;
-                if value < BigInt::from(0) {
-                    return Err("negative value for SQRT".to_string());
-                }
-                stack.push(numeric_result_bigint(
-                    value.sqrt(),
-                    "integer overflow for SQRT",
-                )?);
-            }
-            MODMUL => {
-                let modulus = pop_numeric_bigint(&mut stack)?;
-                if modulus.is_zero() {
-                    return Err("division by zero for MODMUL".to_string());
-                }
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    (left * right) % modulus,
-                    "integer overflow for MODMUL",
-                )?);
-            }
-            MODPOW => {
-                let modulus = pop_numeric_bigint(&mut stack)?;
-                if modulus.is_zero() {
-                    return Err("division by zero for MODPOW".to_string());
-                }
-                let exponent = pop_numeric_bigint(&mut stack)?;
-                let base = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    mod_pow_bigint(base, exponent, modulus)?,
-                    "integer overflow for MODPOW",
-                )?);
-            }
-            SHL => {
-                let shift = pop_shift_count(&mut stack)?;
-                let value = pop_item(&mut stack)?;
-                if !(0..=256).contains(&shift) {
-                    return Err("shift count out of range for SHL".to_string());
-                }
-                if shift == 0 {
-                    stack.push(value);
-                } else {
-                    stack.push(shift_value_from_item(value)?.shift_left(shift as u32)?);
-                }
-            }
-            SHR => {
-                let shift = pop_shift_count(&mut stack)?;
-                let value = pop_item(&mut stack)?;
-                if !(0..=256).contains(&shift) {
-                    return Err("shift count out of range for SHR".to_string());
-                }
-                if shift == 0 {
-                    stack.push(value);
-                } else {
-                    stack.push(shift_value_from_item(value)?.shift_right(shift as u32)?);
-                }
-            }
-            NOT => {
-                // NeoVM: NOT converts to boolean via integer path.
-                // ByteString > 32 bytes cannot be converted to integer → FAULT.
-                let item = pop_item(&mut stack)?;
-                let b = item_to_boolean_strict(&item)?;
-                stack.push(StackValue::Boolean(!b));
-            }
-            // =============================================================================
-            // COMPOUND TYPE OPERATIONS (0xbe-0xd3)
-            // =============================================================================
-            PACKMAP => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for PACKMAP".to_string());
-                }
-                let count = count as usize;
-                if stack.len() < count.saturating_mul(2) {
-                    return Err("stack underflow for PACKMAP".to_string());
-                }
-
-                let mut pairs = Vec::with_capacity(count);
-                for _ in 0..count {
-                    let key = pop_item(&mut stack)?;
-                    let value = pop_item(&mut stack)?;
-                    pairs.push((key, value));
-                }
-                stack.push(ids.map(pairs));
-            }
-            PACKSTRUCT => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for PACKSTRUCT".to_string());
-                }
-                let count = count as usize;
-                if stack.len() < count {
-                    return Err("stack underflow for PACKSTRUCT".to_string());
-                }
-
-                let mut items = Vec::with_capacity(count);
-                for _ in 0..count {
-                    items.push(pop_item(&mut stack)?);
-                }
-                let items = items
-                    .into_iter()
-                    .map(|item| ids.clone_struct_for_storage(&item))
-                    .collect();
-                stack.push(ids.r#struct(items));
-            }
-            PACK => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for PACK".to_string());
-                }
-                let count = count as usize;
-                if stack.len() < count {
-                    return Err("stack underflow for PACK".to_string());
-                }
-
-                let mut items = Vec::with_capacity(count);
-                for _ in 0..count {
-                    items.push(pop_item(&mut stack)?);
-                }
-                let items = items
-                    .into_iter()
-                    .map(|item| ids.clone_struct_for_storage(&item))
-                    .collect();
-                stack.push(ids.array(items));
-            }
-            UNPACK => {
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Array(_, items) | StackValue::Struct(_, items) => {
-                        let count = items.len() as i64;
-                        for item in items.into_iter().rev() {
-                            stack.push(item);
-                        }
-                        stack.push(StackValue::Integer(count));
-                    }
-                    StackValue::Map(_, items) => {
-                        let count = items.len() as i64;
-                        for (key, value) in items.into_iter().rev() {
-                            stack.push(value);
-                            stack.push(key);
-                        }
-                        stack.push(StackValue::Integer(count));
-                    }
-                    _ => return Err("UNPACK expects an array, struct, or map".to_string()),
-                }
-            }
-            NEWARRAY0 => {
-                stack.push(ids.array(Vec::new()));
-            }
-            NEWARRAY => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for NEWARRAY".to_string());
-                }
-                if count > MAX_STACK_SIZE as i64 {
-                    return Err("NEWARRAY count exceeds maximum stack size".to_string());
-                }
-                stack.push(ids.array(vec![StackValue::Null; count as usize]));
-            }
-            NEWARRAY_T => {
-                if ip + 2 > script.len() {
-                    return Err("truncated NEWARRAY_T type".to_string());
-                }
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for NEWARRAY_T".to_string());
-                }
-                if count > MAX_STACK_SIZE as i64 {
-                    return Err("NEWARRAY_T count exceeds maximum stack size".to_string());
-                }
-                let kind = script[ip + 1];
-                let default_value = match kind {
-                    0x21 => StackValue::Integer(0),
-                    0x28 => StackValue::ByteString(Vec::new()),
-                    _ => StackValue::Null,
-                };
-                stack.push(ids.array(vec![default_value; count as usize]));
-                ip += 2;
-                continue;
-            }
-            NEWSTRUCT0 => {
-                stack.push(ids.r#struct(Vec::new()));
-            }
-            NEWSTRUCT => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for NEWSTRUCT".to_string());
-                }
-                if count > MAX_STACK_SIZE as i64 {
-                    return Err("NEWSTRUCT count exceeds maximum stack size".to_string());
-                }
-                stack.push(ids.r#struct(vec![StackValue::Null; count as usize]));
-            }
-            NEWMAP => {
-                stack.push(ids.map(Vec::new()));
-            }
-            SIZE => {
-                let item = pop_item(&mut stack)?;
-                let size = match item {
-                    StackValue::ByteString(bytes) => bytes.len() as i64,
-                    StackValue::Integer(value) => encode_integer(value).len() as i64,
-                    StackValue::BigInteger(bytes) => bytes.len() as i64,
-                    StackValue::Boolean(_) => 1,
-                    StackValue::Array(_, items) => items.len() as i64,
-                    StackValue::Struct(_, items) => items.len() as i64,
-                    StackValue::Map(_, items) => items.len() as i64,
-                    StackValue::Buffer(_, bytes) => bytes.len() as i64,
-                    StackValue::Null
-                    | StackValue::Pointer(_)
-                    | StackValue::Interop(_)
-                    | StackValue::Iterator(_) => {
-                        return Err("SIZE expects a collection".to_string())
-                    }
-                };
-                stack.push(StackValue::Integer(size));
-            }
-            HASKEY => {
-                let key = pop_item(&mut stack)?;
-                let item = pop_item(&mut stack)?;
-                let has_key = match item {
-                    StackValue::ByteString(bytes) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        index >= 0 && (index as usize) < bytes.len()
-                    }
-                    StackValue::Buffer(_, bytes) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        index >= 0 && (index as usize) < bytes.len()
-                    }
-                    StackValue::Array(_, items) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        index >= 0 && (index as usize) < items.len()
-                    }
-                    StackValue::Struct(_, items) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        index >= 0 && (index as usize) < items.len()
-                    }
-                    StackValue::Map(_, items) => {
-                        validate_map_key(&key)?;
-                        items
-                            .iter()
-                            .any(|(candidate, _)| primitive_key_equals(candidate, &key))
-                    }
-                    _ => return Err("HASKEY expects an array, buffer, or map".to_string()),
-                };
-                stack.push(StackValue::Boolean(has_key));
-            }
-            KEYS => {
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Map(_, items) => {
-                        let len = items.len();
-                        let keys: Vec<_> = {
-                            let mut v = Vec::with_capacity(len);
-                            v.extend(items.into_iter().map(|(key, _)| key));
-                            v
-                        };
-                        stack.push(ids.array(keys));
-                    }
-                    _ => return Err("KEYS expects a map".to_string()),
-                }
-            }
-            VALUES => {
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Map(_, items) => {
-                        let values = items
-                            .into_iter()
-                            .map(|(_, value)| value)
-                            .collect::<Vec<_>>();
-                        stack.push(ids.array(values));
-                    }
-                    StackValue::Array(_, items) => {
-                        stack.push(ids.array(items));
-                    }
-                    StackValue::Struct(_, items) => {
-                        stack.push(ids.array(items));
-                    }
-                    _ => return Err("VALUES expects a map, array, or struct".to_string()),
-                }
-            }
-            APPEND => {
-                let value = pop_item(&mut stack)?;
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Array(id, mut items) => {
-                        items.push(ids.clone_struct_for_storage(&value));
-                        let updated = StackValue::Array(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    StackValue::Struct(id, mut items) => {
-                        items.push(ids.clone_struct_for_storage(&value));
-                        let updated = StackValue::Struct(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    _ => return Err("APPEND expects an array or struct".to_string()),
-                }
-            }
-            PICKITEM => {
-                let pick_result =
-                    (|| -> Result<(), String> {
-                        let key_or_index = pop_item(&mut stack)?;
-                        let item = pop_item(&mut stack)?;
-                        match item {
-                            StackValue::Map(_, items) => {
-                                // Map key can be any primitive type
-                                validate_map_key(&key_or_index)?;
-                                let value = items
-                                    .iter()
-                                    .find(|(candidate, _)| {
-                                        primitive_key_equals(candidate, &key_or_index)
-                                    })
-                                    .map(|(_, value)| value.clone())
-                                    .ok_or_else(|| "key not found for PICKITEM".to_string())?;
-                                stack.push(value);
-                            }
-                            _ => {
-                                // Array, Struct, Buffer, ByteString and Integer-like values:
-                                // key must be an integer index. NeoVM treats Integer as its
-                                // little-endian signed byte representation for PICKITEM; old
-                                // mainnet contracts rely on this for integer payload routing.
-                                let index = match key_or_index {
-                                    StackValue::Integer(v) if v >= 0 => v as usize,
-                                    StackValue::Boolean(v) => {
-                                        if v {
-                                            1
-                                        } else {
-                                            0
-                                        }
-                                    }
-                                    StackValue::Null => 0,
-                                    _ => {
-                                        return Err("PICKITEM index must be a non-negative integer"
-                                            .to_string())
-                                    }
-                                };
-                                match item {
-                                    StackValue::Array(_, items) | StackValue::Struct(_, items) => {
-                                        let value = items.get(index).cloned().ok_or_else(|| {
-                                            "index out of range for PICKITEM".to_string()
-                                        })?;
-                                        if cfg!(target_arch = "riscv32") {
-                                            core::mem::forget(items);
-                                        }
-                                        stack.push(value);
-                                    }
-                                    StackValue::Buffer(_, bytes) => {
-                                        let value = bytes.get(index).copied().ok_or_else(|| {
-                                            "index out of range for PICKITEM".to_string()
-                                        })?;
-                                        stack.push(StackValue::Integer(i64::from(value)));
-                                    }
-                                    StackValue::ByteString(bytes) => {
-                                        let value = bytes.get(index).copied().ok_or_else(|| {
-                                            "index out of range for PICKITEM".to_string()
-                                        })?;
-                                        stack.push(StackValue::Integer(i64::from(value)));
-                                    }
-                                    StackValue::Integer(value) => {
-                                        let bytes = encode_integer(value);
-                                        let value = bytes.get(index).copied().ok_or_else(|| {
-                                            "index out of range for PICKITEM".to_string()
-                                        })?;
-                                        stack.push(StackValue::Integer(i64::from(value)));
-                                    }
-                                    StackValue::BigInteger(bytes) => {
-                                        let value = bytes.get(index).copied().ok_or_else(|| {
-                                            "index out of range for PICKITEM".to_string()
-                                        })?;
-                                        stack.push(StackValue::Integer(i64::from(value)));
-                                    }
-                                    _ => return Err(
-                                        "PICKITEM expects an array, map, byte string, or integer"
-                                            .to_string(),
-                                    ),
-                                }
-                            }
-                        }
-                        Ok(())
-                    })();
-                if let Err(error) = pick_result {
-                    if try_frames.is_empty() {
-                        return Err(error);
-                    }
-                    pending_error = Some(PendingException::message(error));
-                    continue;
-                }
-            }
-            SETITEM => {
-                let value = pop_item(&mut stack)?;
-                let key = pop_item(&mut stack)?;
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::ByteString(_) => {
-                        return Err(
-                            "SETITEM expects a mutable buffer, array, struct, or map".to_string()
-                        )
-                    }
-                    StackValue::Buffer(id, mut bytes) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        if index < 0 || (index as usize) >= bytes.len() {
-                            return Err("index out of range for SETITEM".to_string());
-                        }
-                        let byte = match value {
-                            StackValue::Integer(value) if (-128..=255).contains(&value) => {
-                                value as u8
-                            }
-                            StackValue::ByteString(value) if value.len() == 1 => value[0],
-                            _ => return Err("SETITEM on buffer expects a byte value".to_string()),
-                        };
-                        bytes[index as usize] = byte;
-                        let updated = StackValue::Buffer(id, bytes);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    StackValue::Array(id, mut items) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        if index < 0 || (index as usize) >= items.len() {
-                            return Err("index out of range for SETITEM".to_string());
-                        }
-                        items[index as usize] = ids.clone_struct_for_storage(&value);
-                        let updated = StackValue::Array(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    StackValue::Struct(id, mut items) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        if index < 0 || (index as usize) >= items.len() {
-                            return Err("index out of range for SETITEM".to_string());
-                        }
-                        items[index as usize] = ids.clone_struct_for_storage(&value);
-                        let updated = StackValue::Struct(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    StackValue::Map(id, mut items) => {
-                        validate_map_key(&key)?;
-                        if let Some(index) = items
-                            .iter()
-                            .position(|(candidate, _)| primitive_key_equals(candidate, &key))
-                        {
-                            items[index].1 = ids.clone_struct_for_storage(&value);
-                        } else {
-                            let mut updated_items = Vec::with_capacity(items.len() + 1);
-                            updated_items.extend(items);
-                            updated_items.push((key, ids.clone_struct_for_storage(&value)));
-                            items = updated_items;
-                        }
-                        let updated = StackValue::Map(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    _ => return Err("SETITEM expects an array, buffer, or map".to_string()),
-                }
-            }
-            REMOVE => {
-                let key = pop_item(&mut stack)?;
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Array(id, mut items) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        if index < 0 || (index as usize) >= items.len() {
-                            return Err("index out of range for REMOVE".to_string());
-                        }
-                        items.remove(index as usize);
-                        let updated = StackValue::Array(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    StackValue::Struct(id, mut items) => {
-                        let index = integer_value_for_collection_index(&key)?;
-                        if index < 0 || (index as usize) >= items.len() {
-                            return Err("index out of range for REMOVE".to_string());
-                        }
-                        items.remove(index as usize);
-                        let updated = StackValue::Struct(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    StackValue::Map(id, mut items) => {
-                        validate_map_key(&key)?;
-                        let index = items
-                            .iter()
-                            .position(|(candidate, _)| primitive_key_equals(candidate, &key))
-                            .ok_or_else(|| "key not found for REMOVE".to_string())?;
-                        items.remove(index);
-                        let updated = StackValue::Map(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        let affected = find_affected_indices(id, &stack);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            Some(&affected),
-                        );
-                    }
-                    _ => return Err("REMOVE expects an array, struct, or map".to_string()),
-                }
-            }
-            CLEARITEMS => {
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Array(id, _) => {
-                        let updated = StackValue::Array(id, Vec::new());
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                    }
-                    StackValue::Struct(id, _) => {
-                        let updated = StackValue::Struct(id, Vec::new());
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                    }
-                    StackValue::Map(id, _) => {
-                        let updated = StackValue::Map(id, Vec::new());
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                    }
-                    StackValue::Buffer(id, _) => {
-                        let updated = StackValue::Buffer(id, Vec::new());
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                    }
-                    _ => return Err("CLEARITEMS expects a compound value".to_string()),
-                }
-            }
-            POPITEM => {
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Array(id, mut items) => {
-                        let popped = items
-                            .pop()
-                            .ok_or_else(|| "POPITEM on empty array".to_string())?;
-                        let updated = StackValue::Array(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                        stack.push(popped);
-                    }
-                    StackValue::Struct(id, mut items) => {
-                        let popped = items
-                            .pop()
-                            .ok_or_else(|| "POPITEM on empty struct".to_string())?;
-                        let updated = StackValue::Struct(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                        stack.push(popped);
-                    }
-                    StackValue::Map(id, mut entries) => {
-                        let (key, value) = entries
-                            .pop()
-                            .ok_or_else(|| "POPITEM on empty map".to_string())?;
-                        let updated = StackValue::Map(id, entries);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                        stack.push(key);
-                        stack.push(value);
-                    }
-                    StackValue::Buffer(id, mut bytes) => {
-                        let byte = bytes
-                            .pop()
-                            .ok_or_else(|| "POPITEM on empty buffer".to_string())?;
-                        let updated = StackValue::Buffer(id, bytes);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                        stack.push(StackValue::Integer(byte as i64));
-                    }
-                    _ => return Err("POPITEM expects a compound value".to_string()),
-                }
-            }
-            CONVERT => {
-                if ip + 2 > script.len() {
-                    return Err("truncated CONVERT operand".to_string());
-                }
-                let kind = script[ip + 1];
-                let value = pop_item(&mut stack)?;
-                let converted = convert_value(kind, value, &mut ids)?;
-                stack.push(converted);
-                ip += 2;
-                continue;
-            }
-            REVERSEITEMS => {
-                let item = pop_item(&mut stack)?;
-                match item {
-                    StackValue::Array(id, mut items) => {
-                        items.reverse();
-                        let updated = StackValue::Array(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                    }
-                    StackValue::Struct(id, mut items) => {
-                        items.reverse();
-                        let updated = StackValue::Struct(id, items);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                    }
-                    StackValue::Buffer(id, mut bytes) => {
-                        bytes.reverse();
-                        let updated = StackValue::Buffer(id, bytes);
-                        remember_consumed_mutation(&mut consumed_mutations, &updated);
-                        propagate_update(
-                            &updated,
-                            &mut stack,
-                            &mut locals,
-                            &mut args,
-                            &mut static_fields,
-                            &mut alt_stack,
-                            None,
-                        );
-                    }
-                    _ => {
-                        return Err(format!(
-                            "REVERSEITEMS expects an array, struct, or buffer at ip {ip}: {item:?}"
-                        ));
-                    }
-                }
-            }
-            // =============================================================================
             // EXCEPTION HANDLING OPCODES (0xf0-0xf1)
-            // =============================================================================
             THROW => {
                 let msg = pop_item(&mut stack)?;
                 let err_msg = match &msg {
@@ -1669,369 +444,57 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     continue;
                 }
             }
-            MUL => {
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    left * right,
-                    "integer overflow for MUL",
-                )?);
+            MUL | DIV | MOD | DEC | BOOLAND | BOOLOR | NZ | MIN | MAX | WITHIN => {
+                apply_dispatch!(numeric_ops::execute(opcode, &mut stack)?);
             }
-            DIV => {
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                if right == BigInt::from(0) {
-                    return Err("division by zero for DIV".to_string());
-                }
-                stack.push(numeric_result_bigint(
-                    left / right,
-                    "integer overflow for DIV",
-                )?);
-            }
-            MOD => {
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                if right == BigInt::from(0) {
-                    return Err("division by zero for MOD".to_string());
-                }
-                stack.push(numeric_result_bigint(
-                    left % right,
-                    "integer overflow for MOD",
-                )?);
-            }
-            DEC => {
-                let value = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    value - BigInt::from(1),
-                    "integer overflow for DEC",
-                )?);
-            }
-            BOOLAND => {
-                let right = pop_boolean(&mut stack)?;
-                let left = pop_boolean(&mut stack)?;
-                stack.push(StackValue::Boolean(left && right));
-            }
-            BOOLOR => {
-                let right = pop_boolean(&mut stack)?;
-                let left = pop_boolean(&mut stack)?;
-                stack.push(StackValue::Boolean(left || right));
-            }
-            NZ => {
-                let value = pop_numeric_bigint(&mut stack)?;
-                stack.push(StackValue::Boolean(!value.is_zero()));
-            }
-            MIN => {
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    if left < right { left } else { right },
-                    "integer overflow for MIN",
-                )?);
-            }
-            MAX => {
-                let right = pop_numeric_bigint(&mut stack)?;
-                let left = pop_numeric_bigint(&mut stack)?;
-                stack.push(numeric_result_bigint(
-                    if left > right { left } else { right },
-                    "integer overflow for MAX",
-                )?);
-            }
-            WITHIN => {
-                let upper = pop_numeric_bigint(&mut stack)?;
-                let lower = pop_numeric_bigint(&mut stack)?;
-                let value = pop_numeric_bigint(&mut stack)?;
-                stack.push(StackValue::Boolean(value >= lower && value < upper));
-            }
-            RIGHT => {
-                let count = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for RIGHT".to_string());
-                }
-                let count = count as usize;
-                let mut bytes = pop_bytes(&mut stack)?;
-                if count > bytes.len() {
-                    return Err("count out of range for RIGHT".to_string());
-                }
-                let start = bytes.len() - count;
-                bytes = bytes[start..].to_vec();
-                stack.push(ids.buffer(bytes));
-            }
-            SUBSTR => {
-                let count = pop_integer(&mut stack)?;
-                let index = pop_integer(&mut stack)?;
-                if count < 0 {
-                    return Err("negative count for SUBSTR".to_string());
-                }
-                if index < 0 {
-                    return Err("negative index for SUBSTR".to_string());
-                }
-                let index = index as usize;
-                let count = count as usize;
-                let bytes = pop_bytes(&mut stack)?;
-                // NeoVM reference: error if index + count > length (NOT index > length)
-                let end = index
-                    .checked_add(count)
-                    .ok_or_else(|| "SUBSTR index+count overflow".to_string())?;
-                if end > bytes.len() {
-                    return Err("index + count out of range for SUBSTR".to_string());
-                }
-                stack.push(ids.buffer(bytes[index..end].to_vec()));
-            }
-            MEMCPY => {
-                // NeoVM MEMCPY: stack = [dst, di, src, si, count] (count on top)
-                let count = pop_integer(&mut stack)?;
-                let si = pop_integer(&mut stack)?;
-                let src_item = pop_item(&mut stack)?;
-                let di = pop_integer(&mut stack)?;
-                let dst_item = pop_item(&mut stack)?;
-                if count < 0 || si < 0 || di < 0 {
-                    return Err("negative index/count for MEMCPY".to_string());
-                }
-                let count = count as usize;
-                let si = si as usize;
-                let di = di as usize;
-                let src_bytes = helpers::stack_item_to_bytes(src_item)?;
-                let (dst_id, mut dst_bytes) = match dst_item {
-                    StackValue::Buffer(id, bytes) => (id, bytes),
-                    other => {
-                        return Err(format!(
-                            "MEMCPY expects buffer as destination, got {:?}",
-                            other
-                        ))
-                    }
-                };
-                if si + count > src_bytes.len() || di + count > dst_bytes.len() {
-                    return Err("MEMCPY out of bounds".to_string());
-                }
-                dst_bytes[di..di + count].copy_from_slice(&src_bytes[si..si + count]);
-                let updated = StackValue::Buffer(dst_id, dst_bytes);
-                remember_consumed_mutation(&mut consumed_mutations, &updated);
-                propagate_update(
-                    &updated,
+            RIGHT | SUBSTR | MEMCPY => {
+                apply_dispatch!(byte_ops::execute(
+                    opcode,
                     &mut stack,
+                    &mut ids,
                     &mut locals,
                     &mut args,
                     &mut static_fields,
                     &mut alt_stack,
-                    None,
-                );
+                    &mut consumed_mutations,
+                )?);
             }
-            PUSHA => {
-                if ip + 5 > script.len() {
-                    return Err("truncated PUSHA operand".to_string());
-                }
-                let offset = i32::from_le_bytes([
-                    script[ip + 1],
-                    script[ip + 2],
-                    script[ip + 3],
-                    script[ip + 4],
-                ]) as i64;
-                let target = ip as i64 + offset;
-                if target < 0 || target as usize > script.len() {
-                    return Err("PUSHA target out of bounds".to_string());
-                }
-                stack.push(StackValue::Pointer(target as usize));
-                ip += 5;
-                continue;
+            ISTYPE | ISNULL => {
+                apply_dispatch!(compound_ops::execute(
+                    opcode,
+                    script,
+                    &mut ip,
+                    &mut stack,
+                    &mut ids,
+                    &mut locals,
+                    &mut args,
+                    &mut static_fields,
+                    &mut alt_stack,
+                    &mut consumed_mutations,
+                    &mut try_frames,
+                    &mut pending_error,
+                )?);
             }
-            // =============================================================================
-            // TYPE OPERATIONS (0xda-0xdb)
-            // =============================================================================
-            ISTYPE => {
-                if ip + 2 > script.len() {
-                    return Err("truncated ISTYPE operand".to_string());
-                }
-                let kind = script[ip + 1];
-                let item = pop_item(&mut stack)?;
-                // NeoVM StackItemType enum values
-                let result = match kind {
-                    0x00 => return Err("unsupported ISTYPE kind 0x00".to_string()), // Any
-                    0x10 => matches!(item, StackValue::Pointer(_)),                 // Pointer
-                    0x20 => matches!(item, StackValue::Boolean(_)),                 // Boolean
-                    0x21 => matches!(item, StackValue::Integer(_) | StackValue::BigInteger(_)), // Integer
-                    0x28 => matches!(item, StackValue::ByteString(_)), // ByteString
-                    0x30 => matches!(item, StackValue::Buffer(_, _)),  // Buffer
-                    0x40 => matches!(item, StackValue::Array(_, _)),   // Array
-                    0x41 => matches!(item, StackValue::Struct(_, _)),  // Struct
-                    0x48 => matches!(item, StackValue::Map(_, _)),     // Map
-                    0x60 => matches!(item, StackValue::Interop(_)),    // InteropInterface
-                    _ => return Err(format!("unsupported ISTYPE kind 0x{kind:02x}")),
-                };
-                stack.push(StackValue::Boolean(result));
-                ip += 2;
-                continue;
+            NIP | OVER | PICK | ROT | ROLL | REVERSE3 | REVERSE4 | REVERSEN | TUCK | XDROP => {
+                apply_dispatch!(stack_ops::execute(opcode, &mut stack)?);
             }
-            ISNULL => {
-                let item = pop_item(&mut stack)?;
-                stack.push(StackValue::Boolean(matches!(item, StackValue::Null)));
-            }
-            NIP => {
-                if stack.len() < 2 {
-                    return Err("stack underflow for NIP".to_string());
-                }
-                let x1 = stack.pop().expect("guarded by length check");
-                stack.pop();
-                stack.push(x1);
-            }
-            OVER => {
-                if stack.len() < 2 {
-                    return Err("stack underflow for OVER".to_string());
-                }
-                let x1 = stack[stack.len() - 2].clone();
-                stack.push(x1);
-            }
-            PICK => {
-                let n = pop_integer(&mut stack)?;
-                if n < 0 {
-                    return Err("negative index for PICK".to_string());
-                }
-                let n = n as usize;
-                if n >= stack.len() {
-                    return Err("index out of range for PICK".to_string());
-                }
-                let item = stack[stack.len() - 1 - n].clone();
-                stack.push(item);
-            }
-            ROT => {
-                // Rotate top 3 items: bottom moves to top, top and second shift down
-                if stack.len() < 3 {
-                    return Err("stack underflow for ROT".to_string());
-                }
-                let n = stack.len() - 1;
-                stack.swap(n - 2, n - 1);
-                stack.swap(n - 1, n);
-            }
-            ROLL => {
-                let n = pop_integer(&mut stack)?;
-                if n < 0 {
-                    return Err("negative index for ROLL".to_string());
-                }
-                let n = n as usize;
-                if n >= stack.len() {
-                    return Err("index out of range for ROLL".to_string());
-                }
-                let idx = stack.len() - 1 - n;
-                let item = stack.remove(idx);
-                stack.push(item);
-            }
-            REVERSE3 => {
-                // Reverse top 3 items: [a, b, c] where c is top → [c, b, a] where a is top
-                if stack.len() < 3 {
-                    return Err("stack underflow for REVERSE3".to_string());
-                }
-                let n = stack.len() - 1;
-                stack.swap(n - 2, n);
-            }
-            REVERSE4 => {
-                // Reverse top 4 items: [a, b, c, d] where d is top → [d, c, b, a] where a is top
-                if stack.len() < 4 {
-                    return Err("stack underflow for REVERSE4".to_string());
-                }
-                let n = stack.len() - 1;
-                stack.swap(n - 3, n);
-                stack.swap(n - 2, n - 1);
-            }
-            REVERSEN => {
-                let n = pop_integer(&mut stack)?;
-                if n < 0 {
-                    return Err("negative count for REVERSEN".to_string());
-                }
-                let n = n as usize;
-                if n > stack.len() {
-                    return Err("REVERSEN count exceeds stack depth".to_string());
-                }
-                let start = stack.len() - n;
-                stack[start..].reverse();
-            }
-            TUCK => {
-                if stack.len() < 2 {
-                    return Err("stack underflow for TUCK".to_string());
-                }
-                let x = stack[stack.len() - 1].clone();
-                stack.insert(stack.len() - 2, x);
-            }
-            XDROP => {
-                let n = pop_integer(&mut stack)?;
-                if n < 0 {
-                    return Err("negative index for XDROP".to_string());
-                }
-                let n = n as usize;
-                if n >= stack.len() {
-                    return Err("XDROP index out of range".to_string());
-                }
-                let idx = stack.len() - 1 - n;
-                stack.remove(idx);
-            }
-            LDARG0..=LDARG6 => {
-                let index = (opcode - LDARG0) as usize;
-                let value = args
-                    .get(index)
-                    .cloned()
-                    .ok_or_else(|| "invalid argument index".to_string())?;
-                stack.push(value);
-            }
-            LDARG => {
-                if ip + 2 > script.len() {
-                    return Err("truncated LDARG operand".to_string());
-                }
-                let index = script[ip + 1] as usize;
-                let value = args
-                    .get(index)
-                    .cloned()
-                    .ok_or_else(|| "invalid argument index".to_string())?;
-                stack.push(value);
-                ip += 2;
-                continue;
-            }
-            STARG0..=STARG6 => {
-                let index = (opcode - STARG0) as usize;
-                let value = pop_item(&mut stack)?;
-                let value = if callt_result_pending_store
-                    && cfg!(target_arch = "riscv32")
-                    && matches!(
-                        value,
-                        StackValue::Array(..)
-                            | StackValue::Struct(..)
-                            | StackValue::Map(..)
-                            | StackValue::Buffer(..)
-                    ) {
-                    ids.deep_clone(&value)
-                } else {
-                    value
-                };
-                let slot = args
-                    .get_mut(index)
-                    .ok_or_else(|| "invalid argument index".to_string())?;
-                *slot = value;
-            }
-            STARG => {
-                if ip + 2 > script.len() {
-                    return Err("truncated STARG operand".to_string());
-                }
-                let index = script[ip + 1] as usize;
-                let value = pop_item(&mut stack)?;
-                let value = if callt_result_pending_store
-                    && cfg!(target_arch = "riscv32")
-                    && matches!(
-                        value,
-                        StackValue::Array(..)
-                            | StackValue::Struct(..)
-                            | StackValue::Map(..)
-                            | StackValue::Buffer(..)
-                    ) {
-                    ids.deep_clone(&value)
-                } else {
-                    value
-                };
-                let slot = args
-                    .get_mut(index)
-                    .ok_or_else(|| "invalid argument index".to_string())?;
-                *slot = value;
-                ip += 2;
-                continue;
+            LDARG0..=LDARG6 | LDARG | STARG0..=STARG6 | STARG => {
+                apply_dispatch!(slot_ops::execute(
+                    opcode,
+                    script,
+                    &mut ip,
+                    &mut stack,
+                    &mut locals,
+                    &mut args,
+                    &mut static_fields,
+                    &mut slots_initialized,
+                    &mut static_fields_initialized,
+                    &mut ids,
+                    callt_result_pending_store,
+                )?);
             }
             CLEAR => {
-                stack.clear();
+                apply_dispatch!(stack_ops::execute(opcode, &mut stack)?);
             }
             CALL | CALL_L => {
                 let is_long = opcode == CALL_L;
@@ -2500,7 +963,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             .min(u32::MAX as usize) as u32,
         Ordering::Relaxed,
     );
-    trim_halt_stack_for_result_limit(&mut stack, result_stack_limit);
+    result_ops::trim_halt_stack_for_result_limit(&mut stack, result_stack_limit);
     LAST_RESULT_STAGE.store(2, Ordering::Relaxed);
     LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
     let abi_stack = to_abi_stack(&stack);
@@ -2523,31 +986,4 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
         fault_ip: None,
         fault_locals: None,
     })
-}
-
-fn trim_halt_stack_for_result_limit(
-    stack: &mut Vec<StackValue>,
-    result_stack_limit: Option<usize>,
-) {
-    let Some(keep) = result_stack_limit else {
-        return;
-    };
-
-    // The guest uses a per-execution bump allocator. Forgetting discarded
-    // return-stack debris avoids recursive Drop on deep historical compound
-    // values; the whole arena is reset before the next execution.
-    let old_stack = core::mem::take(stack);
-    if keep == 0 {
-        core::mem::forget(old_stack);
-    } else if old_stack.len() > keep {
-        let start = old_stack.len() - keep;
-        let mut kept = Vec::with_capacity(keep);
-        for item in old_stack.iter().skip(start) {
-            kept.push(item.clone());
-        }
-        *stack = kept;
-        core::mem::forget(old_stack);
-    } else {
-        *stack = old_stack;
-    }
 }
