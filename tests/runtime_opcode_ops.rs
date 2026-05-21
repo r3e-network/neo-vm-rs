@@ -1,4 +1,7 @@
-use neo_vm_rs::{semantics::runtime, StackValue};
+use neo_vm_rs::{
+    semantics::runtime::{self, RuntimeStack},
+    StackValue, VmContext, VmState,
+};
 
 #[derive(Default)]
 struct TestRuntime {
@@ -19,9 +22,55 @@ impl runtime::RuntimeStack for TestRuntime {
         self.stack.last_mut()
     }
 
+    fn stack_values(&self) -> &[StackValue] {
+        &self.stack
+    }
+
+    fn stack_values_mut(&mut self) -> &mut Vec<StackValue> {
+        &mut self.stack
+    }
+
     fn fault(&mut self, message: &str) {
         self.fault = Some(message.to_string());
     }
+}
+
+#[test]
+fn shared_vm_context_owns_common_state_slots_and_results() {
+    let mut ctx = VmContext::from_stack(vec![StackValue::Integer(10), StackValue::Integer(20)]);
+
+    ctx.init_slot(1, 2);
+    ctx.load_arg(0);
+    ctx.store_local(0);
+    ctx.load_local(0);
+
+    let result = ctx.into_execution_result(99);
+
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.fee_consumed_pico, 99);
+    assert_eq!(result.stack, vec![StackValue::Integer(10)]);
+}
+
+#[test]
+fn shared_stack_and_byte_opcode_apis_do_not_require_context_methods() {
+    let mut ctx = VmContext::from_stack(vec![]);
+
+    ctx.push_value(StackValue::Integer(1));
+    ctx.push_value(StackValue::Integer(2));
+    runtime::stack::dup(&mut ctx);
+    runtime::stack::swap(&mut ctx);
+    runtime::stack::depth(&mut ctx);
+
+    assert_eq!(ctx.pop_value(), StackValue::Integer(3));
+    assert_eq!(ctx.pop_value(), StackValue::Integer(2));
+    assert_eq!(ctx.pop_value(), StackValue::Integer(2));
+    assert_eq!(ctx.pop_value(), StackValue::Integer(1));
+
+    ctx.push_value(StackValue::ByteString(b"neo".to_vec()));
+    ctx.push_value(StackValue::Buffer(b"n4".to_vec()));
+    runtime::byte_ops::cat(&mut ctx);
+
+    assert_eq!(ctx.pop_value(), StackValue::ByteString(b"neon4".to_vec()));
 }
 
 #[test]

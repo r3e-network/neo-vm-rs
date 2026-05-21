@@ -11,6 +11,7 @@ extern crate alloc;
 mod abi;
 mod host;
 mod interpreter;
+pub mod runtime;
 pub mod semantics;
 mod vm;
 
@@ -35,6 +36,7 @@ pub use interpreter::{
     last_interpreter_ip, last_result_limit, last_result_stack_len, last_result_stage,
     SyscallProvider, CALLT_MARKER, CALLT_MARKER_HI, INITIALIZER_COMPLETE_MARKER,
 };
+pub use runtime::VmContext;
 pub use vm::{
     OpCode, DEFAULT_MAX_INVOCATION_DEPTH, DEFAULT_MAX_STACK_DEPTH, MAX_ITEM_SIZE, MAX_SCRIPT_SIZE,
 };

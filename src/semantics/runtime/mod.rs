@@ -8,9 +8,11 @@
 use crate::StackValue;
 
 pub mod arithmetic;
+pub mod byte_ops;
 pub mod collections;
 pub mod comparison;
 pub mod conversion;
+pub mod stack;
 
 /// Minimal stack/fault interface required by shared runtime opcode adapters.
 pub trait RuntimeStack {
@@ -22,6 +24,12 @@ pub trait RuntimeStack {
 
     /// Borrow the current top value mutably for in-place collection opcodes.
     fn top_value_mut(&mut self) -> Option<&mut StackValue>;
+
+    /// Borrow the full evaluation stack.
+    fn stack_values(&self) -> &[StackValue];
+
+    /// Borrow the full evaluation stack mutably.
+    fn stack_values_mut(&mut self) -> &mut alloc::vec::Vec<StackValue>;
 
     /// Put the runtime into a faulted state.
     fn fault(&mut self, message: &str);
