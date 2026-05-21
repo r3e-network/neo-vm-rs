@@ -74,6 +74,16 @@ pub fn default_value_for_type_tag(type_tag: u8) -> StackValue {
     }
 }
 
+/// Return the NeoVM `NEWARRAY_T` item default for a compact or NeoVM type tag.
+#[must_use]
+pub fn new_array_default_value_for_type_tag(type_tag: u8) -> StackValue {
+    match normalize_stack_item_type_tag(type_tag) {
+        COMPACT_TAG_INTEGER => StackValue::Integer(0),
+        COMPACT_TAG_BYTESTRING => StackValue::ByteString(Vec::new()),
+        _ => StackValue::Null,
+    }
+}
+
 /// Encode an integer using NeoVM's minimal little-endian two's-complement form.
 #[must_use]
 pub fn encode_integer(value: i64) -> Vec<u8> {
@@ -455,5 +465,33 @@ mod tests {
             StackValue::Null
         );
         assert_eq!(super::default_value_for_type_tag(0xff), StackValue::Null);
+    }
+
+    #[test]
+    fn new_array_default_values_follow_neovm_rules() {
+        assert_eq!(
+            super::new_array_default_value_for_type_tag(0x21),
+            StackValue::Integer(0)
+        );
+        assert_eq!(
+            super::new_array_default_value_for_type_tag(super::COMPACT_TAG_INTEGER),
+            StackValue::Integer(0)
+        );
+        assert_eq!(
+            super::new_array_default_value_for_type_tag(0x28),
+            StackValue::ByteString(Vec::new())
+        );
+        assert_eq!(
+            super::new_array_default_value_for_type_tag(super::COMPACT_TAG_BYTESTRING),
+            StackValue::ByteString(Vec::new())
+        );
+        assert_eq!(
+            super::new_array_default_value_for_type_tag(0x20),
+            StackValue::Null
+        );
+        assert_eq!(
+            super::new_array_default_value_for_type_tag(0xff),
+            StackValue::Null
+        );
     }
 }
