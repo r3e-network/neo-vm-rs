@@ -1,5 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use neo_vm_rs::{interop_hash, syscall_arg_count, OpCode, StackValue};
+use neo_vm_rs::{
+    fast_codec, interop_hash, interpret, syscall_arg_count, OpCode, StackValue, VmState,
+};
 use std::hint::black_box;
 
 fn opcode_decode(c: &mut Criterion) {
@@ -66,11 +68,72 @@ fn stack_value_conversions(c: &mut Criterion) {
     });
 }
 
+fn stack_codec(c: &mut Criterion) {
+    let stack = vec![
+        StackValue::Integer(42),
+        StackValue::ByteString(vec![0xAA; 32]),
+        StackValue::Boolean(true),
+        StackValue::Array(vec![
+            StackValue::Integer(1),
+            StackValue::Integer(2),
+            StackValue::ByteString(vec![0xBB; 16]),
+        ]),
+        StackValue::Map(vec![(
+            StackValue::ByteString(b"key".to_vec()),
+            StackValue::ByteString(vec![0xCC; 24]),
+        )]),
+    ];
+    let encoded = fast_codec::encode_stack(&stack);
+
+    c.bench_function("fast_codec_encode_stack_mixed", |b| {
+        b.iter(|| {
+            black_box(fast_codec::encode_stack(black_box(&stack)));
+        })
+    });
+
+    c.bench_function("fast_codec_decode_stack_mixed", |b| {
+        b.iter(|| {
+            black_box(fast_codec::decode_stack(black_box(&encoded)).expect("valid stack"));
+        })
+    });
+}
+
+fn interpreter_hot_paths(c: &mut Criterion) {
+    let arithmetic_script = [
+        0x57, 0x01, 0x00, // INITSLOT locals=1, args=0
+        0x10, // PUSH0
+        0x70, // STLOC0
+        0x68, // LDLOC0
+        0x11, // PUSH1
+        0x9e, // ADD
+        0x70, // STLOC0
+        0x68, // LDLOC0
+        0x11, // PUSH1
+        0x9e, // ADD
+        0x70, // STLOC0
+        0x68, // LDLOC0
+        0x11, // PUSH1
+        0x9e, // ADD
+        0x70, // STLOC0
+        0x68, // LDLOC0
+        0x40, // RET
+    ];
+
+    c.bench_function("interpret_arithmetic_slots", |b| {
+        b.iter(|| {
+            let result = interpret(black_box(&arithmetic_script)).expect("script should execute");
+            black_box(result.state == VmState::Halt);
+        })
+    });
+}
+
 criterion_group!(
     benches,
     opcode_decode,
     opcode_metadata,
     syscall_helpers,
-    stack_value_conversions
+    stack_value_conversions,
+    stack_codec,
+    interpreter_hot_paths
 );
 criterion_main!(benches);
