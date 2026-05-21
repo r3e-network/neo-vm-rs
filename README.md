@@ -1,9 +1,10 @@
 # neo-vm-rs
 
-`neo-vm-rs` is the shared NeoVM semantics crate used by the Neo N4 Rust execution
-profile crates. It intentionally stays small, deterministic, and `no_std +
-alloc` compatible so PolkaVM/RISC-V runtimes and zkVM/proving runtimes can reuse
-the same VM-facing types without inheriting each other's host or prover stack.
+`neo-vm-rs` is the shared NeoVM semantics and interpreter crate used by the Neo
+N4 Rust execution profile crates. It stays deterministic and `no_std + alloc`
+compatible so PolkaVM/RISC-V runtimes and zkVM/proving runtimes can reuse the
+same VM-facing types and execution behavior without inheriting each other's host
+or prover stack.
 
 ## Scope
 
@@ -15,9 +16,10 @@ consumers:
 - shared stack value representation used at ABI/proof boundaries
 - shared Neo syscall hashing and fixed argument-count metadata
 - shared execution limit constants
+- the canonical NeoVM2 interpreter entry points used by the RISC-V guest facade
 
-It does not contain a full interpreter, host runtime, storage engine, verifier,
-or prover. Those remain in the consuming crates:
+It does not contain a host runtime, storage engine, verifier, or prover. Those
+remain in the consuming crates:
 
 - `neo-riscv-vm`: canonical N4 Layer-2 NeoVM2/RISC-V execution profile
 - `neo-zkvm`: proof-oriented zkVM integration and verifier tooling
@@ -26,6 +28,8 @@ or prover. Those remain in the consuming crates:
 
 - `src/vm`: opcode metadata and execution constants
 - `src/abi`: stack values and execution result wire types
+- `src/interpreter`: no-std NeoVM2 interpreter, retained-state helpers, and
+  host syscall trait
 - `src/host`: syscall hash and stack argument metadata
 
 ## Validation
@@ -42,7 +46,8 @@ cargo bench --locked --no-run
 
 The test suite covers canonical opcode byte acceptance and gap rejection,
 metadata round trips, syscall hash vectors, stack value conversion semantics,
-and serde wire compatibility for execution results.
+serde wire compatibility for execution results, interpreter smoke execution,
+slot handling, host syscall delegation, and try/catch exception flow.
 
 The benchmark target compiles Criterion benchmarks for opcode decode,
 metadata lookup, syscall helpers, and stack value conversions. CI compiles the
