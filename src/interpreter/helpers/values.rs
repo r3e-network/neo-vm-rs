@@ -525,28 +525,7 @@ pub(crate) fn stack_item_to_bytes(item: StackValue) -> Result<Vec<u8>, String> {
 }
 
 pub(crate) fn encode_integer(value: i64) -> Vec<u8> {
-    if value == 0 {
-        return Vec::new();
-    }
-
-    let mut bytes = value.to_le_bytes().to_vec();
-    if value > 0 {
-        while bytes.len() > 1 && bytes.last() == Some(&0) {
-            if bytes[bytes.len() - 2] & 0x80 != 0 {
-                break;
-            }
-            bytes.pop();
-        }
-    } else {
-        while bytes.len() > 1 && bytes.last() == Some(&0xff) {
-            if bytes[bytes.len() - 2] & 0x80 == 0 {
-                break;
-            }
-            bytes.pop();
-        }
-    }
-
-    bytes
+    crate::abi::encode_integer(value)
 }
 
 pub(crate) fn numeric_result_bigint(

@@ -3,6 +3,33 @@
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
+/// Encode an integer using NeoVM's minimal little-endian two's-complement form.
+#[must_use]
+pub fn encode_integer(value: i64) -> Vec<u8> {
+    if value == 0 {
+        return Vec::new();
+    }
+
+    let mut bytes = value.to_le_bytes().to_vec();
+    if value > 0 {
+        while bytes.len() > 1 && bytes.last() == Some(&0) {
+            if bytes[bytes.len() - 2] & 0x80 != 0 {
+                break;
+            }
+            bytes.pop();
+        }
+    } else {
+        while bytes.len() > 1 && bytes.last() == Some(&0xff) {
+            if bytes[bytes.len() - 2] & 0x80 == 0 {
+                break;
+            }
+            bytes.pop();
+        }
+    }
+
+    bytes
+}
+
 /// NeoVM stack value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StackValue {
@@ -111,5 +138,15 @@ mod tests {
         );
         assert_eq!(StackValue::ByteString(vec![0xff; 16]).to_i128(), Some(-1));
         assert_eq!(StackValue::ByteString(vec![0x00; 17]).to_i128(), None);
+    }
+
+    #[test]
+    fn integer_encoding_uses_minimal_little_endian_twos_complement() {
+        assert_eq!(super::encode_integer(0), vec![]);
+        assert_eq!(super::encode_integer(1), vec![0x01]);
+        assert_eq!(super::encode_integer(127), vec![0x7f]);
+        assert_eq!(super::encode_integer(128), vec![0x80, 0x00]);
+        assert_eq!(super::encode_integer(-1), vec![0xff]);
+        assert_eq!(super::encode_integer(-129), vec![0x7f, 0xff]);
     }
 }
