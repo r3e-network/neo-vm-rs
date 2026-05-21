@@ -82,15 +82,16 @@ fn little_endian_twos_complement_i128(bytes: &[u8]) -> Option<i128> {
         return None;
     }
 
-    let mut padded = [0u8; 16];
-    let sign_extend = if bytes[bytes.len() - 1] & 0x80 != 0 {
-        0xFF
-    } else {
-        0x00
-    };
-    padded.fill(sign_extend);
-    padded[..bytes.len()].copy_from_slice(bytes);
-    Some(i128::from_le_bytes(padded))
+    let mut raw = 0u128;
+    for (index, byte) in bytes.iter().enumerate() {
+        raw |= u128::from(*byte) << (index * 8);
+    }
+
+    if bytes.len() < 16 && bytes[bytes.len() - 1] & 0x80 != 0 {
+        raw |= u128::MAX << (bytes.len() * 8);
+    }
+
+    Some(i128::from_le_bytes(raw.to_le_bytes()))
 }
 
 #[cfg(test)]
@@ -108,5 +109,7 @@ mod tests {
             StackValue::ByteString(vec![0x00, 0x80]).to_i128(),
             Some(-32768)
         );
+        assert_eq!(StackValue::ByteString(vec![0xff; 16]).to_i128(), Some(-1));
+        assert_eq!(StackValue::ByteString(vec![0x00; 17]).to_i128(), None);
     }
 }
