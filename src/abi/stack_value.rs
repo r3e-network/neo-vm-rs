@@ -400,7 +400,7 @@ fn little_endian_twos_complement_i128(bytes: &[u8]) -> Option<i128> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec;
+    use alloc::{vec, vec::Vec};
 
     use super::StackValue;
 

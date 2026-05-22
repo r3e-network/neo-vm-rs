@@ -49,6 +49,15 @@ metadata round trips, syscall hash vectors, stack value conversion semantics,
 serde wire compatibility for execution results, interpreter smoke execution,
 slot handling, host syscall delegation, and try/catch exception flow.
 
+It also includes the official Neo.VM VMUT corpus copied from
+`neo-project/neo-vm` tag `v3.9.0`, the VM package used by the observed Neo N3
+`neo-node v3.9.2` release line. The conformance runner executes 161 upstream
+JSON fixture files, validates 723 executable `HALT`/`FAULT` cases, and counts
+16 debugger-only `BREAK` cases as intentionally skipped because this crate does
+not expose the C# step-debugger API. The runner mirrors Neo.VM's upstream VMUT
+assertion behavior: `HALT` cases compare result stacks, while `FAULT` cases
+compare final state and do not treat JSON stack fields as asserted behavior.
+
 The benchmark target compiles Criterion benchmarks for opcode decode,
 metadata lookup, syscall helpers, and stack value conversions. CI compiles the
 benchmarks with `--no-run`; performance tracking jobs can run the same target on
