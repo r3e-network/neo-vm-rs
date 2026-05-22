@@ -1,0 +1,20 @@
+flowchart TB
+    N1["1. neo-vm-rs: 生命周期图说明技术单元如何进入可观测运行。"]
+    N2["2. 配置: opcode、gas、syscall 规则、兼容性 profile"]
+    N3["3. 输入接收: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
+    N4["4. 规范化: 把字节码、栈、gas 和 syscall 响应整理成标准 VM 上下文"]
+    N5["5. 执行或验证: 解码标准操作码 | 执行栈与状态语义 | 暴露可复用运行时 API"]
+    N6["6. 提交或输出: halt/fault 结果 | 最终栈 | gas/计费证据"]
+    N7["7. 消费联动: neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
+    N8["8. 运维观测: opcode 进度、gas、栈摘要、fault 原因和 syscall 边界"]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    N6 --> N7
+    N7 --> N8
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;

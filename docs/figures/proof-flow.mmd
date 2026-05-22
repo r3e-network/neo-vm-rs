@@ -1,0 +1,20 @@
+flowchart TB
+    N1["1. neo-vm-rs: Proof/evidence flow shows how a claim becomes checkable."]
+    N2["2. Claim: This unit performed: Decode canonical opcodes | Execute stack and state semantics | Expose reusable runtime APIs."]
+    N3["3. Witness or input: NeoVM bytecode | initial stack | syscall host callbacks"]
+    N4["4. Execution or check: execute under NeoVM semantics and check stack, gas, syscalls, and fault state"]
+    N5["5. Public commitment: script hash, final stack digest, halt/fault status, and gas"]
+    N6["6. Verifier: neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N7["7. Accepted result: halt/fault result | final stack | gas/accounting evidence"]
+    N8["8. Rejected result: enter fault or reject; unverifiable side effects are not committed"]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    N6 --> N7
+    N7 --> N8
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;

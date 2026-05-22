@@ -1,13 +1,12 @@
 flowchart TB
-    N1["1. neo-vm-rs: 数据流跨越输入、类型模型、核心函数、输出和测试；55 个源码文件，389 个公开符号，66 个测试，6 个依赖"]
-    N2["2. 数据 1: 字节码 + 栈"]
-    N3["3. 数据 2: 共享运行时"]
-    N4["4. 数据 3: 状态转换"]
-    N5["5. 数据 4: 执行证据"]
-    N6["6. 关键类型: VmState | BackendKind | ExecutionResult | StackValue +13"]
-    N7["7. 关键函数: encode_stack_result | decode_stack_result_into | decode_stack_result | encode_stack +274"]
-    N8["8. 边界校验: src/abi/stack_value.rs（13 个测试） | src/abi/fast_codec.rs（8 个测试） | tests/runtime_opcode_ops.rs（6 个测试） | tests/source_layout.rs（5 个测试） | tests/shared_semantics.rs（5 个测试） | +12"]
-    N9["9. 消费者: neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
+    N1["1. neo-vm-rs: 数据流表达信息、承诺、证据和控制信号如何移动。"]
+    N2["2. 数据段 1: 字节码 + 栈"]
+    N3["3. 数据段 2: 共享运行时"]
+    N4["4. 数据段 3: 状态转换"]
+    N5["5. 数据段 4: 执行证据"]
+    N6["6. 承诺信号: 脚本哈希、最终栈摘要、halt/fault 状态和 gas"]
+    N7["7. 控制信号: 解码、执行、计费、syscall、halt、fault"]
+    N8["8. 后续消费方: neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
     N1 --> N2
     N2 --> N3
     N3 --> N4
@@ -15,6 +14,7 @@ flowchart TB
     N5 --> N6
     N6 --> N7
     N7 --> N8
-    N8 --> N9
-    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
-    class N1 crate
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;

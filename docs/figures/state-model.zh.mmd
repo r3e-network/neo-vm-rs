@@ -1,0 +1,23 @@
+flowchart TB
+    N1["1. neo-vm-rs: 状态模型说明什么会被记住、提交、验证或丢弃。"]
+    N2["2. 输入状态: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
+    N3["3. 工作状态: 指令指针、求值栈、gas 计数器"]
+    N4["4. 持久状态: 已提交 VM 结果和 host 可见回执"]
+    N5["5. 状态转换: opcode 语义、栈规则、gas 和 syscall 合同定义状态转换"]
+    N6["6. 承诺: 脚本哈希、最终栈摘要、halt/fault 状态和 gas"]
+    N7["7. 终局条件: VM 成功 halt 且 host 接受最终栈和副作用"]
+    N8["8. 回滚或拒绝: 进入 fault 或 reject；不可验证副作用不提交"]
+    N1 --> N2
+    N1 --> N3
+    N1 --> N4
+    N1 --> N5
+    N1 --> N6
+    N1 --> N7
+    N1 --> N8
+    N2 -. constrains .-> N4
+    N4 -. produces .-> N5
+    N5 -. consumed by .-> N6
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;

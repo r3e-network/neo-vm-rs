@@ -1,13 +1,12 @@
 flowchart TB
-    N1["1. 架构总览: neo-vm-rs: 55 个源码文件，389 个公开符号，66 个测试，6 个依赖"]
-    N2["2. 入口契约: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
-    N3["3. 公开 API 层: 类型 18 | 函数 314 | Trait 2 | 常量 55"]
-    N4["4. 核心实现文件: src/lib.rs (0 API/0 测试) | src/abi/stack_value.rs (59 API/13 测试) | src/interpreter/state.rs (37 API/0 测试) | src/interpreter/helpers/values.rs (36 API/0 测试) | src/runtime/mod.rs (33 API/2 测试)"]
-    N5["5. 模块/重导出: src/abi/mod.rs: mod callback_codec | src/abi/mod.rs: mod execution | src/abi/mod.rs: mod fast_codec | src/abi/mod.rs: mod result_codec | src/abi/mod.rs: mod stack_value | +50"]
-    N6["6. 依赖边界: criterion | num-bigint | num-traits | serde | serde_json"]
-    N7["7. 输出产物: halt/fault 结果 | 最终栈 | gas/计费证据"]
-    N8["8. 测试护栏: src/abi/stack_value.rs（13 个测试） | src/abi/fast_codec.rs（8 个测试） | tests/runtime_opcode_ops.rs（6 个测试） | tests/source_layout.rs（5 个测试） | tests/shared_semantics.rs（5 个测试） | +12"]
-    N9["9. 系统位置: 共享虚拟机核心 -> neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
+    N1["1. 入口域: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
+    N2["2. 规范化层: 把字节码、栈、gas 和 syscall 响应整理成标准 VM 上下文"]
+    N3["3. 核心技术机制: 解码标准操作码 | 执行栈与状态语义 | 暴露可复用运行时 API"]
+    N4["4. 状态与承诺层: 脚本哈希、最终栈摘要、halt/fault 状态和 gas"]
+    N5["5. 证据或结果层: halt/fault 结果 | 最终栈 | gas/计费证据"]
+    N6["6. 消费方边界: neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
+    N7["7. 失败路径: 非法 opcode、栈不匹配、gas 耗尽、syscall 拒绝或 fault"]
+    N8["8. 扩展点: syscall host、gas 策略、诊断和兼容性 profile"]
     N1 --> N2
     N1 --> N3
     N1 --> N4
@@ -15,13 +14,10 @@ flowchart TB
     N1 --> N6
     N1 --> N7
     N1 --> N8
-    N1 --> N9
-    N2 -. related .-> N3
-    N3 -. related .-> N4
-    N4 -. related .-> N5
-    N5 -. related .-> N6
-    N6 -. related .-> N7
-    N7 -. related .-> N8
-    N8 -. related .-> N9
-    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
-    class N1 crate
+    N2 -. constrains .-> N4
+    N4 -. produces .-> N5
+    N5 -. consumed by .-> N6
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;

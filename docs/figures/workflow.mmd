@@ -1,12 +1,13 @@
 flowchart TB
-    N1["1. neo-vm-rs: Workflow has 5 stages; start source reading at src/lib.rs."]
-    N2["2. Stage 1: Load script; likely source: src/lib.rs (crate root, public exports, and top-level documentation)"]
-    N3["3. Stage 2: Decode OpCode; likely source: src/abi/stack_value.rs (wire format, stack value, or host/guest boundary type)"]
-    N4["4. Stage 3: Execute semantics; likely source: src/interpreter/state.rs (VM interpreter and opcode semantics)"]
-    N5["5. Stage 4: Invoke host syscall; likely source: src/interpreter/helpers/values.rs (VM interpreter and opcode semantics)"]
-    N6["6. Stage 5: Return VM result; likely source: src/runtime/mod.rs (execution runtime, state transition, or gas behavior)"]
-    N7["7. Verification: src/abi/stack_value.rs (13 tests) | src/abi/fast_codec.rs (8 tests) | tests/runtime_opcode_ops.rs (6 tests) | tests/source_layout.rs (5 tests) | tests/shared_semantics.rs (5 tests) | +12"]
-    N8["8. Output checks: halt/fault result | final stack | gas/accounting evidence"]
+    N1["1. neo-vm-rs: Workflow shows technical phases, not a source call stack."]
+    N2["2. Precondition: NeoVM bytecode | initial stack | syscall host callbacks"]
+    N3["3. Stage 1: Load script"]
+    N4["4. Stage 2: Decode OpCode"]
+    N5["5. Stage 3: Execute semantics"]
+    N6["6. Stage 4: Invoke host syscall"]
+    N7["7. Stage 5: Return VM result"]
+    N8["8. Success: halt/fault result | final stack | gas/accounting evidence"]
+    N9["9. Reject: invalid opcode, stack mismatch, gas exhaustion, syscall rejection, or fault"]
     N1 --> N2
     N2 --> N3
     N3 --> N4
@@ -14,5 +15,8 @@ flowchart TB
     N5 --> N6
     N6 --> N7
     N7 --> N8
-    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
-    class N1 crate
+    N8 --> N9
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8,N9 support;

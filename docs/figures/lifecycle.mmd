@@ -1,0 +1,20 @@
+flowchart TB
+    N1["1. neo-vm-rs: Lifecycle shows how the unit reaches observable runtime operation."]
+    N2["2. Configuration: opcode, gas, syscall rules, compatibility profile"]
+    N3["3. Input intake: NeoVM bytecode | initial stack | syscall host callbacks"]
+    N4["4. Normalization: shape bytecode, stack, gas, and syscall responses into canonical VM context"]
+    N5["5. Execution or verification: Decode canonical opcodes | Execute stack and state semantics | Expose reusable runtime APIs"]
+    N6["6. Commit or output: halt/fault result | final stack | gas/accounting evidence"]
+    N7["7. Consumption: neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N8["8. Operation: opcode progress, gas, stack digest, fault reason, and syscall boundary"]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    N6 --> N7
+    N7 --> N8
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;

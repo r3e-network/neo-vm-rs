@@ -1,0 +1,20 @@
+flowchart TB
+    N1["1. neo-vm-rs: 证明与证据流说明技术声明如何变成可检查结果。"]
+    N2["2. 声明: 本单元完成了：解码标准操作码 | 执行栈与状态语义 | 暴露可复用运行时 API。"]
+    N3["3. 见证或输入: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
+    N4["4. 执行或检查: 按 NeoVM 语义执行并检查栈、gas、syscall 和 fault"]
+    N5["5. 公开承诺: 脚本哈希、最终栈摘要、halt/fault 状态和 gas"]
+    N6["6. 验证者: neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
+    N7["7. 接受结果: halt/fault 结果 | 最终栈 | gas/计费证据"]
+    N8["8. 拒绝结果: 进入 fault 或 reject；不可验证副作用不提交"]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    N6 --> N7
+    N7 --> N8
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;

@@ -1,13 +1,12 @@
 flowchart TB
-    N1["1. Architecture overview: neo-vm-rs: 55 source files, 389 public symbols, 66 tests, 6 deps"]
-    N2["2. Entry contract: NeoVM bytecode | initial stack | syscall host callbacks"]
-    N3["3. Public API layer: types 18 | functions 314 | traits 2 | constants 55"]
-    N4["4. Core implementation files: src/lib.rs (0 API/0 tests) | src/abi/stack_value.rs (59 API/13 tests) | src/interpreter/state.rs (37 API/0 tests) | src/interpreter/helpers/values.rs (36 API/0 tests) | src/runtime/mod.rs (33 API/2 tests)"]
-    N5["5. Modules and re-exports: src/abi/mod.rs: mod callback_codec | src/abi/mod.rs: mod execution | src/abi/mod.rs: mod fast_codec | src/abi/mod.rs: mod result_codec | src/abi/mod.rs: mod stack_value | +50"]
-    N6["6. Dependency boundary: criterion | num-bigint | num-traits | serde | serde_json"]
-    N7["7. Output artifacts: halt/fault result | final stack | gas/accounting evidence"]
-    N8["8. Test guardrails: src/abi/stack_value.rs (13 tests) | src/abi/fast_codec.rs (8 tests) | tests/runtime_opcode_ops.rs (6 tests) | tests/source_layout.rs (5 tests) | tests/shared_semantics.rs (5 tests) | +12"]
-    N9["9. System position: Shared VM core -> neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N1["1. Entry domain: NeoVM bytecode | initial stack | syscall host callbacks"]
+    N2["2. Normalization: shape bytecode, stack, gas, and syscall responses into canonical VM context"]
+    N3["3. Core mechanism: Decode canonical opcodes | Execute stack and state semantics | Expose reusable runtime APIs"]
+    N4["4. State and commitment: script hash, final stack digest, halt/fault status, and gas"]
+    N5["5. Evidence or result: halt/fault result | final stack | gas/accounting evidence"]
+    N6["6. Consumer boundary: neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N7["7. Failure path: invalid opcode, stack mismatch, gas exhaustion, syscall rejection, or fault"]
+    N8["8. Extension point: syscall host, gas policy, diagnostics, and compatibility profiles"]
     N1 --> N2
     N1 --> N3
     N1 --> N4
@@ -15,13 +14,10 @@ flowchart TB
     N1 --> N6
     N1 --> N7
     N1 --> N8
-    N1 --> N9
-    N2 -. related .-> N3
-    N3 -. related .-> N4
-    N4 -. related .-> N5
-    N5 -. related .-> N6
-    N6 -. related .-> N7
-    N7 -. related .-> N8
-    N8 -. related .-> N9
-    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
-    class N1 crate
+    N2 -. constrains .-> N4
+    N4 -. produces .-> N5
+    N5 -. consumed by .-> N6
+    classDef core fill:#0f172a,stroke:#38bdf8,color:#e5f2ff,stroke-width:2px;
+    classDef support fill:#111827,stroke:#64748b,color:#f8fafc;
+    class N1 core;
+    class N2,N3,N4,N5,N6,N7,N8 support;
