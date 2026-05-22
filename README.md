@@ -62,3 +62,32 @@ The benchmark target compiles Criterion benchmarks for opcode decode,
 metadata lookup, syscall helpers, and stack value conversions. CI compiles the
 benchmarks with `--no-run`; performance tracking jobs can run the same target on
 dedicated hardware.
+
+<!-- N4-CRATE-VISUAL-GUIDE:START -->
+
+## Visual Architecture Guide
+
+These diagrams explain where `neo-vm-rs` sits in the Neo N4 stack, how its main workflow runs, and how data moves through it.
+
+| View | Diagram | Source |
+| --- | --- | --- |
+| Architecture | ![Architecture](docs/figures/architecture.svg) | [Mermaid](docs/figures/architecture.mmd) |
+| Workflow | ![Workflow](docs/figures/workflow.svg) | [Mermaid](docs/figures/workflow.mmd) |
+| Dataflow | ![Dataflow](docs/figures/dataflow.svg) | [Mermaid](docs/figures/dataflow.mmd) |
+
+### Role in Neo N4
+
+- **Layer:** Shared VM core
+- **Purpose:** Canonical Rust implementation of NeoVM 3.9.x semantics shared by RISC-V and zkVM paths.
+- **Primary inputs:** NeoVM bytecode, initial stack, syscall host callbacks
+- **Primary outputs:** halt/fault result, final stack, gas/accounting evidence
+- **Downstream consumers:** neo-riscv-vm, neo-zkvm, Neo N4 execution core
+
+### Learning Path
+
+1. Start with the architecture diagram to understand the crate boundary.
+2. Follow the workflow diagram to see the normal execution path.
+3. Use the dataflow diagram to connect inputs, state changes, and outputs.
+4. Read the crate source after the diagrams so module-level details have context.
+
+<!-- N4-CRATE-VISUAL-GUIDE:END -->

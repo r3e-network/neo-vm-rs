@@ -1,0 +1,12 @@
+flowchart LR
+    N1["Step 1: Load script"]
+    N2["Step 2: Decode OpCode"]
+    N3["Step 3: Execute semantics"]
+    N4["Step 4: Invoke host syscall"]
+    N5["Step 5: Return VM result"]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
+    class N2 crate
