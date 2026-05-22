@@ -29,6 +29,31 @@ pub const COMPACT_TAG_BUFFER: u8 = 10;
 /// Compact pointer tag used by generated RISC-V runtime helpers.
 pub const COMPACT_TAG_POINTER: u8 = 11;
 
+/// Shared binary codec tag for integer stack values.
+pub const STACK_VALUE_CODEC_TAG_INTEGER: u8 = 0x01;
+/// Shared binary codec tag for big integer stack values.
+pub const STACK_VALUE_CODEC_TAG_BIG_INTEGER: u8 = 0x02;
+/// Shared binary codec tag for byte string stack values.
+pub const STACK_VALUE_CODEC_TAG_BYTESTRING: u8 = 0x03;
+/// Shared binary codec tag for boolean stack values.
+pub const STACK_VALUE_CODEC_TAG_BOOLEAN: u8 = 0x04;
+/// Shared binary codec tag for array stack values.
+pub const STACK_VALUE_CODEC_TAG_ARRAY: u8 = 0x05;
+/// Shared binary codec tag for struct stack values.
+pub const STACK_VALUE_CODEC_TAG_STRUCT: u8 = 0x06;
+/// Shared binary codec tag for map stack values.
+pub const STACK_VALUE_CODEC_TAG_MAP: u8 = 0x07;
+/// Shared binary codec tag for interop stack values.
+pub const STACK_VALUE_CODEC_TAG_INTEROP: u8 = 0x08;
+/// Shared binary codec tag for iterator stack values.
+pub const STACK_VALUE_CODEC_TAG_ITERATOR: u8 = 0x09;
+/// Shared binary codec tag for null stack values.
+pub const STACK_VALUE_CODEC_TAG_NULL: u8 = 0x0A;
+/// Shared binary codec tag for pointer stack values.
+pub const STACK_VALUE_CODEC_TAG_POINTER: u8 = 0x0B;
+/// Shared binary codec tag for buffer stack values.
+pub const STACK_VALUE_CODEC_TAG_BUFFER: u8 = 0x0C;
+
 /// NeoVM `StackItemType.Any`.
 pub const NEOVM_STACK_ITEM_TYPE_ANY: u8 = 0x00;
 /// NeoVM `StackItemType.Pointer`.

@@ -74,14 +74,14 @@ fn interpreter_uses_central_stack_item_type_tags() {
 }
 
 #[test]
-fn internal_codecs_use_shared_compact_type_tags() {
+fn internal_codecs_use_shared_stack_value_codec_tags() {
     let fast_codec = read_workspace_source("src/abi/fast_codec.rs");
     let helpers_mod = read_workspace_source("src/interpreter/helpers/mod.rs");
     let retained_codec = read_workspace_source("src/interpreter/helpers/retained.rs");
 
     assert!(
-        fast_codec.contains("COMPACT_TAG_INTEGER"),
-        "fast codec should import the shared compact type tag constants"
+        fast_codec.contains("STACK_VALUE_CODEC_TAG_INTEGER"),
+        "fast codec should import the shared stack-value codec tag constants"
     );
     assert!(
         !fast_codec.contains("const TAG_"),
@@ -92,8 +92,9 @@ fn internal_codecs_use_shared_compact_type_tags() {
         "retained-prefix codec must not define a second compact type tag table"
     );
     assert!(
-        !retained_codec.contains("RETAINED_TAG_") && retained_codec.contains("COMPACT_TAG_INTEGER"),
-        "retained-prefix codec should use COMPACT_TAG_* directly"
+        !retained_codec.contains("RETAINED_TAG_")
+            && retained_codec.contains("STACK_VALUE_CODEC_TAG_INTEGER"),
+        "retained-prefix codec should use STACK_VALUE_CODEC_TAG_* directly"
     );
 }
 
