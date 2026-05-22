@@ -1,0 +1,14 @@
+flowchart LR
+    N1["neo-vm-rs: 公开 API 面由源码扫描生成"]
+    N2["类型: VmState | BackendKind | ExecutionResult | StackValue +13"]
+    N3["函数: encode_stack_result | decode_stack_result_into | decode_stack_result | encode_stack +274"]
+    N4["Trait: SyscallProvider | RuntimeStack"]
+    N5["常量: COMPACT_TAG_INTEGER | COMPACT_TAG_BOOLEAN | COMPACT_TAG_BYTESTRING | COMPACT_TAG_BIG_INTEGER +48"]
+    N6["详细列表: 见 docs/learning-guide.zh.md 的 API 表"]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
+    class N1 crate

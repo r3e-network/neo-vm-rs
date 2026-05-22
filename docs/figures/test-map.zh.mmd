@@ -1,0 +1,14 @@
+flowchart LR
+    N1["neo-vm-rs: 测试函数 66 个，测试文件 17 个"]
+    N2["src/abi/stack_value.rs: bytes_use_little_endian_twos_complement | integer_encoding_uses_minimal_little_endian_twos_complement | stack_values_expose_stable_runtime_type_tags | byte_string_conversion_bytes_follow_shared_stack_value_rules +9"]
+    N3["src/abi/fast_codec.rs: roundtrip_integer | roundtrip_bytestring | roundtrip_buffer | roundtrip_buffer_empty +4"]
+    N4["tests/runtime_opcode_ops.rs: shared_vm_context_owns_common_state_slots_and_results | shared_stack_and_byte_opcode_apis_do_not_require_context_methods | runtime_arithmetic_ops_own_stack_pop_push_shape | runtime_collection_ops_preserve_in_place_mutation_shape +2"]
+    N5["tests/source_layout.rs: interpreter_sources_stay_small_enough_to_review | interpreter_opcode_aliases_come_from_canonical_opcode_enum | opcode_byte_lookup_is_generated_from_the_canonical_enum | interpreter_uses_central_stack_item_type_tags +1"]
+    N6["tests/shared_semantics.rs: opcode_slot_assignments_are_canonical | opcode_metadata_handles_fixed_and_prefixed_operands | stack_value_integer_and_boolean_semantics_are_shared | syscall_hash_and_argument_counts_are_shared +1"]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
+    class N1 crate

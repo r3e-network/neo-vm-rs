@@ -69,6 +69,8 @@ dedicated hardware.
 
 These diagrams are local to this crate. They explain `neo-vm-rs` as an independent unit: where it sits in the Neo N4 stack, which boundary it owns, how its internal workflow runs, and how data moves through it.
 
+For the full source-level explanation, read [docs/learning-guide.md](docs/learning-guide.md).
+
 | View | Diagram | Source |
 | --- | --- | --- |
 | Position in Neo N4 | ![Position](docs/figures/position.svg) | [Mermaid](docs/figures/position.mmd) |
@@ -76,6 +78,10 @@ These diagrams are local to this crate. They explain `neo-vm-rs` as an independe
 | Architecture | ![Architecture](docs/figures/architecture.svg) | [Mermaid](docs/figures/architecture.mmd) |
 | Workflow | ![Workflow](docs/figures/workflow.svg) | [Mermaid](docs/figures/workflow.mmd) |
 | Dataflow | ![Dataflow](docs/figures/dataflow.svg) | [Mermaid](docs/figures/dataflow.mmd) |
+| Module map | ![Module map](docs/figures/module-map.svg) | [Mermaid](docs/figures/module-map.mmd) |
+| Public API surface | ![Public API surface](docs/figures/api-surface.svg) | [Mermaid](docs/figures/api-surface.mmd) |
+| Test evidence | ![Test evidence](docs/figures/test-map.svg) | [Mermaid](docs/figures/test-map.mmd) |
+| Dependency map | ![Dependency map](docs/figures/dependency-map.svg) | [Mermaid](docs/figures/dependency-map.mmd) |
 
 ### Role in Neo N4
 
@@ -84,6 +90,9 @@ These diagrams are local to this crate. They explain `neo-vm-rs` as an independe
 - **Primary inputs:** NeoVM bytecode, initial stack, syscall host callbacks
 - **Primary outputs:** halt/fault result, final stack, gas/accounting evidence
 - **Downstream consumers:** neo-riscv-vm, neo-zkvm, Neo N4 execution core
+- **Source files scanned:** 55
+- **Public symbols scanned:** 389
+- **Rust tests scanned:** 66
 
 ### Boundary and Responsibilities
 
@@ -92,11 +101,33 @@ These diagrams are local to this crate. They explain `neo-vm-rs` as an independe
 - **Produces:** halt/fault result, final stack, gas/accounting evidence
 - **Used by:** neo-riscv-vm, neo-zkvm, Neo N4 execution core
 
+### Source Map Snapshot
+
+| File | Why it matters | Public API | Tests |
+| --- | --- | ---: | ---: |
+| `src/lib.rs` | crate root, public exports, and top-level documentation | 0 | 0 |
+| `src/abi/stack_value.rs` | wire format, stack value, or host/guest boundary type | 59 | 13 |
+| `src/interpreter/state.rs` | VM interpreter and opcode semantics | 37 | 0 |
+| `src/interpreter/helpers/values.rs` | VM interpreter and opcode semantics | 36 | 0 |
+| `src/runtime/mod.rs` | execution runtime, state transition, or gas behavior | 33 | 2 |
+| `src/semantics/arithmetic.rs` | implementation detail or helper module | 23 | 0 |
+| `src/semantics/runtime/arithmetic.rs` | execution runtime, state transition, or gas behavior | 23 | 0 |
+| `src/semantics/runtime/collections.rs` | execution runtime, state transition, or gas behavior | 22 | 0 |
+
+### API Snapshot
+
+| Kind | Representative symbols |
+| --- | --- |
+| Types | VmState <br> BackendKind <br> ExecutionResult <br> StackValue +13 |
+| Functions | encode_stack_result <br> decode_stack_result_into <br> decode_stack_result <br> encode_stack +274 |
+| Trait | SyscallProvider <br> RuntimeStack |
+| Constants | COMPACT_TAG_INTEGER <br> COMPACT_TAG_BOOLEAN <br> COMPACT_TAG_BYTESTRING <br> COMPACT_TAG_BIG_INTEGER +48 |
+
 ### Learning Path
 
 1. Start with the position diagram to understand why this crate exists and who calls it.
 2. Read the technical principles diagram to identify the invariants and responsibility boundary.
-3. Use the architecture diagram to connect public inputs, internal components, dependencies, and outputs.
-4. Follow the workflow and dataflow diagrams before reading source files or tests.
+3. Use the module map and API surface to identify the files and symbols to read first.
+4. Follow the workflow, dataflow, test, and dependency diagrams before changing code.
 
 <!-- N4-CRATE-VISUAL-GUIDE:END -->
