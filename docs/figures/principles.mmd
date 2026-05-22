@@ -1,0 +1,14 @@
+flowchart LR
+    N1["Responsibility boundary: Canonical Rust implementation of NeoVM 3.9.x semantics shared by RISC-V and zkVM paths."]
+    N2["Core principles: Decode canonical opcodes | Execute stack and state semantics | Expose reusable runtime APIs"]
+    N3["Input contract: NeoVM bytecode | initial stack | syscall host callbacks"]
+    N4["State and artifacts: halt/fault result | final stack | gas/accounting evidence"]
+    N5["Integration contract: neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N6["Maintenance rule: Keep the boundary small, deterministic, and reproducible under tests."]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
+    class N3 crate

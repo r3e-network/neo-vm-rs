@@ -1,0 +1,14 @@
+flowchart LR
+    N1["Neo N4 layer: Shared VM core"]
+    N2["Upstream inputs: NeoVM bytecode | initial stack | syscall host callbacks"]
+    N3["neo-vm-rs: Canonical Rust implementation of NeoVM 3.9.x semantics shared by RISC-V and zkVM paths."]
+    N4["Direct dependencies: criterion | num-bigint | num-traits | serde | serde_json"]
+    N5["Downstream users: neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N6["Learning focus: Locate upstream and downstream first, then read this crate boundary, core data structures, and tests."]
+    N1 --> N2
+    N2 --> N3
+    N3 --> N4
+    N4 --> N5
+    N5 --> N6
+    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
+    class N3 crate

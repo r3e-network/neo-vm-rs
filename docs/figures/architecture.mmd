@@ -1,14 +1,14 @@
 flowchart LR
-    N1["Project layer: Shared VM core"]
-    N2["Inputs: NeoVM bytecode | initial stack | syscall host callbacks"]
-    N3["neo-vm-rs: Canonical Rust implementation of NeoVM 3.9.x semantics shared by RISC-V and zkVM paths."]
-    N4["Responsibilities: Decode canonical opcodes | Execute stack and state semantics | Expose reusable runtime APIs"]
-    N5["Outputs: halt/fault result | final stack | gas/accounting evidence"]
-    N6["Consumers: neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N1["Public entrypoints: NeoVM bytecode | initial stack | syscall host callbacks"]
+    N2["neo-vm-rs: Canonical Rust implementation of NeoVM 3.9.x semantics shared by RISC-V and zkVM paths."]
+    N3["Internal components: Decode canonical opcodes | Execute stack and state semantics | Expose reusable runtime APIs"]
+    N4["Dependency boundary: criterion | num-bigint | num-traits | serde | serde_json"]
+    N5["Output artifacts: halt/fault result | final stack | gas/accounting evidence"]
+    N6["System position: Shared VM core -> neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
     N1 --> N2
     N2 --> N3
     N3 --> N4
     N4 --> N5
     N5 --> N6
     classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
-    class N3 crate
+    class N2 crate

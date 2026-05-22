@@ -1,14 +1,14 @@
 flowchart LR
-    N1["Project layer: 共享虚拟机核心"]
-    N2["Inputs: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
-    N3["neo-vm-rs: NeoVM 3.9.x 语义的 Rust 共享核心，供 RISC-V 与 zkVM 路径复用。"]
-    N4["Responsibilities: 解码标准操作码 | 执行栈与状态语义 | 暴露可复用运行时 API"]
-    N5["Outputs: halt/fault 结果 | 最终栈 | gas/计费证据"]
-    N6["Consumers: neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
+    N1["公开入口: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
+    N2["neo-vm-rs: NeoVM 3.9.x 语义的 Rust 共享核心，供 RISC-V 与 zkVM 路径复用。"]
+    N3["内部组件: 解码标准操作码 | 执行栈与状态语义 | 暴露可复用运行时 API"]
+    N4["依赖边界: criterion | num-bigint | num-traits | serde | serde_json"]
+    N5["输出产物: halt/fault 结果 | 最终栈 | gas/计费证据"]
+    N6["系统位置: 共享虚拟机核心 -> neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
     N1 --> N2
     N2 --> N3
     N3 --> N4
     N4 --> N5
     N5 --> N6
     classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
-    class N3 crate
+    class N2 crate
