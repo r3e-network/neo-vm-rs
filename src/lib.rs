@@ -18,7 +18,9 @@ mod vm;
 pub use abi::{
     byte_sequence_bytes, byte_sequence_len, concat_byte_sequences, default_value_for_type_tag,
     encode_integer, new_array_default_value_for_type_tag, normalize_stack_item_type_tag,
-    pop_byte_arg, slice_byte_sequence, BackendKind, ExecutionResult, StackValue, VmState,
+    pop_byte_arg, slice_byte_sequence, stack_value_as_bool, stack_value_as_bytes,
+    stack_value_as_fixed_bytes, stack_value_as_i64, stack_value_as_string, stack_value_as_u32,
+    stack_value_as_u8, stack_value_into_items, BackendKind, ExecutionResult, StackValue, VmState,
     COMPACT_TAG_ARRAY, COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_BOOLEAN, COMPACT_TAG_BUFFER,
     COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER, COMPACT_TAG_INTEROP, COMPACT_TAG_ITERATOR,
     COMPACT_TAG_MAP, COMPACT_TAG_NULL, COMPACT_TAG_POINTER, COMPACT_TAG_STRUCT,

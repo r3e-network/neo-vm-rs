@@ -1,6 +1,7 @@
 //! Canonical NeoVM stack value types.
 
 use alloc::{format, string::String, vec::Vec};
+use core::convert::TryInto;
 use serde::{Deserialize, Serialize};
 
 /// Compact integer tag used by generated RISC-V runtime helpers.
@@ -116,6 +117,69 @@ pub fn byte_sequence_bytes(value: &StackValue) -> Option<&[u8]> {
 #[must_use]
 pub fn byte_sequence_len(value: &StackValue) -> Option<usize> {
     byte_sequence_bytes(value).map(<[u8]>::len)
+}
+
+/// Extract a strict native-contract boolean result.
+///
+/// Native contract wrappers should use this helper when decoding host results
+/// where only Boolean, Integer, or BigInteger values are acceptable.
+#[must_use]
+pub fn stack_value_as_bool(value: &StackValue) -> Option<bool> {
+    match value {
+        StackValue::Boolean(value) => Some(*value),
+        StackValue::Integer(_) | StackValue::BigInteger(_) => {
+            stack_value_as_i64(value).map(|integer| integer != 0)
+        }
+        _ => None,
+    }
+}
+
+/// Extract a strict 64-bit signed integer result.
+#[must_use]
+pub fn stack_value_as_i64(value: &StackValue) -> Option<i64> {
+    match value {
+        StackValue::Integer(_) | StackValue::BigInteger(_) => value.to_i128()?.try_into().ok(),
+        _ => None,
+    }
+}
+
+/// Extract a strict 32-bit unsigned integer result.
+#[must_use]
+pub fn stack_value_as_u32(value: &StackValue) -> Option<u32> {
+    stack_value_as_i64(value)?.try_into().ok()
+}
+
+/// Extract a strict 8-bit unsigned integer result.
+#[must_use]
+pub fn stack_value_as_u8(value: &StackValue) -> Option<u8> {
+    stack_value_as_i64(value)?.try_into().ok()
+}
+
+/// Extract a copy of a NeoVM byte-sequence value.
+#[must_use]
+pub fn stack_value_as_bytes(value: &StackValue) -> Option<Vec<u8>> {
+    byte_sequence_bytes(value).map(<[u8]>::to_vec)
+}
+
+/// Extract a fixed-width byte array from a NeoVM byte-sequence value.
+#[must_use]
+pub fn stack_value_as_fixed_bytes<const N: usize>(value: &StackValue) -> Option<[u8; N]> {
+    stack_value_as_bytes(value)?.try_into().ok()
+}
+
+/// Extract a UTF-8 string from a NeoVM byte-sequence value.
+#[must_use]
+pub fn stack_value_as_string(value: &StackValue) -> Option<String> {
+    String::from_utf8(stack_value_as_bytes(value)?).ok()
+}
+
+/// Extract the owned items from an Array or Struct value.
+#[must_use]
+pub fn stack_value_into_items(value: StackValue) -> Option<Vec<StackValue>> {
+    match value {
+        StackValue::Array(items) | StackValue::Struct(items) => Some(items),
+        _ => None,
+    }
 }
 
 /// Concatenate two NeoVM byte sequence values.
@@ -611,6 +675,83 @@ mod tests {
             None
         );
         assert_eq!(super::byte_sequence_len(&StackValue::Integer(1)), None);
+    }
+
+    #[test]
+    fn stack_value_extractors_cover_native_contract_result_shapes() {
+        assert_eq!(
+            super::stack_value_as_i64(&StackValue::Integer(42)),
+            Some(42)
+        );
+        assert_eq!(
+            super::stack_value_as_i64(&StackValue::BigInteger(vec![0xff, 0x00])),
+            Some(255)
+        );
+        assert_eq!(
+            super::stack_value_as_i64(&StackValue::BigInteger(vec![0xff; 16])),
+            Some(-1)
+        );
+        assert_eq!(
+            super::stack_value_as_i64(&StackValue::BigInteger(vec![
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
+            ])),
+            Some(i64::MIN)
+        );
+        assert_eq!(
+            super::stack_value_as_i64(&StackValue::BigInteger(vec![
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00,
+            ])),
+            None
+        );
+        assert_eq!(super::stack_value_as_i64(&StackValue::Null), None);
+
+        assert_eq!(
+            super::stack_value_as_bool(&StackValue::Boolean(true)),
+            Some(true)
+        );
+        assert_eq!(
+            super::stack_value_as_bool(&StackValue::Integer(0)),
+            Some(false)
+        );
+        assert_eq!(super::stack_value_as_bool(&StackValue::Null), None);
+
+        assert_eq!(
+            super::stack_value_as_u32(&StackValue::Integer(4_294_967_295)),
+            Some(u32::MAX)
+        );
+        assert_eq!(super::stack_value_as_u32(&StackValue::Integer(-1)), None);
+        assert_eq!(
+            super::stack_value_as_u8(&StackValue::Integer(255)),
+            Some(255)
+        );
+        assert_eq!(super::stack_value_as_u8(&StackValue::Integer(256)), None);
+
+        assert_eq!(
+            super::stack_value_as_bytes(&StackValue::Buffer(vec![1, 2, 3])),
+            Some(vec![1, 2, 3])
+        );
+        assert_eq!(
+            super::stack_value_as_fixed_bytes::<4>(&StackValue::ByteString(vec![1, 2, 3, 4])),
+            Some([1, 2, 3, 4])
+        );
+        assert_eq!(
+            super::stack_value_as_fixed_bytes::<4>(&StackValue::ByteString(vec![1, 2, 3])),
+            None
+        );
+        assert_eq!(
+            super::stack_value_as_string(&StackValue::ByteString(b"neo".to_vec())).as_deref(),
+            Some("neo")
+        );
+        assert_eq!(
+            super::stack_value_as_string(&StackValue::ByteString(vec![0xff])),
+            None
+        );
+
+        assert_eq!(
+            super::stack_value_into_items(StackValue::Array(vec![StackValue::Integer(1)])),
+            Some(vec![StackValue::Integer(1)])
+        );
+        assert_eq!(super::stack_value_into_items(StackValue::Integer(1)), None);
     }
 
     #[test]
