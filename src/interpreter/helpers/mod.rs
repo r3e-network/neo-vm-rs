@@ -1,6 +1,11 @@
 use super::runtime_types::{
     structurally_equal, to_abi_stack, to_abi_value, CompoundIds, StackValue,
 };
+use crate::{
+    COMPACT_TAG_ARRAY, COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_BOOLEAN, COMPACT_TAG_BUFFER,
+    COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER, COMPACT_TAG_INTEROP, COMPACT_TAG_ITERATOR,
+    COMPACT_TAG_MAP, COMPACT_TAG_NULL, COMPACT_TAG_POINTER, COMPACT_TAG_STRUCT,
+};
 use core::cell::UnsafeCell;
 
 const POST_SYSCALL_STACK_HEADROOM: usize = 8;
@@ -8,19 +13,6 @@ const RETAINED_PREFIX_BUF_SIZE: usize = 2 * 1024 * 1024;
 const MAX_RETAINED_DECODE_DEPTH: usize = 64;
 const MAX_RETAINED_COLLECTION_LEN: usize = 4096;
 const MAX_INTEGER_SIZE: usize = 32;
-
-const RETAINED_TAG_INTEGER: u8 = 0x01;
-const RETAINED_TAG_BIGINTEGER: u8 = 0x02;
-const RETAINED_TAG_BYTESTRING: u8 = 0x03;
-const RETAINED_TAG_BOOLEAN: u8 = 0x04;
-const RETAINED_TAG_ARRAY: u8 = 0x05;
-const RETAINED_TAG_STRUCT: u8 = 0x06;
-const RETAINED_TAG_MAP: u8 = 0x07;
-const RETAINED_TAG_INTEROP: u8 = 0x08;
-const RETAINED_TAG_ITERATOR: u8 = 0x09;
-const RETAINED_TAG_NULL: u8 = 0x0A;
-const RETAINED_TAG_POINTER: u8 = 0x0B;
-const RETAINED_TAG_BUFFER: u8 = 0x0C;
 
 pub(crate) struct RetainedPrefixBuffer(UnsafeCell<[u8; RETAINED_PREFIX_BUF_SIZE]>);
 

@@ -1,6 +1,11 @@
 use std::{fs, path::Path};
 
 const MAX_INTERPRETER_SOURCE_LINES: usize = 1_000;
+const STACK_ITEM_TAG_MATCH_PATTERNS: &[&str] = &[
+    "0x00 =>", "0x10 =>", "0x20 =>", "0x21 =>", "0x28 =>", "0x30 =>", "0x40 =>", "0x41 =>",
+    "0x48 =>", "0x60 =>", "0x20 |", "0x21 |", "0x28 |", "0x30 |", "0x40 |", "0x41 |", "0x48 |",
+    "0x60 |", "| 0x20", "| 0x21", "| 0x28", "| 0x30", "| 0x40", "| 0x41", "| 0x48", "| 0x60",
+];
 
 #[test]
 fn interpreter_sources_stay_small_enough_to_review() {
@@ -12,6 +17,83 @@ fn interpreter_sources_stay_small_enough_to_review() {
     assert!(
         oversized.is_empty(),
         "interpreter source files exceed their review-size limits: {oversized:?}"
+    );
+}
+
+#[test]
+fn interpreter_opcode_aliases_come_from_canonical_opcode_enum() {
+    let source = read_workspace_source("src/interpreter/opcodes.rs");
+
+    assert!(
+        source.contains("use crate::OpCode;"),
+        "interpreter opcode aliases must derive from the canonical OpCode enum"
+    );
+    assert!(
+        source.contains("OpCode::$name.byte()") && source.contains("opcode_alias!(PUSHINT8)"),
+        "opcode aliases should be typed enum aliases, not an independent byte table"
+    );
+    assert!(
+        !source.contains("= 0x"),
+        "interpreter opcode aliases must not duplicate hard-coded opcode bytes"
+    );
+}
+
+#[test]
+fn opcode_byte_lookup_is_generated_from_the_canonical_enum() {
+    let source = read_workspace_source("src/vm/opcode.rs");
+
+    assert!(
+        source.contains("const LOOKUP: [Option<Self>; 256]"),
+        "OpCode byte decoding should use a generated lookup table"
+    );
+    assert!(
+        source.contains("Self::LOOKUP[value as usize].ok_or(value)"),
+        "TryFrom<u8> should read from the generated opcode lookup table"
+    );
+    assert!(
+        !source.contains("0x00 => Self::PUSHINT8"),
+        "TryFrom<u8> must not duplicate the opcode byte assignment table"
+    );
+}
+
+#[test]
+fn interpreter_uses_central_stack_item_type_tags() {
+    let sources = [
+        read_workspace_source("src/interpreter/executor/compound_ops.rs"),
+        read_workspace_source("src/interpreter/helpers/values.rs"),
+    ];
+
+    for source in sources {
+        for pattern in STACK_ITEM_TAG_MATCH_PATTERNS {
+            assert!(
+                !source.contains(pattern),
+                "interpreter code should use NEOVM_STACK_ITEM_TYPE_* constants instead of literal pattern {pattern}"
+            );
+        }
+    }
+}
+
+#[test]
+fn internal_codecs_use_shared_compact_type_tags() {
+    let fast_codec = read_workspace_source("src/abi/fast_codec.rs");
+    let helpers_mod = read_workspace_source("src/interpreter/helpers/mod.rs");
+    let retained_codec = read_workspace_source("src/interpreter/helpers/retained.rs");
+
+    assert!(
+        fast_codec.contains("COMPACT_TAG_INTEGER"),
+        "fast codec should import the shared compact type tag constants"
+    );
+    assert!(
+        !fast_codec.contains("const TAG_"),
+        "fast codec must not duplicate compact type tag byte values"
+    );
+    assert!(
+        !helpers_mod.contains("const RETAINED_TAG_"),
+        "retained-prefix codec must not define a second compact type tag table"
+    );
+    assert!(
+        !retained_codec.contains("RETAINED_TAG_") && retained_codec.contains("COMPACT_TAG_INTEGER"),
+        "retained-prefix codec should use COMPACT_TAG_* directly"
     );
 }
 
@@ -41,4 +123,9 @@ fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
             ));
         }
     }
+}
+
+fn read_workspace_source(relative_path: &str) -> String {
+    fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path))
+        .unwrap_or_else(|error| panic!("source file {relative_path} should be readable: {error}"))
 }

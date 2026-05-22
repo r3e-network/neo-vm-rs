@@ -5,6 +5,12 @@ use super::super::runtime_types::{
 };
 use super::super::state::{remember_consumed_mutation, PendingException, TryStack, MAX_STACK_SIZE};
 use super::control::Dispatch;
+use crate::{
+    NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
+    NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
+    NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
+    NEOVM_STACK_ITEM_TYPE_POINTER, NEOVM_STACK_ITEM_TYPE_STRUCT,
+};
 use alloc::{
     format,
     string::{String, ToString},
@@ -143,8 +149,8 @@ pub(super) fn execute(
             }
             let kind = script[ip + 1];
             let default_value = match kind {
-                0x21 => StackValue::Integer(0),
-                0x28 => StackValue::ByteString(Vec::new()),
+                NEOVM_STACK_ITEM_TYPE_INTEGER => StackValue::Integer(0),
+                NEOVM_STACK_ITEM_TYPE_BYTESTRING => StackValue::ByteString(Vec::new()),
                 _ => StackValue::Null,
             };
             stack.push(ids.array(vec![default_value; count as usize]));
@@ -653,18 +659,25 @@ pub(super) fn execute(
             }
             let kind = script[ip + 1];
             let item = pop_item(stack)?;
-            // NeoVM StackItemType enum values
             let result = match kind {
-                0x00 => return Err("unsupported ISTYPE kind 0x00".to_string()), // Any
-                0x10 => matches!(item, StackValue::Pointer(_)),                 // Pointer
-                0x20 => matches!(item, StackValue::Boolean(_)),                 // Boolean
-                0x21 => matches!(item, StackValue::Integer(_) | StackValue::BigInteger(_)), // Integer
-                0x28 => matches!(item, StackValue::ByteString(_)), // ByteString
-                0x30 => matches!(item, StackValue::Buffer(_, _)),  // Buffer
-                0x40 => matches!(item, StackValue::Array(_, _)),   // Array
-                0x41 => matches!(item, StackValue::Struct(_, _)),  // Struct
-                0x48 => matches!(item, StackValue::Map(_, _)),     // Map
-                0x60 => matches!(item, StackValue::Interop(_)),    // InteropInterface
+                NEOVM_STACK_ITEM_TYPE_ANY => {
+                    return Err(format!(
+                        "unsupported ISTYPE kind {NEOVM_STACK_ITEM_TYPE_ANY:#04x}"
+                    ))
+                }
+                NEOVM_STACK_ITEM_TYPE_POINTER => matches!(item, StackValue::Pointer(_)),
+                NEOVM_STACK_ITEM_TYPE_BOOLEAN => matches!(item, StackValue::Boolean(_)),
+                NEOVM_STACK_ITEM_TYPE_INTEGER => {
+                    matches!(item, StackValue::Integer(_) | StackValue::BigInteger(_))
+                }
+                NEOVM_STACK_ITEM_TYPE_BYTESTRING => matches!(item, StackValue::ByteString(_)),
+                NEOVM_STACK_ITEM_TYPE_BUFFER => matches!(item, StackValue::Buffer(_, _)),
+                NEOVM_STACK_ITEM_TYPE_ARRAY => matches!(item, StackValue::Array(_, _)),
+                NEOVM_STACK_ITEM_TYPE_STRUCT => matches!(item, StackValue::Struct(_, _)),
+                NEOVM_STACK_ITEM_TYPE_MAP => matches!(item, StackValue::Map(_, _)),
+                NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => {
+                    matches!(item, StackValue::Interop(_))
+                }
                 _ => return Err(format!("unsupported ISTYPE kind 0x{kind:02x}")),
             };
             stack.push(StackValue::Boolean(result));

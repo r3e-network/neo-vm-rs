@@ -29,52 +29,52 @@ pub(crate) fn encode_retained_value_to_slice(
     match value {
         StackValue::Integer(value) => {
             ensure_retained_capacity(buf, pos, 9)?;
-            buf[pos] = RETAINED_TAG_INTEGER;
+            buf[pos] = COMPACT_TAG_INTEGER;
             pos += 1;
             buf[pos..pos + 8].copy_from_slice(&value.to_le_bytes());
             Ok(pos + 8)
         }
         StackValue::BigInteger(bytes) => {
-            pos = encode_retained_tag_and_len(RETAINED_TAG_BIGINTEGER, bytes.len(), buf, pos)?;
+            pos = encode_retained_tag_and_len(COMPACT_TAG_BIG_INTEGER, bytes.len(), buf, pos)?;
             ensure_retained_capacity(buf, pos, bytes.len())?;
             buf[pos..pos + bytes.len()].copy_from_slice(bytes);
             Ok(pos + bytes.len())
         }
         StackValue::ByteString(bytes) => {
-            pos = encode_retained_tag_and_len(RETAINED_TAG_BYTESTRING, bytes.len(), buf, pos)?;
+            pos = encode_retained_tag_and_len(COMPACT_TAG_BYTESTRING, bytes.len(), buf, pos)?;
             ensure_retained_capacity(buf, pos, bytes.len())?;
             buf[pos..pos + bytes.len()].copy_from_slice(bytes);
             Ok(pos + bytes.len())
         }
         StackValue::Boolean(value) => {
             ensure_retained_capacity(buf, pos, 2)?;
-            buf[pos] = RETAINED_TAG_BOOLEAN;
+            buf[pos] = COMPACT_TAG_BOOLEAN;
             buf[pos + 1] = u8::from(*value);
             Ok(pos + 2)
         }
         StackValue::Pointer(value) => {
             ensure_retained_capacity(buf, pos, 9)?;
-            buf[pos] = RETAINED_TAG_POINTER;
+            buf[pos] = COMPACT_TAG_POINTER;
             pos += 1;
             buf[pos..pos + 8].copy_from_slice(&(*value as u64).to_le_bytes());
             Ok(pos + 8)
         }
         StackValue::Array(id, items) => {
-            pos = encode_retained_tag_id_len(RETAINED_TAG_ARRAY, *id, items.len(), buf, pos)?;
+            pos = encode_retained_tag_id_len(COMPACT_TAG_ARRAY, *id, items.len(), buf, pos)?;
             for item in items {
                 pos = encode_retained_value_to_slice(item, buf, pos)?;
             }
             Ok(pos)
         }
         StackValue::Struct(id, items) => {
-            pos = encode_retained_tag_id_len(RETAINED_TAG_STRUCT, *id, items.len(), buf, pos)?;
+            pos = encode_retained_tag_id_len(COMPACT_TAG_STRUCT, *id, items.len(), buf, pos)?;
             for item in items {
                 pos = encode_retained_value_to_slice(item, buf, pos)?;
             }
             Ok(pos)
         }
         StackValue::Map(id, entries) => {
-            pos = encode_retained_tag_id_len(RETAINED_TAG_MAP, *id, entries.len(), buf, pos)?;
+            pos = encode_retained_tag_id_len(COMPACT_TAG_MAP, *id, entries.len(), buf, pos)?;
             for (key, value) in entries {
                 pos = encode_retained_value_to_slice(key, buf, pos)?;
                 pos = encode_retained_value_to_slice(value, buf, pos)?;
@@ -82,28 +82,28 @@ pub(crate) fn encode_retained_value_to_slice(
             Ok(pos)
         }
         StackValue::Buffer(id, bytes) => {
-            pos = encode_retained_tag_id_len(RETAINED_TAG_BUFFER, *id, bytes.len(), buf, pos)?;
+            pos = encode_retained_tag_id_len(COMPACT_TAG_BUFFER, *id, bytes.len(), buf, pos)?;
             ensure_retained_capacity(buf, pos, bytes.len())?;
             buf[pos..pos + bytes.len()].copy_from_slice(bytes);
             Ok(pos + bytes.len())
         }
         StackValue::Interop(handle) => {
             ensure_retained_capacity(buf, pos, 9)?;
-            buf[pos] = RETAINED_TAG_INTEROP;
+            buf[pos] = COMPACT_TAG_INTEROP;
             pos += 1;
             buf[pos..pos + 8].copy_from_slice(&handle.to_le_bytes());
             Ok(pos + 8)
         }
         StackValue::Iterator(handle) => {
             ensure_retained_capacity(buf, pos, 9)?;
-            buf[pos] = RETAINED_TAG_ITERATOR;
+            buf[pos] = COMPACT_TAG_ITERATOR;
             pos += 1;
             buf[pos..pos + 8].copy_from_slice(&handle.to_le_bytes());
             Ok(pos + 8)
         }
         StackValue::Null => {
             ensure_retained_capacity(buf, pos, 1)?;
-            buf[pos] = RETAINED_TAG_NULL;
+            buf[pos] = COMPACT_TAG_NULL;
             Ok(pos + 1)
         }
     }
@@ -118,7 +118,7 @@ fn encode_retained_tag_and_len(
     if len > MAX_RETAINED_COLLECTION_LEN
         && matches!(
             tag,
-            RETAINED_TAG_ARRAY | RETAINED_TAG_STRUCT | RETAINED_TAG_MAP
+            COMPACT_TAG_ARRAY | COMPACT_TAG_STRUCT | COMPACT_TAG_MAP
         )
     {
         return Err("collection length exceeds maximum".to_string());
@@ -208,28 +208,28 @@ fn decode_retained_value(
     let tag = bytes[*pos];
     *pos += 1;
     match tag {
-        RETAINED_TAG_INTEGER => {
+        COMPACT_TAG_INTEGER => {
             let value = decode_retained_i64(bytes, pos)?;
             Ok(StackValue::Integer(value))
         }
-        RETAINED_TAG_BIGINTEGER => {
+        COMPACT_TAG_BIG_INTEGER => {
             let data = decode_retained_bytes(bytes, pos)?;
             Ok(StackValue::BigInteger(data))
         }
-        RETAINED_TAG_BYTESTRING => {
+        COMPACT_TAG_BYTESTRING => {
             let data = decode_retained_bytes(bytes, pos)?;
             Ok(StackValue::ByteString(data))
         }
-        RETAINED_TAG_BOOLEAN => {
+        COMPACT_TAG_BOOLEAN => {
             let value = decode_retained_u8(bytes, pos)?;
             Ok(StackValue::Boolean(value != 0))
         }
-        RETAINED_TAG_POINTER => {
+        COMPACT_TAG_POINTER => {
             let value = decode_retained_u64(bytes, pos)?;
             let pointer = usize::try_from(value).map_err(|_| "pointer out of range".to_string())?;
             Ok(StackValue::Pointer(pointer))
         }
-        RETAINED_TAG_ARRAY => {
+        COMPACT_TAG_ARRAY => {
             let id = decode_retained_u64(bytes, pos)?;
             let len = decode_retained_u32(bytes, pos)? as usize;
             if len > MAX_RETAINED_COLLECTION_LEN {
@@ -241,7 +241,7 @@ fn decode_retained_value(
             }
             Ok(StackValue::Array(id, items))
         }
-        RETAINED_TAG_STRUCT => {
+        COMPACT_TAG_STRUCT => {
             let id = decode_retained_u64(bytes, pos)?;
             let len = decode_retained_u32(bytes, pos)? as usize;
             if len > MAX_RETAINED_COLLECTION_LEN {
@@ -253,7 +253,7 @@ fn decode_retained_value(
             }
             Ok(StackValue::Struct(id, items))
         }
-        RETAINED_TAG_MAP => {
+        COMPACT_TAG_MAP => {
             let id = decode_retained_u64(bytes, pos)?;
             let len = decode_retained_u32(bytes, pos)? as usize;
             if len > MAX_RETAINED_COLLECTION_LEN {
@@ -267,20 +267,20 @@ fn decode_retained_value(
             }
             Ok(StackValue::Map(id, entries))
         }
-        RETAINED_TAG_BUFFER => {
+        COMPACT_TAG_BUFFER => {
             let id = decode_retained_u64(bytes, pos)?;
             let data = decode_retained_bytes(bytes, pos)?;
             Ok(StackValue::Buffer(id, data))
         }
-        RETAINED_TAG_INTEROP => {
+        COMPACT_TAG_INTEROP => {
             let handle = decode_retained_u64(bytes, pos)?;
             Ok(StackValue::Interop(handle))
         }
-        RETAINED_TAG_ITERATOR => {
+        COMPACT_TAG_ITERATOR => {
             let handle = decode_retained_u64(bytes, pos)?;
             Ok(StackValue::Iterator(handle))
         }
-        RETAINED_TAG_NULL => Ok(StackValue::Null),
+        COMPACT_TAG_NULL => Ok(StackValue::Null),
         _ => Err(format!("invalid retained prefix tag 0x{tag:02x}")),
     }
 }

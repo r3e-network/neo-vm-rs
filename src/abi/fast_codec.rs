@@ -4,22 +4,13 @@
 //! Replaces postcard with zero-copy, type-tagged encoding.
 
 extern crate alloc;
-use crate::StackValue;
+use super::stack_value::{
+    StackValue, COMPACT_TAG_ARRAY, COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_BOOLEAN,
+    COMPACT_TAG_BUFFER, COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER, COMPACT_TAG_INTEROP,
+    COMPACT_TAG_ITERATOR, COMPACT_TAG_MAP, COMPACT_TAG_NULL, COMPACT_TAG_POINTER,
+    COMPACT_TAG_STRUCT,
+};
 use alloc::vec::Vec;
-
-// Type tags (1 byte each)
-const TAG_INTEGER: u8 = 0x01;
-const TAG_BIGINTEGER: u8 = 0x02;
-const TAG_BYTESTRING: u8 = 0x03;
-const TAG_BOOLEAN: u8 = 0x04;
-const TAG_ARRAY: u8 = 0x05;
-const TAG_STRUCT: u8 = 0x06;
-const TAG_MAP: u8 = 0x07;
-const TAG_INTEROP: u8 = 0x08;
-const TAG_ITERATOR: u8 = 0x09;
-const TAG_NULL: u8 = 0x0A;
-const TAG_POINTER: u8 = 0x0B;
-const TAG_BUFFER: u8 = 0x0C;
 
 /// Encode stack to binary format
 #[inline]
@@ -87,44 +78,44 @@ pub fn decode_stack(bytes: &[u8]) -> Result<Vec<StackValue>, &'static str> {
 fn encode_value(value: &StackValue, buf: &mut Vec<u8>) {
     match value {
         StackValue::Integer(i) => {
-            buf.push(TAG_INTEGER);
+            buf.push(COMPACT_TAG_INTEGER);
             buf.extend_from_slice(&i.to_le_bytes());
         }
         StackValue::BigInteger(b) => {
-            buf.push(TAG_BIGINTEGER);
+            buf.push(COMPACT_TAG_BIG_INTEGER);
             buf.extend_from_slice(&(b.len() as u32).to_le_bytes());
             buf.extend_from_slice(b);
         }
         StackValue::ByteString(b) => {
-            buf.push(TAG_BYTESTRING);
+            buf.push(COMPACT_TAG_BYTESTRING);
             buf.extend_from_slice(&(b.len() as u32).to_le_bytes());
             buf.extend_from_slice(b);
         }
         StackValue::Buffer(b) => {
-            buf.push(TAG_BUFFER);
+            buf.push(COMPACT_TAG_BUFFER);
             buf.extend_from_slice(&(b.len() as u32).to_le_bytes());
             buf.extend_from_slice(b);
         }
         StackValue::Boolean(b) => {
-            buf.push(TAG_BOOLEAN);
+            buf.push(COMPACT_TAG_BOOLEAN);
             buf.push(if *b { 1 } else { 0 });
         }
         StackValue::Array(items) => {
-            buf.push(TAG_ARRAY);
+            buf.push(COMPACT_TAG_ARRAY);
             buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
             for item in items {
                 encode_value(item, buf);
             }
         }
         StackValue::Struct(items) => {
-            buf.push(TAG_STRUCT);
+            buf.push(COMPACT_TAG_STRUCT);
             buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
             for item in items {
                 encode_value(item, buf);
             }
         }
         StackValue::Map(pairs) => {
-            buf.push(TAG_MAP);
+            buf.push(COMPACT_TAG_MAP);
             buf.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
             for (k, v) in pairs {
                 encode_value(k, buf);
@@ -132,18 +123,18 @@ fn encode_value(value: &StackValue, buf: &mut Vec<u8>) {
             }
         }
         StackValue::Interop(h) => {
-            buf.push(TAG_INTEROP);
+            buf.push(COMPACT_TAG_INTEROP);
             buf.extend_from_slice(&h.to_le_bytes());
         }
         StackValue::Iterator(h) => {
-            buf.push(TAG_ITERATOR);
+            buf.push(COMPACT_TAG_ITERATOR);
             buf.extend_from_slice(&h.to_le_bytes());
         }
         StackValue::Null => {
-            buf.push(TAG_NULL);
+            buf.push(COMPACT_TAG_NULL);
         }
         StackValue::Pointer(p) => {
-            buf.push(TAG_POINTER);
+            buf.push(COMPACT_TAG_POINTER);
             buf.extend_from_slice(&p.to_le_bytes());
         }
     }
@@ -160,7 +151,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 9 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_INTEGER;
+            buf[pos] = COMPACT_TAG_INTEGER;
             buf[pos + 1..pos + 9].copy_from_slice(&i.to_le_bytes());
             Ok(pos + 9)
         }
@@ -168,7 +159,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 5 + b.len() {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_BIGINTEGER;
+            buf[pos] = COMPACT_TAG_BIG_INTEGER;
             buf[pos + 1..pos + 5].copy_from_slice(&(b.len() as u32).to_le_bytes());
             buf[pos + 5..pos + 5 + b.len()].copy_from_slice(b);
             Ok(pos + 5 + b.len())
@@ -177,7 +168,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 5 + b.len() {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_BYTESTRING;
+            buf[pos] = COMPACT_TAG_BYTESTRING;
             buf[pos + 1..pos + 5].copy_from_slice(&(b.len() as u32).to_le_bytes());
             buf[pos + 5..pos + 5 + b.len()].copy_from_slice(b);
             Ok(pos + 5 + b.len())
@@ -186,7 +177,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 5 + b.len() {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_BUFFER;
+            buf[pos] = COMPACT_TAG_BUFFER;
             buf[pos + 1..pos + 5].copy_from_slice(&(b.len() as u32).to_le_bytes());
             buf[pos + 5..pos + 5 + b.len()].copy_from_slice(b);
             Ok(pos + 5 + b.len())
@@ -195,7 +186,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 2 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_BOOLEAN;
+            buf[pos] = COMPACT_TAG_BOOLEAN;
             buf[pos + 1] = if *b { 1 } else { 0 };
             Ok(pos + 2)
         }
@@ -203,7 +194,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 5 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_ARRAY;
+            buf[pos] = COMPACT_TAG_ARRAY;
             buf[pos + 1..pos + 5].copy_from_slice(&(items.len() as u32).to_le_bytes());
             pos += 5;
             for item in items {
@@ -215,7 +206,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 5 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_STRUCT;
+            buf[pos] = COMPACT_TAG_STRUCT;
             buf[pos + 1..pos + 5].copy_from_slice(&(items.len() as u32).to_le_bytes());
             pos += 5;
             for item in items {
@@ -227,7 +218,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 5 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_MAP;
+            buf[pos] = COMPACT_TAG_MAP;
             buf[pos + 1..pos + 5].copy_from_slice(&(pairs.len() as u32).to_le_bytes());
             pos += 5;
             for (k, v) in pairs {
@@ -240,7 +231,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 9 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_INTEROP;
+            buf[pos] = COMPACT_TAG_INTEROP;
             buf[pos + 1..pos + 9].copy_from_slice(&h.to_le_bytes());
             Ok(pos + 9)
         }
@@ -248,7 +239,7 @@ fn encode_value_to_slice(
             if buf.len() < pos + 9 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_ITERATOR;
+            buf[pos] = COMPACT_TAG_ITERATOR;
             buf[pos + 1..pos + 9].copy_from_slice(&h.to_le_bytes());
             Ok(pos + 9)
         }
@@ -256,14 +247,14 @@ fn encode_value_to_slice(
             if buf.len() < pos + 1 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_NULL;
+            buf[pos] = COMPACT_TAG_NULL;
             Ok(pos + 1)
         }
         StackValue::Pointer(p) => {
             if buf.len() < pos + 9 {
                 return Err("buffer too small");
             }
-            buf[pos] = TAG_POINTER;
+            buf[pos] = COMPACT_TAG_POINTER;
             buf[pos + 1..pos + 9].copy_from_slice(&p.to_le_bytes());
             Ok(pos + 9)
         }
@@ -283,7 +274,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
     let mut pos = 1;
 
     let value = match tag {
-        TAG_INTEGER => {
+        COMPACT_TAG_INTEGER => {
             if bytes.len() < pos + 8 {
                 return Err("truncated integer");
             }
@@ -300,7 +291,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             pos += 8;
             StackValue::Integer(val)
         }
-        TAG_BIGINTEGER => {
+        COMPACT_TAG_BIG_INTEGER => {
             if bytes.len() < pos + 4 {
                 return Err("truncated biginteger length");
             }
@@ -315,7 +306,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             pos += len;
             StackValue::BigInteger(data)
         }
-        TAG_BYTESTRING => {
+        COMPACT_TAG_BYTESTRING => {
             if bytes.len() < pos + 4 {
                 return Err("truncated bytestring length");
             }
@@ -330,7 +321,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             pos += len;
             StackValue::ByteString(data)
         }
-        TAG_BUFFER => {
+        COMPACT_TAG_BUFFER => {
             if bytes.len() < pos + 4 {
                 return Err("truncated buffer length");
             }
@@ -345,7 +336,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             pos += len;
             StackValue::Buffer(data)
         }
-        TAG_BOOLEAN => {
+        COMPACT_TAG_BOOLEAN => {
             if bytes.len() < pos + 1 {
                 return Err("truncated boolean");
             }
@@ -353,7 +344,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             pos += 1;
             StackValue::Boolean(val)
         }
-        TAG_ARRAY => {
+        COMPACT_TAG_ARRAY => {
             if bytes.len() < pos + 4 {
                 return Err("truncated array length");
             }
@@ -372,7 +363,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             }
             StackValue::Array(items)
         }
-        TAG_STRUCT => {
+        COMPACT_TAG_STRUCT => {
             if bytes.len() < pos + 4 {
                 return Err("truncated struct length");
             }
@@ -391,7 +382,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             }
             StackValue::Struct(items)
         }
-        TAG_MAP => {
+        COMPACT_TAG_MAP => {
             if bytes.len() < pos + 4 {
                 return Err("truncated map length");
             }
@@ -412,7 +403,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             }
             StackValue::Map(pairs)
         }
-        TAG_INTEROP => {
+        COMPACT_TAG_INTEROP => {
             if bytes.len() < pos + 8 {
                 return Err("truncated interop");
             }
@@ -429,7 +420,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             pos += 8;
             StackValue::Interop(val)
         }
-        TAG_ITERATOR => {
+        COMPACT_TAG_ITERATOR => {
             if bytes.len() < pos + 8 {
                 return Err("truncated iterator");
             }
@@ -446,8 +437,8 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             pos += 8;
             StackValue::Iterator(val)
         }
-        TAG_NULL => StackValue::Null,
-        TAG_POINTER => {
+        COMPACT_TAG_NULL => StackValue::Null,
+        COMPACT_TAG_POINTER => {
             if bytes.len() < pos + 8 {
                 return Err("truncated pointer");
             }
@@ -533,17 +524,17 @@ mod tests {
     #[test]
     fn decode_rejects_excessive_nesting() {
         // Build a payload: stack length = 1, then 65 nested arrays
-        // (TAG_ARRAY=0x05, len=1) to exceed MAX_DECODE_DEPTH (64).
+        // (COMPACT_TAG_ARRAY, len=1) to exceed MAX_DECODE_DEPTH (64).
         // decode_value_depth starts at depth=0, each Array recurses with depth+1,
         // so the 65th nested array will attempt depth=65 which exceeds the limit.
         let mut payload = Vec::new();
         payload.extend_from_slice(&1u32.to_le_bytes()); // stack length = 1
         for _ in 0..65 {
-            payload.push(TAG_ARRAY); // 0x05
+            payload.push(COMPACT_TAG_ARRAY);
             payload.extend_from_slice(&1u32.to_le_bytes()); // array length = 1
         }
         // Innermost value (won't be reached due to depth limit)
-        payload.push(TAG_NULL); // 0x0A
+        payload.push(COMPACT_TAG_NULL);
 
         let result = decode_stack(&payload);
         assert!(result.is_err(), "excessive nesting must be rejected");
@@ -560,7 +551,7 @@ mod tests {
         // which exceeds MAX_COLLECTION_LEN (4096).
         let mut payload = Vec::new();
         payload.extend_from_slice(&1u32.to_le_bytes()); // stack length = 1
-        payload.push(TAG_ARRAY); // 0x05
+        payload.push(COMPACT_TAG_ARRAY);
         payload.extend_from_slice(&5000u32.to_le_bytes()); // array length = 5000
 
         let result = decode_stack(&payload);

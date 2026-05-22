@@ -1,4 +1,10 @@
 use super::*;
+use crate::{
+    NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN, NEOVM_STACK_ITEM_TYPE_BUFFER,
+    NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
+    NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
+    NEOVM_STACK_ITEM_TYPE_STRUCT,
+};
 
 #[inline]
 pub(crate) fn peek_item(stack: &[StackValue]) -> Result<StackValue, String> {
@@ -268,7 +274,14 @@ pub(crate) fn convert_value(
 ) -> Result<StackValue, String> {
     // Validate target type first, even for Null
     match kind {
-        0x20 | 0x21 | 0x28 | 0x30 | 0x40 | 0x41 | 0x48 | 0x60 => {}
+        NEOVM_STACK_ITEM_TYPE_BOOLEAN
+        | NEOVM_STACK_ITEM_TYPE_INTEGER
+        | NEOVM_STACK_ITEM_TYPE_BYTESTRING
+        | NEOVM_STACK_ITEM_TYPE_BUFFER
+        | NEOVM_STACK_ITEM_TYPE_ARRAY
+        | NEOVM_STACK_ITEM_TYPE_STRUCT
+        | NEOVM_STACK_ITEM_TYPE_MAP
+        | NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => {}
         _ => return Err(format!("unsupported CONVERT target 0x{kind:02x}")),
     }
 
@@ -277,8 +290,8 @@ pub(crate) fn convert_value(
     }
 
     match kind {
-        0x20 => Ok(StackValue::Boolean(boolean_value(&value)?)),
-        0x21 => Ok(match value {
+        NEOVM_STACK_ITEM_TYPE_BOOLEAN => Ok(StackValue::Boolean(boolean_value(&value)?)),
+        NEOVM_STACK_ITEM_TYPE_INTEGER => Ok(match value {
             StackValue::Integer(value) => StackValue::Integer(value),
             StackValue::Boolean(value) => StackValue::Integer(if value { 1 } else { 0 }),
             StackValue::ByteString(bytes) | StackValue::BigInteger(bytes) => numeric_result_bigint(
@@ -291,7 +304,7 @@ pub(crate) fn convert_value(
             )?,
             other => return Err(format!("unsupported CONVERT source for Integer: {other:?}")),
         }),
-        0x28 => Ok(match value {
+        NEOVM_STACK_ITEM_TYPE_BYTESTRING => Ok(match value {
             StackValue::ByteString(bytes) => StackValue::ByteString(bytes),
             StackValue::Buffer(_, bytes) => StackValue::ByteString(bytes),
             StackValue::Integer(value) => StackValue::ByteString(encode_integer(value)),
@@ -303,7 +316,7 @@ pub(crate) fn convert_value(
                 ))
             }
         }),
-        0x30 => Ok(match value {
+        NEOVM_STACK_ITEM_TYPE_BUFFER => Ok(match value {
             StackValue::ByteString(bytes) => ids.buffer(bytes),
             StackValue::Buffer(_, _) => value,
             StackValue::Integer(value) => ids.buffer(encode_integer(value)),
@@ -311,21 +324,21 @@ pub(crate) fn convert_value(
             StackValue::Boolean(value) => ids.buffer(vec![if value { 1 } else { 0 }]),
             other => return Err(format!("unsupported CONVERT source for Buffer: {other:?}")),
         }),
-        0x40 => Ok(match value {
+        NEOVM_STACK_ITEM_TYPE_ARRAY => Ok(match value {
             StackValue::Array(_, _) => value,
             StackValue::Struct(_, items) => ids.array(items),
             other => return Err(format!("unsupported CONVERT source for Array: {other:?}")),
         }),
-        0x41 => Ok(match value {
+        NEOVM_STACK_ITEM_TYPE_STRUCT => Ok(match value {
             StackValue::Struct(_, _) => value,
             StackValue::Array(_, items) => ids.r#struct(items),
             other => return Err(format!("unsupported CONVERT source for Struct: {other:?}")),
         }),
-        0x48 => Ok(match value {
+        NEOVM_STACK_ITEM_TYPE_MAP => Ok(match value {
             StackValue::Map(_, _) => value,
             other => return Err(format!("unsupported CONVERT source for Map: {other:?}")),
         }),
-        0x60 => Ok(match value {
+        NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => Ok(match value {
             StackValue::Interop(_) => value,
             other => return Err(format!("unsupported CONVERT source for Interop: {other:?}")),
         }),

@@ -29,6 +29,10 @@ pub const COMPACT_TAG_BUFFER: u8 = 10;
 /// Compact pointer tag used by generated RISC-V runtime helpers.
 pub const COMPACT_TAG_POINTER: u8 = 11;
 
+/// NeoVM `StackItemType.Any`.
+pub const NEOVM_STACK_ITEM_TYPE_ANY: u8 = 0x00;
+/// NeoVM `StackItemType.Pointer`.
+pub const NEOVM_STACK_ITEM_TYPE_POINTER: u8 = 0x10;
 /// NeoVM `StackItemType.Boolean`.
 pub const NEOVM_STACK_ITEM_TYPE_BOOLEAN: u8 = 0x20;
 /// NeoVM `StackItemType.Integer`.
@@ -43,6 +47,8 @@ pub const NEOVM_STACK_ITEM_TYPE_ARRAY: u8 = 0x40;
 pub const NEOVM_STACK_ITEM_TYPE_STRUCT: u8 = 0x41;
 /// NeoVM `StackItemType.Map`.
 pub const NEOVM_STACK_ITEM_TYPE_MAP: u8 = 0x48;
+/// NeoVM `StackItemType.InteropInterface`.
+pub const NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE: u8 = 0x60;
 
 /// Normalize NeoVM StackItemType tags and compact runtime tags into one compact tag space.
 #[must_use]
@@ -55,6 +61,8 @@ pub fn normalize_stack_item_type_tag(type_tag: u8) -> u8 {
         NEOVM_STACK_ITEM_TYPE_ARRAY => COMPACT_TAG_ARRAY,
         NEOVM_STACK_ITEM_TYPE_STRUCT => COMPACT_TAG_STRUCT,
         NEOVM_STACK_ITEM_TYPE_MAP => COMPACT_TAG_MAP,
+        NEOVM_STACK_ITEM_TYPE_POINTER => COMPACT_TAG_POINTER,
+        NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => COMPACT_TAG_INTEROP,
         other => other,
     }
 }
