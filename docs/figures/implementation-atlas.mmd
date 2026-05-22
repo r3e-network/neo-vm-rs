@@ -1,0 +1,36 @@
+flowchart TB
+    N1["1. neo-vm-rs: Shared VM core; 55 source files, 389 public symbols, 66 tests, 6 deps"]
+    N2["2. Why it exists: Canonical Rust implementation of NeoVM 3.9.x semantics shared by RISC-V and zkVM paths."]
+    N3["3. Source entrypoints: src/lib.rs (0 API/0 tests) | src/abi/stack_value.rs (59 API/13 tests) | src/interpreter/state.rs (37 API/0 tests) | src/interpreter/helpers/values.rs (36 API/0 tests)"]
+    N4["4. Core types: VmState | BackendKind | ExecutionResult | StackValue +13"]
+    N5["5. Core functions: encode_stack_result | decode_stack_result_into | decode_stack_result | encode_stack +274"]
+    N6["6. Modules/exports: src/abi/mod.rs: mod callback_codec | src/abi/mod.rs: mod execution | src/abi/mod.rs: mod fast_codec | src/abi/mod.rs: mod result_codec | src/abi/mod.rs: mod stack_value | +50"]
+    N7["7. Runtime path: Load script | Decode OpCode | Execute semantics | Invoke host syscall | Return VM result"]
+    N8["8. Data path: bytecode + stack | shared runtime | state transition | execution evidence"]
+    N9["9. Dependency boundary: runtime 4, test 2, build 0, internal 0, external runtime 4"]
+    N10["10. Test evidence: src/abi/stack_value.rs (13 tests) | src/abi/fast_codec.rs (8 tests) | tests/runtime_opcode_ops.rs (6 tests) | tests/source_layout.rs (5 tests) | tests/shared_semantics.rs (5 tests) | +12"]
+    N11["11. Outputs/consumers: halt/fault result | final stack | gas/accounting evidence -> neo-riscv-vm | neo-zkvm | Neo N4 execution core"]
+    N12["12. Before changing it: Keep the API table, test table, dependency table, workflow, and dataflow diagrams aligned with source."]
+    N1 --> N2
+    N1 --> N3
+    N1 --> N4
+    N1 --> N5
+    N1 --> N6
+    N1 --> N7
+    N1 --> N8
+    N1 --> N9
+    N1 --> N10
+    N1 --> N11
+    N1 --> N12
+    N2 -. related .-> N3
+    N3 -. related .-> N4
+    N4 -. related .-> N5
+    N5 -. related .-> N6
+    N6 -. related .-> N7
+    N7 -. related .-> N8
+    N8 -. related .-> N9
+    N9 -. related .-> N10
+    N10 -. related .-> N11
+    N11 -. related .-> N12
+    classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
+    class N1 crate

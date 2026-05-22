@@ -1,14 +1,24 @@
-flowchart LR
-    N1["职责边界: NeoVM 3.9.x 语义的 Rust 共享核心，供 RISC-V 与 zkVM 路径复用。"]
-    N2["核心原则: 解码标准操作码 | 执行栈与状态语义 | 暴露可复用运行时 API"]
-    N3["输入契约: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
-    N4["状态与产物: halt/fault 结果 | 最终栈 | gas/计费证据"]
-    N5["集成方式: neo-riscv-vm | neo-zkvm | Neo N4 执行核心"]
-    N6["维护规则: 保持边界小、语义确定、测试可复现。"]
+flowchart TB
+    N1["1. 职责边界: NeoVM 3.9.x 语义的 Rust 共享核心，供 RISC-V 与 zkVM 路径复用。"]
+    N2["2. 核心不变量: 解码标准操作码 | 执行栈与状态语义 | 暴露可复用运行时 API"]
+    N3["3. 输入必须被约束: NeoVM 字节码 | 初始栈 | 系统调用宿主回调"]
+    N4["4. 输出必须可验证: halt/fault 结果 | 最终栈 | gas/计费证据"]
+    N5["5. 源码证据: 55 个源码文件，389 个公开符号，66 个测试，6 个依赖"]
+    N6["6. 测试证据: src/abi/stack_value.rs（13 个测试） | src/abi/fast_codec.rs（8 个测试） | tests/runtime_opcode_ops.rs（6 个测试） | tests/source_layout.rs（5 个测试） | tests/shared_semantics.rs（5 个测试） | +12"]
+    N7["7. 依赖原则: 运行时 4，测试 2，构建 0，内部 0，外部运行时 4"]
+    N8["8. 维护规则: 边界要小，语义要确定，测试要可复现，图和文档要随源码更新。"]
     N1 --> N2
-    N2 --> N3
-    N3 --> N4
-    N4 --> N5
-    N5 --> N6
+    N1 --> N3
+    N1 --> N4
+    N1 --> N5
+    N1 --> N6
+    N1 --> N7
+    N1 --> N8
+    N2 -. related .-> N3
+    N3 -. related .-> N4
+    N4 -. related .-> N5
+    N5 -. related .-> N6
+    N6 -. related .-> N7
+    N7 -. related .-> N8
     classDef crate fill:#101f2d,stroke:#38d978,color:#f6fbff
-    class N3 crate
+    class N4 crate
