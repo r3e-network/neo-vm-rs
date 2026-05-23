@@ -171,6 +171,33 @@ pub(crate) fn to_abi_value(value: &StackValue) -> AbiStackValue {
     }
 }
 
+#[inline]
+pub(crate) fn into_abi_value(value: StackValue) -> AbiStackValue {
+    match value {
+        StackValue::Integer(value) => AbiStackValue::Integer(value),
+        StackValue::BigInteger(value) => AbiStackValue::BigInteger(value),
+        StackValue::ByteString(value) => AbiStackValue::ByteString(value),
+        StackValue::Boolean(value) => AbiStackValue::Boolean(value),
+        StackValue::Pointer(value) => AbiStackValue::Pointer(value as i64),
+        StackValue::Array(_, items) => {
+            AbiStackValue::Array(items.into_iter().map(into_abi_value).collect())
+        }
+        StackValue::Struct(_, items) => {
+            AbiStackValue::Struct(items.into_iter().map(into_abi_value).collect())
+        }
+        StackValue::Map(_, items) => AbiStackValue::Map(
+            items
+                .into_iter()
+                .map(|(key, value)| (into_abi_value(key), into_abi_value(value)))
+                .collect(),
+        ),
+        StackValue::Buffer(_, bytes) => AbiStackValue::Buffer(bytes),
+        StackValue::Interop(handle) => AbiStackValue::Interop(handle),
+        StackValue::Iterator(handle) => AbiStackValue::Iterator(handle),
+        StackValue::Null => AbiStackValue::Null,
+    }
+}
+
 pub(crate) fn structurally_equal(left: &StackValue, right: &StackValue) -> bool {
     match (left, right) {
         (StackValue::Integer(l), StackValue::Integer(r)) => l == r,

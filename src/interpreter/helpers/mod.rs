@@ -1,5 +1,5 @@
-use super::runtime_types::{
-    structurally_equal, to_abi_stack, to_abi_value, CompoundIds, StackValue,
+pub(crate) use super::runtime_types::{
+    into_abi_value, structurally_equal, to_abi_stack, to_abi_value, CompoundIds, StackValue,
 };
 use crate::{
     STACK_VALUE_CODEC_TAG_ARRAY, STACK_VALUE_CODEC_TAG_BIG_INTEGER, STACK_VALUE_CODEC_TAG_BOOLEAN,
@@ -50,7 +50,6 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use num_bigint::BigInt;
 
 mod bridge;
 mod retained;

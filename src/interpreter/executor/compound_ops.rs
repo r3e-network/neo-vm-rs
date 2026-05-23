@@ -6,8 +6,9 @@ use super::super::runtime_types::{
 use super::super::state::{remember_consumed_mutation, PendingException, TryStack, MAX_STACK_SIZE};
 use super::control::Dispatch;
 use crate::{
-    NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
-    NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
+    semantics::collections as collection_rules, NEOVM_STACK_ITEM_TYPE_ANY,
+    NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN, NEOVM_STACK_ITEM_TYPE_BUFFER,
+    NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
     NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
     NEOVM_STACK_ITEM_TYPE_POINTER, NEOVM_STACK_ITEM_TYPE_STRUCT,
 };
@@ -175,50 +176,15 @@ pub(super) fn execute(
         }
         SIZE => {
             let item = pop_item(stack)?;
-            let size = match item {
-                StackValue::ByteString(bytes) => bytes.len() as i64,
-                StackValue::Integer(value) => encode_integer(value).len() as i64,
-                StackValue::BigInteger(bytes) => bytes.len() as i64,
-                StackValue::Boolean(_) => 1,
-                StackValue::Array(_, items) => items.len() as i64,
-                StackValue::Struct(_, items) => items.len() as i64,
-                StackValue::Map(_, items) => items.len() as i64,
-                StackValue::Buffer(_, bytes) => bytes.len() as i64,
-                StackValue::Null
-                | StackValue::Pointer(_)
-                | StackValue::Interop(_)
-                | StackValue::Iterator(_) => return Err("SIZE expects a collection".to_string()),
-            };
+            let size = collection_rules::size(&to_abi_value(&item))
+                .map_err(|_| "SIZE expects a collection".to_string())?;
             stack.push(StackValue::Integer(size));
         }
         HASKEY => {
             let key = pop_item(stack)?;
             let item = pop_item(stack)?;
-            let has_key = match item {
-                StackValue::ByteString(bytes) => {
-                    let index = integer_value_for_collection_index(&key)?;
-                    index >= 0 && (index as usize) < bytes.len()
-                }
-                StackValue::Buffer(_, bytes) => {
-                    let index = integer_value_for_collection_index(&key)?;
-                    index >= 0 && (index as usize) < bytes.len()
-                }
-                StackValue::Array(_, items) => {
-                    let index = integer_value_for_collection_index(&key)?;
-                    index >= 0 && (index as usize) < items.len()
-                }
-                StackValue::Struct(_, items) => {
-                    let index = integer_value_for_collection_index(&key)?;
-                    index >= 0 && (index as usize) < items.len()
-                }
-                StackValue::Map(_, items) => {
-                    validate_map_key(&key)?;
-                    items
-                        .iter()
-                        .any(|(candidate, _)| primitive_key_equals(candidate, &key))
-                }
-                _ => return Err("HASKEY expects an array, buffer, or map".to_string()),
-            };
+            let has_key = collection_rules::has_key(&to_abi_value(&item), &to_abi_value(&key))
+                .map_err(|_| "HASKEY expects an array, buffer, or map".to_string())?;
             stack.push(StackValue::Boolean(has_key));
         }
         KEYS => {
@@ -291,97 +257,73 @@ pub(super) fn execute(
             }
         }
         PICKITEM => {
-            let pick_result =
-                (|| -> Result<(), String> {
-                    let key_or_index = pop_item(stack)?;
-                    let item = pop_item(stack)?;
-                    match item {
-                        StackValue::Map(_, items) => {
-                            // Map key can be any primitive type
-                            validate_map_key(&key_or_index)?;
-                            let value = items
-                                .iter()
-                                .find(|(candidate, _)| {
-                                    primitive_key_equals(candidate, &key_or_index)
-                                })
-                                .map(|(_, value)| value.clone())
-                                .ok_or_else(|| "key not found for PICKITEM".to_string())?;
-                            stack.push(value);
-                        }
-                        _ => {
-                            // Array, Struct, Buffer, ByteString and Integer-like values:
-                            // key must be an integer index. NeoVM treats Integer as its
-                            // little-endian signed byte representation for PICKITEM; old
-                            // mainnet contracts rely on this for integer payload routing.
-                            let index = match key_or_index {
-                                StackValue::Integer(v) if v >= 0 => v as usize,
-                                StackValue::Boolean(v) => {
-                                    if v {
-                                        1
-                                    } else {
-                                        0
-                                    }
+            let pick_result = (|| -> Result<(), String> {
+                let key_or_index = pop_item(stack)?;
+                let item = pop_item(stack)?;
+                match item {
+                    StackValue::Map(_, items) => {
+                        // Map key can be any primitive type
+                        validate_map_key(&key_or_index)?;
+                        let value = items
+                            .iter()
+                            .find(|(candidate, _)| primitive_key_equals(candidate, &key_or_index))
+                            .map(|(_, value)| value.clone())
+                            .ok_or_else(|| "key not found for PICKITEM".to_string())?;
+                        stack.push(value);
+                    }
+                    StackValue::ByteString(_)
+                    | StackValue::Buffer(_, _)
+                    | StackValue::Integer(_)
+                    | StackValue::BigInteger(_)
+                    | StackValue::Boolean(_) => {
+                        let value = collection_rules::pick_item(
+                            &to_abi_value(&item),
+                            &to_abi_value(&key_or_index),
+                        )
+                        .map_err(|_| "index out of range for PICKITEM".to_string())?;
+                        stack.push(ids.import_abi(value));
+                    }
+                    _ => {
+                        // Array and Struct preserve interpreter object identity when
+                        // a compound value is picked from them.
+                        let index = match key_or_index {
+                            StackValue::Integer(v) if v >= 0 => v as usize,
+                            StackValue::Boolean(v) => {
+                                if v {
+                                    1
+                                } else {
+                                    0
                                 }
-                                StackValue::Null => 0,
-                                _ => {
-                                    return Err(
-                                        "PICKITEM index must be a non-negative integer".to_string()
-                                    )
+                            }
+                            StackValue::Null => 0,
+                            _ => {
+                                return Err(
+                                    "PICKITEM index must be a non-negative integer".to_string()
+                                )
+                            }
+                        };
+                        match item {
+                            StackValue::Array(_, items) | StackValue::Struct(_, items) => {
+                                let value = items
+                                    .get(index)
+                                    .cloned()
+                                    .ok_or_else(|| "index out of range for PICKITEM".to_string())?;
+                                if cfg!(target_arch = "riscv32") {
+                                    core::mem::forget(items);
                                 }
-                            };
-                            match item {
-                                StackValue::Array(_, items) | StackValue::Struct(_, items) => {
-                                    let value = items.get(index).cloned().ok_or_else(|| {
-                                        "index out of range for PICKITEM".to_string()
-                                    })?;
-                                    if cfg!(target_arch = "riscv32") {
-                                        core::mem::forget(items);
-                                    }
-                                    stack.push(value);
-                                }
-                                StackValue::Buffer(_, bytes) => {
-                                    let value = bytes.get(index).copied().ok_or_else(|| {
-                                        "index out of range for PICKITEM".to_string()
-                                    })?;
-                                    stack.push(StackValue::Integer(i64::from(value)));
-                                }
-                                StackValue::ByteString(bytes) => {
-                                    let value = bytes.get(index).copied().ok_or_else(|| {
-                                        "index out of range for PICKITEM".to_string()
-                                    })?;
-                                    stack.push(StackValue::Integer(i64::from(value)));
-                                }
-                                StackValue::Integer(value) => {
-                                    let bytes = encode_integer(value);
-                                    let value = bytes.get(index).copied().ok_or_else(|| {
-                                        "index out of range for PICKITEM".to_string()
-                                    })?;
-                                    stack.push(StackValue::Integer(i64::from(value)));
-                                }
-                                StackValue::Boolean(value) => {
-                                    let bytes = [u8::from(value)];
-                                    let value = bytes.get(index).copied().ok_or_else(|| {
-                                        "index out of range for PICKITEM".to_string()
-                                    })?;
-                                    stack.push(StackValue::Integer(i64::from(value)));
-                                }
-                                StackValue::BigInteger(bytes) => {
-                                    let value = bytes.get(index).copied().ok_or_else(|| {
-                                        "index out of range for PICKITEM".to_string()
-                                    })?;
-                                    stack.push(StackValue::Integer(i64::from(value)));
-                                }
-                                _ => {
-                                    return Err(
-                                        "PICKITEM expects an array, map, byte string, or integer"
-                                            .to_string(),
-                                    )
-                                }
+                                stack.push(value);
+                            }
+                            _ => {
+                                return Err(
+                                    "PICKITEM expects an array, map, byte string, or integer"
+                                        .to_string(),
+                                )
                             }
                         }
                     }
-                    Ok(())
-                })();
+                }
+                Ok(())
+            })();
             if let Err(error) = pick_result {
                 if try_frames.is_empty() {
                     return Err(error);

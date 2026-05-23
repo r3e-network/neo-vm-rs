@@ -1,6 +1,5 @@
 use neo_vm_rs::{
-    interpret, interpret_with_stack_and_syscalls_at, ExecutionResult, OpCode, StackValue,
-    VmState,
+    interpret, interpret_with_stack_and_syscalls_at, ExecutionResult, OpCode, StackValue, VmState,
 };
 
 #[path = "interpreter_smoke/error_host.rs"]

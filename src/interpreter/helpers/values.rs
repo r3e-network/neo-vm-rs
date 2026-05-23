@@ -1,6 +1,9 @@
 use super::*;
 use crate::{
-    semantics::{collections as collection_rules, comparison as comparison_rules, numeric},
+    semantics::{
+        collections as collection_rules, comparison as comparison_rules,
+        conversion as conversion_rules, numeric,
+    },
     NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN, NEOVM_STACK_ITEM_TYPE_BUFFER,
     NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
     NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
@@ -175,40 +178,13 @@ pub(crate) fn convert_value(
     }
 
     match kind {
-        NEOVM_STACK_ITEM_TYPE_BOOLEAN => Ok(StackValue::Boolean(boolean_value(&value)?)),
-        NEOVM_STACK_ITEM_TYPE_INTEGER => Ok(match value {
-            StackValue::Integer(value) => StackValue::Integer(value),
-            StackValue::Boolean(value) => StackValue::Integer(if value { 1 } else { 0 }),
-            StackValue::ByteString(bytes) | StackValue::BigInteger(bytes) => numeric_result_bigint(
-                decode_signed_le_bytes_bigint(&bytes)?,
-                "integer size exceeds maximum",
-            )?,
-            StackValue::Buffer(_, bytes) => numeric_result_bigint(
-                decode_signed_le_bytes_bigint(&bytes)?,
-                "integer size exceeds maximum",
-            )?,
-            other => return Err(format!("unsupported CONVERT source for Integer: {other:?}")),
-        }),
-        NEOVM_STACK_ITEM_TYPE_BYTESTRING => Ok(match value {
-            StackValue::ByteString(bytes) => StackValue::ByteString(bytes),
-            StackValue::Buffer(_, bytes) => StackValue::ByteString(bytes),
-            StackValue::Integer(value) => StackValue::ByteString(encode_integer(value)),
-            StackValue::Boolean(value) => StackValue::ByteString(vec![if value { 1 } else { 0 }]),
-            StackValue::BigInteger(value) => StackValue::ByteString(value),
-            other => {
-                return Err(format!(
-                    "unsupported CONVERT source for ByteString: {other:?}"
-                ))
-            }
-        }),
-        NEOVM_STACK_ITEM_TYPE_BUFFER => Ok(match value {
-            StackValue::ByteString(bytes) => ids.buffer(bytes),
-            StackValue::Buffer(_, _) => value,
-            StackValue::Integer(value) => ids.buffer(encode_integer(value)),
-            StackValue::BigInteger(value) => ids.buffer(value),
-            StackValue::Boolean(value) => ids.buffer(vec![if value { 1 } else { 0 }]),
-            other => return Err(format!("unsupported CONVERT source for Buffer: {other:?}")),
-        }),
+        NEOVM_STACK_ITEM_TYPE_BOOLEAN
+        | NEOVM_STACK_ITEM_TYPE_INTEGER
+        | NEOVM_STACK_ITEM_TYPE_BYTESTRING
+        | NEOVM_STACK_ITEM_TYPE_BUFFER => {
+            let converted = conversion_rules::convert_value(into_abi_value(value), kind)?;
+            Ok(ids.import_abi(converted))
+        }
         NEOVM_STACK_ITEM_TYPE_ARRAY => Ok(match value {
             StackValue::Array(_, _) => value,
             StackValue::Struct(_, items) => ids.array(items),
@@ -232,16 +208,8 @@ pub(crate) fn convert_value(
 }
 
 #[inline]
-pub(crate) fn boolean_value(value: &StackValue) -> Result<bool, String> {
-    Ok(comparison_rules::boolean_value(&to_abi_value(value)))
-}
-
 pub(crate) fn decode_signed_le_bytes(bytes: &[u8]) -> Result<i64, String> {
     numeric::decode_signed_le_bytes_i64(bytes)
-}
-
-pub(crate) fn decode_signed_le_bytes_bigint(bytes: &[u8]) -> Result<BigInt, String> {
-    numeric::decode_signed_le_bytes_bigint(bytes)
 }
 
 #[inline]
@@ -293,16 +261,6 @@ pub(crate) fn stack_item_to_bytes(item: StackValue) -> Result<Vec<u8>, String> {
 
 pub(crate) fn encode_integer(value: i64) -> Vec<u8> {
     crate::abi::encode_integer(value)
-}
-
-pub(crate) fn numeric_result_bigint(
-    value: BigInt,
-    overflow_message: &str,
-) -> Result<StackValue, String> {
-    Ok(match numeric::integer_result(value, overflow_message)? {
-        numeric::IntegerResult::Small(value) => StackValue::Integer(value),
-        numeric::IntegerResult::Big(bytes) => StackValue::BigInteger(bytes),
-    })
 }
 
 /// Distinguishes short (i8, 1-byte) from long (i32, 4-byte) jump offsets.
