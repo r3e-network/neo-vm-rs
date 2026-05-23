@@ -1,7 +1,6 @@
 //! Runtime-level stack opcode adapters.
 
-use super::RuntimeStack;
-use crate::StackValue;
+use crate::{runtime::RuntimeStack, StackValue};
 
 pub fn drop_top<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let _ = runtime.pop_value();

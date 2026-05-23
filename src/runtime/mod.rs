@@ -1,5 +1,6 @@
 //! Shared NeoVM execution context used by host-specific runtimes.
 
+pub mod ops;
 mod pending_exception;
 mod try_frame;
 
@@ -7,7 +8,71 @@ use alloc::{format, string::String, string::ToString, vec, vec::Vec};
 use pending_exception::PendingException;
 use try_frame::TryFrame;
 
-use crate::{semantics::runtime::RuntimeStack, ExecutionResult, StackValue, VmState};
+use crate::{ExecutionResult, StackValue, VmState};
+
+/// Minimal stack/fault interface required by shared runtime opcode adapters.
+pub trait RuntimeStack {
+    /// Pop one value from the evaluation stack.
+    fn pop_value(&mut self) -> StackValue;
+
+    /// Push one value to the evaluation stack.
+    fn push_value(&mut self, value: StackValue);
+
+    /// Borrow the current top value mutably for in-place collection opcodes.
+    fn top_value_mut(&mut self) -> Option<&mut StackValue>;
+
+    /// Borrow the full evaluation stack.
+    fn stack_values(&self) -> &[StackValue];
+
+    /// Borrow the full evaluation stack mutably.
+    fn stack_values_mut(&mut self) -> &mut Vec<StackValue>;
+
+    /// Put the runtime into a faulted state.
+    fn fault(&mut self, message: &str);
+
+    /// Pop an integer-compatible value that fits in `i64`.
+    ///
+    /// This intentionally preserves the existing compiled-runtime behavior:
+    /// invalid generated stacks are programmer/runtime faults and panic in the
+    /// same way the previous per-runtime wrappers did.
+    fn pop_i64(&mut self) -> i64 {
+        let value = self.pop_value();
+        value
+            .to_i128()
+            .and_then(|integer| i64::try_from(integer).ok())
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected integer-compatible StackValue fitting i64, got {:?}",
+                    value
+                )
+            })
+    }
+
+    /// Push a compact integer result.
+    fn push_i64(&mut self, value: i64) {
+        self.push_value(StackValue::Integer(value));
+    }
+
+    /// Push a boolean result.
+    fn push_bool(&mut self, value: bool) {
+        self.push_value(StackValue::Boolean(value));
+    }
+
+    /// Pop a value and coerce it through NeoVM truthiness rules.
+    fn pop_bool_value(&mut self) -> bool {
+        self.pop_value().to_bool()
+    }
+}
+
+pub(crate) fn push_value_result(
+    runtime: &mut (impl RuntimeStack + ?Sized),
+    result: Result<StackValue, String>,
+) {
+    match result {
+        Ok(value) => runtime.push_value(value),
+        Err(message) => runtime.fault(&message),
+    }
+}
 
 /// Common NeoVM execution state shared by native, RISC-V, and proving runtimes.
 pub struct VmContext {

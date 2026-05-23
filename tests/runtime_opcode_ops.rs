@@ -1,5 +1,5 @@
 use neo_vm_rs::{
-    semantics::runtime::{self, RuntimeStack},
+    runtime::{ops, RuntimeStack},
     StackValue, VmContext, VmState,
 };
 
@@ -9,7 +9,7 @@ struct TestRuntime {
     fault: Option<String>,
 }
 
-impl runtime::RuntimeStack for TestRuntime {
+impl RuntimeStack for TestRuntime {
     fn pop_value(&mut self) -> StackValue {
         self.stack.pop().expect("test stack underflow")
     }
@@ -57,9 +57,9 @@ fn shared_stack_and_byte_opcode_apis_do_not_require_context_methods() {
 
     ctx.push_value(StackValue::Integer(1));
     ctx.push_value(StackValue::Integer(2));
-    runtime::stack::dup(&mut ctx);
-    runtime::stack::swap(&mut ctx);
-    runtime::stack::depth(&mut ctx);
+    ops::stack::dup(&mut ctx);
+    ops::stack::swap(&mut ctx);
+    ops::stack::depth(&mut ctx);
 
     assert_eq!(ctx.pop_value(), StackValue::Integer(3));
     assert_eq!(ctx.pop_value(), StackValue::Integer(2));
@@ -68,7 +68,7 @@ fn shared_stack_and_byte_opcode_apis_do_not_require_context_methods() {
 
     ctx.push_value(StackValue::ByteString(b"neo".to_vec()));
     ctx.push_value(StackValue::Buffer(b"n4".to_vec()));
-    runtime::byte_ops::cat(&mut ctx);
+    ops::bytes::cat(&mut ctx);
 
     assert_eq!(ctx.pop_value(), StackValue::ByteString(b"neon4".to_vec()));
 }
@@ -80,7 +80,7 @@ fn runtime_arithmetic_ops_own_stack_pop_push_shape() {
         fault: None,
     };
 
-    runtime::arithmetic::div(&mut rt);
+    ops::arithmetic::div(&mut rt);
 
     assert_eq!(rt.stack, vec![StackValue::Integer(3)]);
     assert_eq!(rt.fault, None);
@@ -93,10 +93,10 @@ fn runtime_collection_ops_preserve_in_place_mutation_shape() {
         fault: None,
     };
 
-    runtime::collections::append(&mut rt);
+    ops::collections::append(&mut rt);
     rt.stack.push(StackValue::Integer(2));
-    runtime::collections::append(&mut rt);
-    runtime::collections::size(&mut rt);
+    ops::collections::append(&mut rt);
+    ops::collections::size(&mut rt);
 
     assert_eq!(rt.stack, vec![StackValue::Integer(2)]);
     assert_eq!(rt.fault, None);
@@ -109,8 +109,8 @@ fn runtime_conversion_and_comparison_ops_share_vm_rules() {
         fault: None,
     };
 
-    runtime::conversion::convert_to(&mut rt, 0x21);
-    runtime::comparison::is_null(&mut rt);
+    ops::conversion::convert_to(&mut rt, 0x21);
+    ops::comparison::is_null(&mut rt);
 
     assert_eq!(rt.stack, vec![StackValue::Boolean(false)]);
     assert_eq!(rt.fault, None);
@@ -123,7 +123,7 @@ fn runtime_ops_report_faults_through_adapter() {
         fault: None,
     };
 
-    runtime::arithmetic::div(&mut rt);
+    ops::arithmetic::div(&mut rt);
 
     assert_eq!(rt.stack, Vec::<StackValue>::new());
     assert_eq!(rt.fault.as_deref(), Some("division by zero for DIV"));

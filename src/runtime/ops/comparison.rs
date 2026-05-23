@@ -2,7 +2,7 @@
 
 use alloc::string::String;
 
-use super::RuntimeStack;
+use crate::runtime::RuntimeStack;
 use crate::semantics::comparison as rules;
 
 pub fn equal<R: RuntimeStack + ?Sized>(runtime: &mut R) {

@@ -1,6 +1,6 @@
 //! Runtime-level byte string and buffer opcode adapters.
 
-use super::RuntimeStack;
+use crate::runtime::RuntimeStack;
 use crate::{
     byte_sequence_bytes, byte_sequence_len, concat_byte_sequences, slice_byte_sequence, StackValue,
 };

@@ -1,6 +1,6 @@
 //! Runtime stack adapters for arithmetic and bitwise opcodes.
 
-use super::{push_value_result, RuntimeStack};
+use crate::runtime::{push_value_result, RuntimeStack};
 use crate::semantics::arithmetic as rules;
 
 pub fn add<R: RuntimeStack + ?Sized>(runtime: &mut R) {

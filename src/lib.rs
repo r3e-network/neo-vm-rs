@@ -43,7 +43,7 @@ pub use interpreter::{
     last_interpreter_ip, last_result_limit, last_result_stack_len, last_result_stage,
     SyscallProvider, CALLT_MARKER, CALLT_MARKER_HI, INITIALIZER_COMPLETE_MARKER,
 };
-pub use runtime::VmContext;
+pub use runtime::{RuntimeStack, VmContext};
 pub use vm::{
     instruction_jump_target, instruction_try_targets, next_stack_item_id,
     parse_script_instructions, validate_script, validate_strict_script,

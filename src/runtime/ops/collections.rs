@@ -1,6 +1,6 @@
 //! Runtime stack adapters for collection opcodes.
 
-use super::{push_value_result, RuntimeStack};
+use crate::runtime::{push_value_result, RuntimeStack};
 use crate::{semantics::collections as rules, StackValue};
 use alloc::vec::Vec;
 

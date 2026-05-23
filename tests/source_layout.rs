@@ -21,6 +21,41 @@ fn interpreter_sources_stay_small_enough_to_review() {
 }
 
 #[test]
+fn interpreter_executor_uses_single_directory_module_root() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/interpreter");
+
+    assert!(
+        !root.join("executor.rs").exists(),
+        "executor should not be split between executor.rs and executor/; keep the module root at executor/mod.rs"
+    );
+    assert!(
+        root.join("executor").join("mod.rs").exists(),
+        "executor module root should live next to its focused opcode-group submodules"
+    );
+}
+
+#[test]
+fn runtime_opcode_adapters_live_outside_pure_semantics_tree() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let semantics_mod = read_workspace_source("src/semantics/mod.rs");
+
+    assert!(
+        !root.join("src/semantics/runtime").exists(),
+        "runtime stack adapters should live under src/runtime/ops, not under pure semantics"
+    );
+    assert!(
+        !semantics_mod.contains("pub mod runtime"),
+        "semantics should expose pure value rules only; stack adapters belong to runtime::ops"
+    );
+    assert!(
+        root.join("src/runtime/ops/arithmetic.rs").exists()
+            && root.join("src/runtime/ops/collections.rs").exists()
+            && root.join("src/runtime/ops/stack.rs").exists(),
+        "runtime opcode adapters should be grouped under src/runtime/ops"
+    );
+}
+
+#[test]
 fn interpreter_opcode_aliases_come_from_canonical_opcode_enum() {
     let source = read_workspace_source("src/interpreter/opcodes.rs");
 
