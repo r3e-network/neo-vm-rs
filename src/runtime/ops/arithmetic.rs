@@ -1,92 +1,35 @@
 //! Runtime stack adapters for arithmetic and bitwise opcodes.
 
-use super::apply_or_fault;
 use crate::runtime::{push_value_result, RuntimeStack};
-use crate::semantics::{arithmetic as rules, stack_shape};
+use crate::semantics::arithmetic as rules;
 
-pub fn add<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::add_values)
-    });
-}
+runtime_binary_value_op!(add, rules::add_values);
 
-pub fn sub<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::sub_values)
-    });
-}
+runtime_binary_value_op!(sub, rules::sub_values);
 
-pub fn mul<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::mul_values)
-    });
-}
+runtime_binary_value_op!(mul, rules::mul_values);
 
-pub fn div<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::div_values)
-    });
-}
+runtime_binary_value_op!(div, rules::div_values);
 
-pub fn modulo<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::modulo_values)
-    });
-}
+runtime_binary_value_op!(modulo, rules::modulo_values);
 
-pub fn negate<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::unary_value(stack, rules::negate_value)
-    });
-}
+runtime_unary_value_op!(negate, rules::negate_value);
 
-pub fn abs<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::unary_value(stack, rules::abs_value)
-    });
-}
+runtime_unary_value_op!(abs, rules::abs_value);
 
-pub fn sign<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::unary_value(stack, rules::sign_value)
-    });
-}
+runtime_unary_value_op!(sign, rules::sign_value);
 
-pub fn max<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::max_values)
-    });
-}
+runtime_binary_value_op!(max, rules::max_values);
 
-pub fn min<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::min_values)
-    });
-}
+runtime_binary_value_op!(min, rules::min_values);
 
-pub fn pow<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::pow_values)
-    });
-}
+runtime_binary_value_op!(pow, rules::pow_values);
 
-pub fn sqrt<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::unary_value(stack, rules::sqrt_value)
-    });
-}
+runtime_unary_value_op!(sqrt, rules::sqrt_value);
 
-pub fn modmul<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::ternary_value(stack, rules::modmul_values)
-    });
-}
+runtime_ternary_value_op!(modmul, rules::modmul_values);
 
-pub fn modpow<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::ternary_value(stack, rules::modpow_values)
-    });
-}
+runtime_ternary_value_op!(modpow, rules::modpow_values);
 
 pub fn shl<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let shift = runtime.pop_i64();
@@ -100,44 +43,16 @@ pub fn shr<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     push_value_result(runtime, rules::shr_value(value, shift));
 }
 
-pub fn bitwise_and<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::bitwise_and_values)
-    });
-}
+runtime_binary_value_op!(bitwise_and, rules::bitwise_and_values);
 
-pub fn bitwise_or<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::bitwise_or_values)
-    });
-}
+runtime_binary_value_op!(bitwise_or, rules::bitwise_or_values);
 
-pub fn bitwise_xor<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::binary_value(stack, rules::bitwise_xor_values)
-    });
-}
+runtime_binary_value_op!(bitwise_xor, rules::bitwise_xor_values);
 
-pub fn bitwise_not<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::unary_value(stack, rules::invert_value)
-    });
-}
+runtime_unary_value_op!(bitwise_not, rules::invert_value);
 
-pub fn inc<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::unary_value(stack, rules::inc_value)
-    });
-}
+runtime_unary_value_op!(inc, rules::inc_value);
 
-pub fn dec<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::unary_value(stack, rules::dec_value)
-    });
-}
+runtime_unary_value_op!(dec, rules::dec_value);
 
-pub fn within<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    apply_or_fault(runtime, |stack| {
-        stack_shape::ternary_bool(stack, rules::within_values)
-    });
-}
+runtime_ternary_bool_op!(within, rules::within_values);

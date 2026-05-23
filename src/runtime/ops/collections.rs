@@ -1,7 +1,10 @@
 //! Runtime stack adapters for collection opcodes.
 
-use crate::runtime::{push_value_result, RuntimeStack};
 use crate::semantics::collections as rules;
+use crate::{
+    runtime::{push_value_result, RuntimeStack},
+    StackValue,
+};
 use alloc::vec::Vec;
 
 pub fn new_array_0<R: RuntimeStack + ?Sized>(runtime: &mut R) {
@@ -107,19 +110,10 @@ pub fn values<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 }
 
 pub fn pack<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let count = runtime.pop_i64();
-    let count = match rules::non_negative_count(count, "PACK: negative count") {
-        Ok(count) => count,
-        Err(message) => {
-            runtime.fault(&message);
-            return;
-        }
+    let Some(count) = pop_non_negative_count(runtime, "PACK: negative count") else {
+        return;
     };
-    let mut items = Vec::with_capacity(count);
-    for _ in 0..count {
-        items.push(runtime.pop_value());
-    }
-    items.reverse();
+    let items = pop_values(runtime, count);
     runtime.push_value(rules::pack(items));
 }
 
@@ -167,31 +161,47 @@ pub fn pop_item<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 }
 
 pub fn pack_struct<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let count = runtime.pop_i64();
-    let count = match rules::non_negative_count(count, "PACKSTRUCT: negative count") {
-        Ok(count) => count,
+    let Some(count) = pop_non_negative_count(runtime, "PACKSTRUCT: negative count") else {
+        return;
+    };
+    let items = pop_values(runtime, count);
+    runtime.push_value(rules::pack_struct(items));
+}
+
+pub fn pack_map<R: RuntimeStack + ?Sized>(runtime: &mut R) {
+    let Some(count) = pop_non_negative_count(runtime, "PACKMAP: negative count") else {
+        return;
+    };
+    let pairs = pop_pairs(runtime, count);
+    runtime.push_value(rules::pack_map(pairs));
+}
+
+fn pop_non_negative_count<R: RuntimeStack + ?Sized>(
+    runtime: &mut R,
+    error: &'static str,
+) -> Option<usize> {
+    match rules::non_negative_count(runtime.pop_i64(), error) {
+        Ok(count) => Some(count),
         Err(message) => {
             runtime.fault(&message);
-            return;
+            None
         }
-    };
+    }
+}
+
+fn pop_values<R: RuntimeStack + ?Sized>(runtime: &mut R, count: usize) -> Vec<StackValue> {
     let mut items = Vec::with_capacity(count);
     for _ in 0..count {
         items.push(runtime.pop_value());
     }
     items.reverse();
-    runtime.push_value(rules::pack_struct(items));
+    items
 }
 
-pub fn pack_map<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let count = runtime.pop_i64();
-    let count = match rules::non_negative_count(count, "PACKMAP: negative count") {
-        Ok(count) => count,
-        Err(message) => {
-            runtime.fault(&message);
-            return;
-        }
-    };
+fn pop_pairs<R: RuntimeStack + ?Sized>(
+    runtime: &mut R,
+    count: usize,
+) -> Vec<(StackValue, StackValue)> {
     let mut pairs = Vec::with_capacity(count);
     for _ in 0..count {
         let value = runtime.pop_value();
@@ -199,5 +209,5 @@ pub fn pack_map<R: RuntimeStack + ?Sized>(runtime: &mut R) {
         pairs.push((key, value));
     }
     pairs.reverse();
-    runtime.push_value(rules::pack_map(pairs));
+    pairs
 }

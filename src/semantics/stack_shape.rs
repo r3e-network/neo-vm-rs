@@ -56,12 +56,10 @@ where
     stack.push_value(StackValue::Boolean(op(&value)?))
 }
 
-pub(crate) fn binary_bool<S>(
-    stack: &mut S,
-    op: fn(&StackValue, &StackValue) -> Result<bool, String>,
-) -> Result<(), String>
+pub(crate) fn binary_bool<S, F>(stack: &mut S, op: F) -> Result<(), String>
 where
     S: ValueStack + ?Sized,
+    F: FnOnce(&StackValue, &StackValue) -> Result<bool, String>,
 {
     let right = stack.pop_value()?;
     let left = stack.pop_value()?;

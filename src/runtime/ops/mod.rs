@@ -9,6 +9,88 @@ use alloc::string::String;
 
 use crate::{runtime::RuntimeStack, semantics::stack_shape::ValueStack, StackValue};
 
+macro_rules! runtime_unary_value_op {
+    ($name:ident, $rule:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::unary_value(stack, $rule)
+            });
+        }
+    };
+}
+
+macro_rules! runtime_binary_value_op {
+    ($name:ident, $rule:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::binary_value(stack, $rule)
+            });
+        }
+    };
+}
+
+macro_rules! runtime_ternary_value_op {
+    ($name:ident, $rule:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::ternary_value(stack, $rule)
+            });
+        }
+    };
+}
+
+macro_rules! runtime_unary_bool_op {
+    ($name:ident, $rule:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::unary_bool(stack, $rule)
+            });
+        }
+    };
+}
+
+macro_rules! runtime_binary_bool_op {
+    ($name:ident, $rule:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::binary_bool(stack, $rule)
+            });
+        }
+    };
+}
+
+macro_rules! runtime_binary_bool_value_op {
+    ($name:ident, $rule:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::binary_bool(stack, |left, right| {
+                    Ok($rule(left, right))
+                })
+            });
+        }
+    };
+}
+
+macro_rules! runtime_ternary_bool_op {
+    ($name:ident, $rule:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::ternary_bool(stack, $rule)
+            });
+        }
+    };
+}
+
+macro_rules! runtime_bool_binary_op {
+    ($name:ident, $rule:path, $truthy:path) => {
+        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
+            super::apply_or_fault(runtime, |stack| {
+                $crate::semantics::stack_shape::bool_binary(stack, $rule, $truthy)
+            });
+        }
+    };
+}
+
 pub mod arithmetic;
 pub mod bytes;
 pub mod collections;
