@@ -67,41 +67,14 @@ where
 }
 
 fn integer_value_for_ordering(value: &StackValue) -> Result<BigInt, String> {
-    match value {
-        StackValue::Integer(value) => Ok(BigInt::from(*value)),
-        StackValue::BigInteger(value) | StackValue::ByteString(value) => {
-            numeric::decode_signed_le_bytes_bigint(value)
-        }
-        StackValue::Boolean(value) => Ok(BigInt::from(if *value { 1 } else { 0 })),
-        StackValue::Null
-        | StackValue::Buffer(_)
-        | StackValue::Pointer(_)
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
-        | StackValue::Interop(_)
-        | StackValue::Iterator(_) => Err("expected integer on stack".to_string()),
-    }
+    integer_value(value, "expected integer on stack")
 }
 
 fn integer_value_for_num_equal(value: &StackValue) -> Result<BigInt, String> {
-    match value {
-        StackValue::Integer(value) => Ok(BigInt::from(*value)),
-        StackValue::BigInteger(value) | StackValue::ByteString(value) => {
-            numeric::decode_signed_le_bytes_bigint(value)
-        }
-        StackValue::Boolean(value) => Ok(BigInt::from(if *value { 1 } else { 0 })),
-        StackValue::Null
-        | StackValue::Buffer(_)
-        | StackValue::Pointer(_)
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
-        | StackValue::Interop(_)
-        | StackValue::Iterator(_) => {
-            Err("NUMEQUAL expects primitive numeric or byte string values".to_string())
-        }
-    }
+    integer_value(
+        value,
+        "NUMEQUAL expects primitive numeric or byte string values",
+    )
 }
 
 /// Boolean AND.
@@ -122,6 +95,10 @@ pub fn nz_value(value: &StackValue) -> Result<bool, String> {
 }
 
 fn integer_value_for_nz(value: &StackValue) -> Result<BigInt, String> {
+    integer_value(value, "expected integer-compatible value")
+}
+
+fn integer_value(value: &StackValue, type_error: &'static str) -> Result<BigInt, String> {
     match value {
         StackValue::Integer(value) => Ok(BigInt::from(*value)),
         StackValue::BigInteger(value) | StackValue::ByteString(value) => {
@@ -135,7 +112,7 @@ fn integer_value_for_nz(value: &StackValue) -> Result<BigInt, String> {
         | StackValue::Struct(_)
         | StackValue::Map(_)
         | StackValue::Interop(_)
-        | StackValue::Iterator(_) => Err("expected integer-compatible value".to_string()),
+        | StackValue::Iterator(_) => Err(type_error.to_string()),
     }
 }
 

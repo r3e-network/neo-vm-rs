@@ -300,6 +300,19 @@ fn comparison_semantics_do_not_expose_ambiguous_boolean_aliases() {
 }
 
 #[test]
+fn comparison_semantics_keep_one_numeric_operand_decoder() {
+    let comparison = read_workspace_source("src/semantics/comparison.rs");
+
+    let decode_count = comparison
+        .matches("numeric::decode_signed_le_bytes_bigint(value)")
+        .count();
+    assert_eq!(
+        decode_count, 1,
+        "comparison semantics should decode primitive numeric operands through one helper, not parallel match tables"
+    );
+}
+
+#[test]
 fn vm_context_exposes_one_canonical_boundary_name_per_operation() {
     let runtime_mod = read_workspace_source("src/runtime/mod.rs");
 
