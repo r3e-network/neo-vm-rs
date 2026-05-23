@@ -17,13 +17,7 @@ use alloc::vec::Vec;
 #[inline]
 pub fn encode_stack(stack: &[StackValue]) -> Vec<u8> {
     let mut buf = Vec::with_capacity(stack.len() * 32);
-
-    // Stack length (4 bytes)
-    buf.extend_from_slice(&(stack.len() as u32).to_le_bytes());
-
-    for item in stack {
-        encode_value(item, &mut buf);
-    }
+    encode_stack_into(stack, &mut VecSink(&mut buf)).expect("Vec sink should not fail");
 
     buf
 }
@@ -34,19 +28,9 @@ pub fn encode_stack_to_slice<'a>(
     stack: &[StackValue],
     buf: &'a mut [u8],
 ) -> Result<&'a mut [u8], &'static str> {
-    // Stack length (4 bytes)
-    if buf.len() < 4 {
-        return Err("buffer too small for stack length");
-    }
-    let len_bytes = (stack.len() as u32).to_le_bytes();
-    buf[0..4].copy_from_slice(&len_bytes);
-    let mut pos = 4;
-
-    for item in stack {
-        pos = encode_value_to_slice(item, buf, pos)?;
-    }
-
-    Ok(&mut buf[..pos])
+    let mut sink = SliceSink { buf, pos: 0 };
+    encode_stack_into(stack, &mut sink)?;
+    Ok(&mut sink.buf[..sink.pos])
 }
 
 const MAX_DECODE_DEPTH: usize = 64;
@@ -71,189 +55,156 @@ pub fn decode_stack(bytes: &[u8]) -> Result<Vec<StackValue>, &'static str> {
     Ok(stack)
 }
 
-#[inline]
-fn encode_value(value: &StackValue, buf: &mut Vec<u8>) {
-    match value {
-        StackValue::Integer(i) => {
-            buf.push(STACK_VALUE_CODEC_TAG_INTEGER);
-            buf.extend_from_slice(&i.to_le_bytes());
-        }
-        StackValue::BigInteger(b) => {
-            buf.push(STACK_VALUE_CODEC_TAG_BIG_INTEGER);
-            buf.extend_from_slice(&(b.len() as u32).to_le_bytes());
-            buf.extend_from_slice(b);
-        }
-        StackValue::ByteString(b) => {
-            buf.push(STACK_VALUE_CODEC_TAG_BYTESTRING);
-            buf.extend_from_slice(&(b.len() as u32).to_le_bytes());
-            buf.extend_from_slice(b);
-        }
-        StackValue::Buffer(b) => {
-            buf.push(STACK_VALUE_CODEC_TAG_BUFFER);
-            buf.extend_from_slice(&(b.len() as u32).to_le_bytes());
-            buf.extend_from_slice(b);
-        }
-        StackValue::Boolean(b) => {
-            buf.push(STACK_VALUE_CODEC_TAG_BOOLEAN);
-            buf.push(if *b { 1 } else { 0 });
-        }
-        StackValue::Array(items) => {
-            buf.push(STACK_VALUE_CODEC_TAG_ARRAY);
-            buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
-            for item in items {
-                encode_value(item, buf);
-            }
-        }
-        StackValue::Struct(items) => {
-            buf.push(STACK_VALUE_CODEC_TAG_STRUCT);
-            buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
-            for item in items {
-                encode_value(item, buf);
-            }
-        }
-        StackValue::Map(pairs) => {
-            buf.push(STACK_VALUE_CODEC_TAG_MAP);
-            buf.extend_from_slice(&(pairs.len() as u32).to_le_bytes());
-            for (k, v) in pairs {
-                encode_value(k, buf);
-                encode_value(v, buf);
-            }
-        }
-        StackValue::Interop(h) => {
-            buf.push(STACK_VALUE_CODEC_TAG_INTEROP);
-            buf.extend_from_slice(&h.to_le_bytes());
-        }
-        StackValue::Iterator(h) => {
-            buf.push(STACK_VALUE_CODEC_TAG_ITERATOR);
-            buf.extend_from_slice(&h.to_le_bytes());
-        }
-        StackValue::Null => {
-            buf.push(STACK_VALUE_CODEC_TAG_NULL);
-        }
-        StackValue::Pointer(p) => {
-            buf.push(STACK_VALUE_CODEC_TAG_POINTER);
-            buf.extend_from_slice(&p.to_le_bytes());
-        }
+trait FastEncodeSink {
+    fn write_u8(&mut self, value: u8, error: &'static str) -> Result<(), &'static str>;
+    fn write_bytes(&mut self, bytes: &[u8], error: &'static str) -> Result<(), &'static str>;
+}
+
+struct VecSink<'a>(&'a mut Vec<u8>);
+
+impl FastEncodeSink for VecSink<'_> {
+    fn write_u8(&mut self, value: u8, _error: &'static str) -> Result<(), &'static str> {
+        self.0.push(value);
+        Ok(())
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8], _error: &'static str) -> Result<(), &'static str> {
+        self.0.extend_from_slice(bytes);
+        Ok(())
     }
 }
 
+struct SliceSink<'a> {
+    buf: &'a mut [u8],
+    pos: usize,
+}
+
+impl FastEncodeSink for SliceSink<'_> {
+    fn write_u8(&mut self, value: u8, error: &'static str) -> Result<(), &'static str> {
+        self.write_bytes(&[value], error)
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8], error: &'static str) -> Result<(), &'static str> {
+        let end = self.pos.checked_add(bytes.len()).ok_or(error)?;
+        if self.buf.len() < end {
+            return Err(error);
+        }
+        self.buf[self.pos..end].copy_from_slice(bytes);
+        self.pos = end;
+        Ok(())
+    }
+}
+
+fn encode_stack_into<S: FastEncodeSink>(
+    stack: &[StackValue],
+    sink: &mut S,
+) -> Result<(), &'static str> {
+    write_u32(
+        sink,
+        stack.len() as u32,
+        "buffer too small for stack length",
+    )?;
+    for item in stack {
+        encode_value_into(item, sink)?;
+    }
+    Ok(())
+}
+
+fn write_u32<S: FastEncodeSink>(
+    sink: &mut S,
+    value: u32,
+    error: &'static str,
+) -> Result<(), &'static str> {
+    sink.write_bytes(&value.to_le_bytes(), error)
+}
+
+fn write_i64<S: FastEncodeSink>(
+    sink: &mut S,
+    value: i64,
+    error: &'static str,
+) -> Result<(), &'static str> {
+    sink.write_bytes(&value.to_le_bytes(), error)
+}
+
+fn write_u64<S: FastEncodeSink>(
+    sink: &mut S,
+    value: u64,
+    error: &'static str,
+) -> Result<(), &'static str> {
+    sink.write_bytes(&value.to_le_bytes(), error)
+}
+
+fn write_len_prefixed_bytes<S: FastEncodeSink>(
+    sink: &mut S,
+    bytes: &[u8],
+) -> Result<(), &'static str> {
+    write_u32(sink, bytes.len() as u32, "buffer too small")?;
+    sink.write_bytes(bytes, "buffer too small")
+}
+
 #[inline]
-fn encode_value_to_slice(
+fn encode_value_into<S: FastEncodeSink>(
     value: &StackValue,
-    buf: &mut [u8],
-    mut pos: usize,
-) -> Result<usize, &'static str> {
+    sink: &mut S,
+) -> Result<(), &'static str> {
     match value {
         StackValue::Integer(i) => {
-            if buf.len() < pos + 9 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_INTEGER;
-            buf[pos + 1..pos + 9].copy_from_slice(&i.to_le_bytes());
-            Ok(pos + 9)
+            sink.write_u8(STACK_VALUE_CODEC_TAG_INTEGER, "buffer too small")?;
+            write_i64(sink, *i, "buffer too small")
         }
         StackValue::BigInteger(b) => {
-            if buf.len() < pos + 5 + b.len() {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_BIG_INTEGER;
-            buf[pos + 1..pos + 5].copy_from_slice(&(b.len() as u32).to_le_bytes());
-            buf[pos + 5..pos + 5 + b.len()].copy_from_slice(b);
-            Ok(pos + 5 + b.len())
+            sink.write_u8(STACK_VALUE_CODEC_TAG_BIG_INTEGER, "buffer too small")?;
+            write_len_prefixed_bytes(sink, b)
         }
         StackValue::ByteString(b) => {
-            if buf.len() < pos + 5 + b.len() {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_BYTESTRING;
-            buf[pos + 1..pos + 5].copy_from_slice(&(b.len() as u32).to_le_bytes());
-            buf[pos + 5..pos + 5 + b.len()].copy_from_slice(b);
-            Ok(pos + 5 + b.len())
+            sink.write_u8(STACK_VALUE_CODEC_TAG_BYTESTRING, "buffer too small")?;
+            write_len_prefixed_bytes(sink, b)
         }
         StackValue::Buffer(b) => {
-            if buf.len() < pos + 5 + b.len() {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_BUFFER;
-            buf[pos + 1..pos + 5].copy_from_slice(&(b.len() as u32).to_le_bytes());
-            buf[pos + 5..pos + 5 + b.len()].copy_from_slice(b);
-            Ok(pos + 5 + b.len())
+            sink.write_u8(STACK_VALUE_CODEC_TAG_BUFFER, "buffer too small")?;
+            write_len_prefixed_bytes(sink, b)
         }
         StackValue::Boolean(b) => {
-            if buf.len() < pos + 2 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_BOOLEAN;
-            buf[pos + 1] = if *b { 1 } else { 0 };
-            Ok(pos + 2)
+            sink.write_u8(STACK_VALUE_CODEC_TAG_BOOLEAN, "buffer too small")?;
+            sink.write_u8(u8::from(*b), "buffer too small")
         }
         StackValue::Array(items) => {
-            if buf.len() < pos + 5 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_ARRAY;
-            buf[pos + 1..pos + 5].copy_from_slice(&(items.len() as u32).to_le_bytes());
-            pos += 5;
+            sink.write_u8(STACK_VALUE_CODEC_TAG_ARRAY, "buffer too small")?;
+            write_u32(sink, items.len() as u32, "buffer too small")?;
             for item in items {
-                pos = encode_value_to_slice(item, buf, pos)?;
+                encode_value_into(item, sink)?;
             }
-            Ok(pos)
+            Ok(())
         }
         StackValue::Struct(items) => {
-            if buf.len() < pos + 5 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_STRUCT;
-            buf[pos + 1..pos + 5].copy_from_slice(&(items.len() as u32).to_le_bytes());
-            pos += 5;
+            sink.write_u8(STACK_VALUE_CODEC_TAG_STRUCT, "buffer too small")?;
+            write_u32(sink, items.len() as u32, "buffer too small")?;
             for item in items {
-                pos = encode_value_to_slice(item, buf, pos)?;
+                encode_value_into(item, sink)?;
             }
-            Ok(pos)
+            Ok(())
         }
         StackValue::Map(pairs) => {
-            if buf.len() < pos + 5 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_MAP;
-            buf[pos + 1..pos + 5].copy_from_slice(&(pairs.len() as u32).to_le_bytes());
-            pos += 5;
+            sink.write_u8(STACK_VALUE_CODEC_TAG_MAP, "buffer too small")?;
+            write_u32(sink, pairs.len() as u32, "buffer too small")?;
             for (k, v) in pairs {
-                pos = encode_value_to_slice(k, buf, pos)?;
-                pos = encode_value_to_slice(v, buf, pos)?;
+                encode_value_into(k, sink)?;
+                encode_value_into(v, sink)?;
             }
-            Ok(pos)
+            Ok(())
         }
         StackValue::Interop(h) => {
-            if buf.len() < pos + 9 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_INTEROP;
-            buf[pos + 1..pos + 9].copy_from_slice(&h.to_le_bytes());
-            Ok(pos + 9)
+            sink.write_u8(STACK_VALUE_CODEC_TAG_INTEROP, "buffer too small")?;
+            write_u64(sink, *h, "buffer too small")
         }
         StackValue::Iterator(h) => {
-            if buf.len() < pos + 9 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_ITERATOR;
-            buf[pos + 1..pos + 9].copy_from_slice(&h.to_le_bytes());
-            Ok(pos + 9)
+            sink.write_u8(STACK_VALUE_CODEC_TAG_ITERATOR, "buffer too small")?;
+            write_u64(sink, *h, "buffer too small")
         }
-        StackValue::Null => {
-            if buf.len() < pos + 1 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_NULL;
-            Ok(pos + 1)
-        }
+        StackValue::Null => sink.write_u8(STACK_VALUE_CODEC_TAG_NULL, "buffer too small"),
         StackValue::Pointer(p) => {
-            if buf.len() < pos + 9 {
-                return Err("buffer too small");
-            }
-            buf[pos] = STACK_VALUE_CODEC_TAG_POINTER;
-            buf[pos + 1..pos + 9].copy_from_slice(&p.to_le_bytes());
-            Ok(pos + 9)
+            sink.write_u8(STACK_VALUE_CODEC_TAG_POINTER, "buffer too small")?;
+            write_i64(sink, *p, "buffer too small")
         }
     }
 }

@@ -528,6 +528,33 @@ fn fast_codec_decoder_uses_local_primitive_read_helpers() {
     }
 }
 
+#[test]
+fn fast_codec_encoder_uses_one_stack_value_match() {
+    let fast_codec = read_workspace_source("src/abi/fast_codec.rs");
+
+    assert!(
+        fast_codec.contains("trait FastEncodeSink")
+            && fast_codec.contains("fn encode_value_into<S: FastEncodeSink>")
+            && fast_codec.contains("struct VecSink")
+            && fast_codec.contains("struct SliceSink"),
+        "fast_codec should encode StackValue through one shared sink abstraction for Vec and slice outputs"
+    );
+    assert!(
+        !fast_codec.contains("fn encode_value(value: &StackValue, buf: &mut Vec<u8>)"),
+        "Vec encoding should not keep a private StackValue match beside slice encoding"
+    );
+    assert!(
+        !fast_codec.contains("fn encode_value_to_slice("),
+        "slice encoding should not keep a private StackValue match beside Vec encoding"
+    );
+
+    let match_count = fast_codec.matches("match value {").count();
+    assert_eq!(
+        match_count, 1,
+        "fast_codec should have exactly one StackValue encoding match table"
+    );
+}
+
 fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
     for entry in fs::read_dir(dir).expect("interpreter directory should be readable") {
         let entry = entry.expect("interpreter entry should be readable");
