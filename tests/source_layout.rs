@@ -60,6 +60,7 @@ fn runtime_opcode_adapters_expose_only_opcode_entrypoints() {
     let runtime_stack = read_workspace_source("src/runtime/ops/stack.rs");
     let runtime_comparison = read_workspace_source("src/runtime/ops/comparison.rs");
     let runtime_conversion = read_workspace_source("src/runtime/ops/conversion.rs");
+    let runtime_mod = read_workspace_source("src/runtime/mod.rs");
 
     for helper in [
         "pub fn pick_n",
@@ -80,6 +81,11 @@ fn runtime_opcode_adapters_expose_only_opcode_entrypoints() {
             "runtime::ops should not expose speculative non-opcode helper {helper}"
         );
     }
+
+    assert!(
+        !runtime_mod.contains("fn pop_bool_value"),
+        "RuntimeStack should not expose unused boolean-pop sugar beside shared comparison semantics"
+    );
 }
 
 #[test]

@@ -57,11 +57,6 @@ pub trait RuntimeStack {
     fn push_bool(&mut self, value: bool) {
         self.push_value(StackValue::Boolean(value));
     }
-
-    /// Pop a value and coerce it through NeoVM truthiness rules.
-    fn pop_bool_value(&mut self) -> bool {
-        self.pop_value().to_bool()
-    }
 }
 
 pub(crate) fn push_value_result(
