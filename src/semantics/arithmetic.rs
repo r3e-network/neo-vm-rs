@@ -42,7 +42,14 @@ pub(crate) fn numeric_bigint(value: StackValue) -> Result<BigInt, String> {
 
 /// Bitwise inversion.
 pub fn invert_value(value: StackValue) -> Result<StackValue, String> {
-    numeric_stack_value(!numeric_bigint(value)?, "integer overflow for INVERT")
+    let value = numeric_bigint(value).map_err(|error| {
+        if error == "expected integer-compatible value" {
+            "INVERT expects an integer or boolean".to_string()
+        } else {
+            error
+        }
+    })?;
+    numeric_stack_value(!value, "integer overflow for INVERT")
 }
 
 /// Add two integer-compatible values.
