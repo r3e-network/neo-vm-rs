@@ -9,7 +9,7 @@ mod slot_ops;
 mod stack_ops;
 use super::helpers::*;
 use super::opcodes::*;
-use super::runtime_types::{to_abi_stack, to_abi_value, CompoundIds, StackValue};
+use super::runtime_types::{to_abi_value, CompoundIds, StackValue};
 use super::state::*;
 use crate::{
     semantics::comparison as comparison_rules, ExecutionResult, StackValue as AbiStackValue,
@@ -739,165 +739,37 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 break 'main_loop;
             }
             TRY => {
-                // NeoVM TRY: TRY catch_offset_i8, finally_offset_i8 (3 bytes total)
-                if ip + 3 > script.len() {
-                    pending_error = Some(PendingException::message(
-                        "truncated TRY operand".to_string(),
-                    ));
-                    continue;
-                }
-                let catch_offset = script[ip + 1] as i8;
-                let finally_offset = script[ip + 2] as i8;
-                let catch_ip = if catch_offset != 0 {
-                    (ip as isize + catch_offset as isize) as usize
-                } else {
-                    0
-                };
-                let finally_ip = if finally_offset != 0 {
-                    (ip as isize + finally_offset as isize) as usize
-                } else {
-                    0
-                };
-                if catch_ip > script.len() || finally_ip > script.len() {
-                    pending_error = Some(PendingException::message(
-                        "TRY target out of bounds".to_string(),
-                    ));
-                    continue;
-                }
-                try_frames.push(TryFrame {
-                    catch_ip,
-                    finally_ip,
-                    call_depth: call_stack.len(),
-                    caught: false,
-                    in_finally: false,
-                    end_ip: 0,
-                })?;
-                ip += 3;
+                ip = control::enter_try_short(
+                    script,
+                    ip,
+                    call_stack.len(),
+                    &mut try_frames,
+                    &mut pending_error,
+                )?;
                 continue;
             }
             ENDTRY => {
-                // ENDTRY offset_i8: end of try/catch block
-                if ip + 2 > script.len() {
-                    pending_error = Some(PendingException::message(
-                        "truncated ENDTRY operand".to_string(),
-                    ));
-                    continue;
-                }
-                let offset = script[ip + 1] as i8;
-                let target_ip = if offset != 0 {
-                    (ip as isize + offset as isize) as usize
-                } else {
-                    ip + 2
-                };
-                if let Some(frame) = try_frames.last_mut() {
-                    if frame.finally_ip != 0 && !frame.in_finally {
-                        // Save continuation IP for ENDFINALLY to use
-                        frame.end_ip = target_ip;
-                        frame.in_finally = true;
-                        ip = frame.finally_ip;
-                        continue;
-                    }
-                }
-                // No finally or already in finally — pop frame and jump
-                try_frames.pop();
-                ip = target_ip;
+                ip = control::end_try_short(script, ip, &mut try_frames, &mut pending_error);
                 continue;
             }
             TRY_L => {
-                // TRY_L: long-form TRY with i32 catch_offset, i32 finally_offset (9 bytes)
-                if ip + 9 > script.len() {
-                    pending_error = Some(PendingException::message(
-                        "truncated TRY_L operand".to_string(),
-                    ));
-                    continue;
-                }
-                let catch_offset = i32::from_le_bytes([
-                    script[ip + 1],
-                    script[ip + 2],
-                    script[ip + 3],
-                    script[ip + 4],
-                ]);
-                let finally_offset = i32::from_le_bytes([
-                    script[ip + 5],
-                    script[ip + 6],
-                    script[ip + 7],
-                    script[ip + 8],
-                ]);
-                let catch_ip = if catch_offset != 0 {
-                    (ip as isize + catch_offset as isize) as usize
-                } else {
-                    0
-                };
-                let finally_ip = if finally_offset != 0 {
-                    (ip as isize + finally_offset as isize) as usize
-                } else {
-                    0
-                };
-                if catch_ip > script.len() || finally_ip > script.len() {
-                    pending_error = Some(PendingException::message(
-                        "TRY_L target out of bounds".to_string(),
-                    ));
-                    continue;
-                }
-                try_frames.push(TryFrame {
-                    catch_ip,
-                    finally_ip,
-                    call_depth: call_stack.len(),
-                    caught: false,
-                    in_finally: false,
-                    end_ip: 0,
-                })?;
-                ip += 9;
+                ip = control::enter_try_long(
+                    script,
+                    ip,
+                    call_stack.len(),
+                    &mut try_frames,
+                    &mut pending_error,
+                )?;
                 continue;
             }
             ENDTRY_L => {
-                // ENDTRY_L offset_i32: long-form ENDTRY (5 bytes)
-                if ip + 5 > script.len() {
-                    pending_error = Some(PendingException::message(
-                        "truncated ENDTRY_L operand".to_string(),
-                    ));
-                    continue;
-                }
-                let offset = i32::from_le_bytes([
-                    script[ip + 1],
-                    script[ip + 2],
-                    script[ip + 3],
-                    script[ip + 4],
-                ]);
-                let target_ip = if offset != 0 {
-                    (ip as isize + offset as isize) as usize
-                } else {
-                    ip + 5
-                };
-                if let Some(frame) = try_frames.last_mut() {
-                    if frame.finally_ip != 0 && !frame.in_finally {
-                        frame.end_ip = target_ip;
-                        frame.in_finally = true;
-                        ip = frame.finally_ip;
-                        continue;
-                    }
-                }
-                try_frames.pop();
-                ip = target_ip;
+                ip = control::end_try_long(script, ip, &mut try_frames, &mut pending_error);
                 continue;
             }
             ENDFINALLY => {
-                // ENDFINALLY must be reached via the finally path
-                let in_finally = try_frames.last_mut().is_some_and(|f| f.in_finally);
-                if in_finally {
-                    let frame = try_frames.pop().unwrap();
-                    if pending_error.is_some() {
-                        // Re-throw: pending_error will be processed at top of loop
-                        continue;
-                    }
-                    // Normal completion after finally — jump to saved end_ip
-                    if frame.end_ip != 0 {
-                        ip = frame.end_ip;
-                        continue;
-                    }
-                } else {
-                    // ENDFINALLY without being in finally state = FAULT
-                    return Err("ENDFINALLY without matching finally context".to_string());
+                if let Some(next_ip) = control::end_finally(ip, &mut try_frames, &pending_error)? {
+                    ip = next_ip;
+                    continue;
                 }
             }
             other => {
@@ -907,36 +779,16 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
         ip += 1;
     }
 
-    LAST_RESULT_STAGE.store(1, Ordering::Relaxed);
-    LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
-    LAST_RESULT_LIMIT.store(
-        result_stack_limit
-            .unwrap_or(usize::MAX)
-            .min(u32::MAX as usize) as u32,
-        Ordering::Relaxed,
-    );
-    result_ops::trim_halt_stack_for_result_limit(&mut stack, result_stack_limit);
-    LAST_RESULT_STAGE.store(2, Ordering::Relaxed);
-    LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
-    let abi_stack = to_abi_stack(&stack);
-    LAST_RESULT_STAGE.store(3, Ordering::Relaxed);
-    core::mem::forget(stack);
-    core::mem::forget(locals);
-    core::mem::forget(args);
-    core::mem::forget(static_fields);
-    core::mem::forget(method_initial_stack);
-    core::mem::forget(consumed_mutations);
-    core::mem::forget(pending_error);
-    LAST_RESULT_STAGE.store(4, Ordering::Relaxed);
-
-    Ok(ExecutionResult {
-        fee_consumed_pico: 0,
-        state: VmState::Halt,
-        stack: abi_stack,
-        fault_message: None,
-        fault_ip: None,
-        fault_locals: None,
-    })
+    Ok(result_ops::finish_halt_result(
+        stack,
+        locals,
+        args,
+        static_fields,
+        method_initial_stack,
+        consumed_mutations,
+        pending_error,
+        result_stack_limit,
+    ))
 }
 
 fn pop_jump_comparison(

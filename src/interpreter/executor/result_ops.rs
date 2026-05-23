@@ -1,5 +1,10 @@
-use super::super::runtime_types::StackValue;
+use super::super::runtime_types::{to_abi_stack, StackValue};
+use super::super::state::{
+    PendingException, LAST_RESULT_LIMIT, LAST_RESULT_STACK_LEN, LAST_RESULT_STAGE,
+};
+use crate::{ExecutionResult, VmState};
 use alloc::vec::Vec;
+use core::sync::atomic::Ordering;
 
 #[inline]
 pub(super) fn trim_halt_stack_for_result_limit(
@@ -26,5 +31,52 @@ pub(super) fn trim_halt_stack_for_result_limit(
         core::mem::forget(old_stack);
     } else {
         *stack = old_stack;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn finish_halt_result(
+    mut stack: Vec<StackValue>,
+    locals: Vec<StackValue>,
+    args: Vec<StackValue>,
+    static_fields: Vec<StackValue>,
+    method_initial_stack: Vec<StackValue>,
+    consumed_mutations: Vec<StackValue>,
+    pending_error: Option<PendingException>,
+    result_stack_limit: Option<usize>,
+) -> ExecutionResult {
+    LAST_RESULT_STAGE.store(1, Ordering::Relaxed);
+    LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
+    LAST_RESULT_LIMIT.store(
+        result_stack_limit
+            .unwrap_or(usize::MAX)
+            .min(u32::MAX as usize) as u32,
+        Ordering::Relaxed,
+    );
+    trim_halt_stack_for_result_limit(&mut stack, result_stack_limit);
+    LAST_RESULT_STAGE.store(2, Ordering::Relaxed);
+    LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
+    let abi_stack = to_abi_stack(&stack);
+    LAST_RESULT_STAGE.store(3, Ordering::Relaxed);
+
+    // On the guest path these vectors live in a per-execution arena. Forgetting
+    // avoids recursive drops for deep historical compound values; the arena is
+    // reset before the next execution.
+    core::mem::forget(stack);
+    core::mem::forget(locals);
+    core::mem::forget(args);
+    core::mem::forget(static_fields);
+    core::mem::forget(method_initial_stack);
+    core::mem::forget(consumed_mutations);
+    core::mem::forget(pending_error);
+    LAST_RESULT_STAGE.store(4, Ordering::Relaxed);
+
+    ExecutionResult {
+        fee_consumed_pico: 0,
+        state: VmState::Halt,
+        stack: abi_stack,
+        fault_message: None,
+        fault_ip: None,
+        fault_locals: None,
     }
 }

@@ -1,6 +1,6 @@
 use std::{fs, path::Path};
 
-const MAX_INTERPRETER_SOURCE_LINES: usize = 1_000;
+const MAX_INTERPRETER_SOURCE_LINES: usize = 900;
 const STACK_ITEM_TAG_MATCH_PATTERNS: &[&str] = &[
     "0x00 =>", "0x10 =>", "0x20 =>", "0x21 =>", "0x28 =>", "0x30 =>", "0x40 =>", "0x41 =>",
     "0x48 =>", "0x60 =>", "0x20 |", "0x21 |", "0x28 |", "0x30 |", "0x40 |", "0x41 |", "0x48 |",
