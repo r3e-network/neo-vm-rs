@@ -56,6 +56,33 @@ fn runtime_opcode_adapters_live_outside_pure_semantics_tree() {
 }
 
 #[test]
+fn runtime_opcode_adapters_expose_only_opcode_entrypoints() {
+    let runtime_stack = read_workspace_source("src/runtime/ops/stack.rs");
+    let runtime_comparison = read_workspace_source("src/runtime/ops/comparison.rs");
+    let runtime_conversion = read_workspace_source("src/runtime/ops/conversion.rs");
+
+    for helper in [
+        "pub fn pick_n",
+        "pub fn pop_bool",
+        "pub fn pop_cmp_eq",
+        "pub fn pop_cmp_ne",
+        "pub fn pop_cmp_gt",
+        "pub fn pop_cmp_ge",
+        "pub fn pop_cmp_lt",
+        "pub fn pop_cmp_le",
+        "pub fn push_bigint",
+        "pub fn push_default",
+    ] {
+        assert!(
+            !runtime_stack.contains(helper)
+                && !runtime_comparison.contains(helper)
+                && !runtime_conversion.contains(helper),
+            "runtime::ops should not expose speculative non-opcode helper {helper}"
+        );
+    }
+}
+
+#[test]
 fn byte_splice_semantics_are_not_reimplemented_per_layer() {
     let abi_source = read_workspace_source("src/abi/stack_value.rs");
     let splice_semantics = read_workspace_source("src/semantics/splice.rs");

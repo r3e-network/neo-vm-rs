@@ -34,10 +34,6 @@ pub fn pick<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     apply_stack_result(runtime, |stack| stack_rules::pick(stack, index));
 }
 
-pub fn pick_n<R: RuntimeStack + ?Sized>(runtime: &mut R, index: usize) {
-    apply_stack_result(runtime, |stack| stack_rules::pick_n(stack, index));
-}
-
 pub fn tuck<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     apply_stack_result(runtime, stack_rules::tuck);
 }
