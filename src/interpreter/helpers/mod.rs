@@ -13,7 +13,6 @@ const POST_SYSCALL_STACK_HEADROOM: usize = 8;
 const RETAINED_PREFIX_BUF_SIZE: usize = 2 * 1024 * 1024;
 const MAX_RETAINED_DECODE_DEPTH: usize = 64;
 const MAX_RETAINED_COLLECTION_LEN: usize = 4096;
-const MAX_INTEGER_SIZE: usize = 32;
 
 pub(crate) struct RetainedPrefixBuffer(UnsafeCell<[u8; RETAINED_PREFIX_BUF_SIZE]>);
 
@@ -52,7 +51,6 @@ use alloc::{
     vec::Vec,
 };
 use num_bigint::BigInt;
-use num_traits::Zero;
 
 mod bridge;
 mod retained;

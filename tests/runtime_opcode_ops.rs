@@ -126,5 +126,5 @@ fn runtime_ops_report_faults_through_adapter() {
     runtime::arithmetic::div(&mut rt);
 
     assert_eq!(rt.stack, Vec::<StackValue>::new());
-    assert_eq!(rt.fault.as_deref(), Some("DIV: division by zero"));
+    assert_eq!(rt.fault.as_deref(), Some("division by zero for DIV"));
 }

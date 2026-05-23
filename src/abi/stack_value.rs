@@ -337,12 +337,16 @@ impl StackValue {
             Self::Null => false,
             Self::Boolean(value) => *value,
             Self::Integer(value) => *value != 0,
-            Self::BigInteger(bytes) | Self::ByteString(bytes) | Self::Buffer(bytes) => {
+            Self::BigInteger(bytes) | Self::ByteString(bytes) => {
                 bytes.iter().any(|byte| *byte != 0)
             }
-            Self::Array(items) | Self::Struct(items) => !items.is_empty(),
-            Self::Map(items) => !items.is_empty(),
-            Self::Interop(_) | Self::Iterator(_) | Self::Pointer(_) => true,
+            Self::Buffer(_)
+            | Self::Array(_)
+            | Self::Struct(_)
+            | Self::Map(_)
+            | Self::Interop(_)
+            | Self::Iterator(_)
+            | Self::Pointer(_) => true,
         }
     }
 

@@ -68,16 +68,6 @@ pub trait RuntimeStack {
     }
 }
 
-pub(crate) fn push_i64_result<R: RuntimeStack + ?Sized>(
-    runtime: &mut R,
-    result: Result<i64, &'static str>,
-) {
-    match result {
-        Ok(value) => runtime.push_i64(value),
-        Err(message) => runtime.fault(message),
-    }
-}
-
 pub(crate) fn push_value_result<R: RuntimeStack + ?Sized>(
     runtime: &mut R,
     result: Result<StackValue, alloc::string::String>,

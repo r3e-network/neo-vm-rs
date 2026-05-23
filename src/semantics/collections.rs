@@ -2,7 +2,47 @@
 
 use alloc::{string::String, vec, vec::Vec};
 
-use crate::{new_array_default_value_for_type_tag, StackValue};
+use crate::{new_array_default_value_for_type_tag, semantics::numeric, StackValue};
+
+/// Convert a primitive NeoVM value into an index used by collection opcodes.
+pub fn collection_index_value(value: &StackValue) -> Result<i64, String> {
+    match value {
+        StackValue::Integer(value) => Ok(*value),
+        StackValue::Boolean(value) => Ok(if *value { 1 } else { 0 }),
+        StackValue::ByteString(value) | StackValue::BigInteger(value) => {
+            numeric::decode_signed_le_bytes_i64(value)
+        }
+        StackValue::Null => Ok(0),
+        _ => Err("expected integer-compatible collection index".into()),
+    }
+}
+
+/// Validate a NeoVM primitive map key.
+pub fn validate_map_key_value(key: &StackValue) -> Result<(), String> {
+    match key {
+        StackValue::Integer(_) | StackValue::Boolean(_) | StackValue::Null => Ok(()),
+        StackValue::ByteString(value) => {
+            if value.len() > 64 {
+                Err("map key exceeds maximum size".into())
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err("map key must be primitive".into()),
+    }
+}
+
+/// Compare primitive map keys by NeoVM map-key equality rules.
+#[must_use]
+pub fn primitive_key_equal(left: &StackValue, right: &StackValue) -> bool {
+    match (left, right) {
+        (StackValue::Integer(left), StackValue::Integer(right)) => left == right,
+        (StackValue::Boolean(left), StackValue::Boolean(right)) => left == right,
+        (StackValue::Null, StackValue::Null) => true,
+        (StackValue::ByteString(left), StackValue::ByteString(right)) => left == right,
+        _ => false,
+    }
+}
 
 /// Create a null-filled array.
 pub fn new_array(count: i64) -> Result<StackValue, String> {
@@ -64,8 +104,9 @@ pub fn set_item(
             Ok(())
         }
         StackValue::Map(pairs) => {
+            validate_map_key_value(&key)?;
             for pair in pairs.iter_mut() {
-                if pair.0 == key {
+                if primitive_key_equal(&pair.0, &key) {
                     pair.1 = value;
                     return Ok(());
                 }
@@ -94,9 +135,9 @@ pub fn set_item(
 
 /// Pick an item from a collection-like value.
 pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue, String> {
-    match (collection, key) {
-        (StackValue::Array(items) | StackValue::Struct(items), StackValue::Integer(index)) => {
-            let Some(index) = non_negative_index(*index) else {
+    match collection {
+        StackValue::Array(items) | StackValue::Struct(items) => {
+            let Some(index) = non_negative_index(collection_index_value(key)?) else {
                 return Err("PICKITEM: index out of range".into());
             };
             items
@@ -104,17 +145,16 @@ pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue
                 .cloned()
                 .ok_or_else(|| "PICKITEM: index out of range".into())
         }
-        (StackValue::Map(pairs), _) => pairs
-            .iter()
-            .find(|(map_key, _)| map_key == key)
-            .map(|(_, value)| value.clone())
-            .ok_or_else(|| "PICKITEM: key not found in map".into()),
-        (StackValue::ByteString(bytes), StackValue::Integer(index)) => {
-            pick_byte(bytes, *index, "PICKITEM: byte index out of range")
+        StackValue::Map(pairs) => {
+            validate_map_key_value(key)?;
+            pairs
+                .iter()
+                .find(|(map_key, _)| primitive_key_equal(map_key, key))
+                .map(|(_, value)| value.clone())
+                .ok_or_else(|| "PICKITEM: key not found in map".into())
         }
-        (StackValue::Buffer(bytes), StackValue::Integer(index)) => {
-            pick_byte(bytes, *index, "PICKITEM: buffer index out of range")
-        }
+        StackValue::ByteString(bytes) => pick_byte(bytes, key, "PICKITEM: byte index out of range"),
+        StackValue::Buffer(bytes) => pick_byte(bytes, key, "PICKITEM: buffer index out of range"),
         _ => Err("PICKITEM: unsupported types".into()),
     }
 }
@@ -135,7 +175,8 @@ pub fn remove(collection: &mut StackValue, key: &StackValue) -> Result<(), Strin
             Ok(())
         }
         StackValue::Map(pairs) => {
-            pairs.retain(|(map_key, _)| map_key != key);
+            validate_map_key_value(key)?;
+            pairs.retain(|(map_key, _)| !primitive_key_equal(map_key, key));
             Ok(())
         }
         _ => Err("REMOVE: not a collection".into()),
@@ -154,13 +195,20 @@ pub fn size(value: &StackValue) -> Result<i64, String> {
 
 /// Return whether a key exists in a collection-like value.
 pub fn has_key(collection: &StackValue, key: &StackValue) -> Result<bool, String> {
-    match (collection, key) {
-        (StackValue::Array(items) | StackValue::Struct(items), StackValue::Integer(index)) => {
-            Ok(non_negative_index(*index).is_some_and(|index| index < items.len()))
+    match collection {
+        StackValue::Array(items) | StackValue::Struct(items) => {
+            Ok(non_negative_index(collection_index_value(key)?)
+                .is_some_and(|index| index < items.len()))
         }
-        (StackValue::Map(pairs), _) => Ok(pairs.iter().any(|(map_key, _)| map_key == key)),
-        (StackValue::ByteString(bytes) | StackValue::Buffer(bytes), StackValue::Integer(index)) => {
-            Ok(non_negative_index(*index).is_some_and(|index| index < bytes.len()))
+        StackValue::Map(pairs) => {
+            validate_map_key_value(key)?;
+            Ok(pairs
+                .iter()
+                .any(|(map_key, _)| primitive_key_equal(map_key, key)))
+        }
+        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => {
+            Ok(non_negative_index(collection_index_value(key)?)
+                .is_some_and(|index| index < bytes.len()))
         }
         _ => Err("HASKEY: unsupported types".into()),
     }
@@ -279,23 +327,21 @@ fn array_index(
     type_error: &'static str,
     range_error: &'static str,
 ) -> Result<usize, String> {
-    match key {
-        StackValue::Integer(index) => non_negative_index(*index).ok_or_else(|| range_error.into()),
-        _ => Err(type_error.into()),
-    }
+    let index = collection_index_value(key).map_err(|_| type_error.to_string())?;
+    non_negative_index(index).ok_or_else(|| range_error.into())
 }
 
 fn buffer_index(key: &StackValue, type_error: &'static str) -> Result<usize, String> {
-    match key {
-        StackValue::Integer(index) => {
-            non_negative_index(*index).ok_or_else(|| "SETITEM: buffer index out of range".into())
-        }
-        _ => Err(type_error.into()),
-    }
+    let index = collection_index_value(key).map_err(|_| type_error.to_string())?;
+    non_negative_index(index).ok_or_else(|| "SETITEM: buffer index out of range".into())
 }
 
-fn pick_byte(bytes: &[u8], index: i64, range_error: &'static str) -> Result<StackValue, String> {
-    let Some(index) = non_negative_index(index) else {
+fn pick_byte(
+    bytes: &[u8],
+    key: &StackValue,
+    range_error: &'static str,
+) -> Result<StackValue, String> {
+    let Some(index) = non_negative_index(collection_index_value(key)?) else {
         return Err(range_error.into());
     };
     bytes

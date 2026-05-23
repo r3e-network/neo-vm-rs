@@ -9,9 +9,12 @@ mod slot_ops;
 mod stack_ops;
 use super::helpers::*;
 use super::opcodes::*;
-use super::runtime_types::{to_abi_stack, CompoundIds, StackValue};
+use super::runtime_types::{to_abi_stack, to_abi_value, CompoundIds, StackValue};
 use super::state::*;
-use crate::{ExecutionResult, StackValue as AbiStackValue, VmState};
+use crate::{
+    semantics::comparison as comparison_rules, ExecutionResult, StackValue as AbiStackValue,
+    VmState,
+};
 use alloc::{
     format,
     string::{String, ToString},
@@ -618,12 +621,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPGT",
                 )?;
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                if let Some((left, right)) = comparison {
-                    if left > right {
-                        ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGT")?;
-                        continue;
-                    }
+                if pop_jump_comparison(&mut stack, comparison_rules::greater_than_values)? {
+                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGT")?;
+                    continue;
                 }
                 ip += advance;
                 continue;
@@ -640,12 +640,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPGE",
                 )?;
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                if let Some((left, right)) = comparison {
-                    if left >= right {
-                        ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGE")?;
-                        continue;
-                    }
+                if pop_jump_comparison(&mut stack, comparison_rules::greater_or_equal_values)? {
+                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGE")?;
+                    continue;
                 }
                 ip += advance;
                 continue;
@@ -662,12 +659,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPLT",
                 )?;
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                if let Some((left, right)) = comparison {
-                    if left < right {
-                        ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLT")?;
-                        continue;
-                    }
+                if pop_jump_comparison(&mut stack, comparison_rules::less_than_values)? {
+                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLT")?;
+                    continue;
                 }
                 ip += advance;
                 continue;
@@ -684,12 +678,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPLE",
                 )?;
-                let comparison = pop_bigint_pair_allowing_null_false(&mut stack)?;
-                if let Some((left, right)) = comparison {
-                    if left <= right {
-                        ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLE")?;
-                        continue;
-                    }
+                if pop_jump_comparison(&mut stack, comparison_rules::less_or_equal_values)? {
+                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLE")?;
+                    continue;
                 }
                 ip += advance;
                 continue;
@@ -946,4 +937,13 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
         fault_ip: None,
         fault_locals: None,
     })
+}
+
+fn pop_jump_comparison(
+    stack: &mut Vec<StackValue>,
+    compare: fn(&AbiStackValue, &AbiStackValue) -> Result<bool, String>,
+) -> Result<bool, String> {
+    let right = pop_item(stack)?;
+    let left = pop_item(stack)?;
+    compare(&to_abi_value(&left), &to_abi_value(&right))
 }

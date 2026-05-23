@@ -9,4 +9,5 @@ pub mod arithmetic;
 pub mod collections;
 pub mod comparison;
 pub mod conversion;
+pub(crate) mod numeric;
 pub mod runtime;
