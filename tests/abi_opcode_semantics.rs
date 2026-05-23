@@ -1,5 +1,8 @@
 use neo_vm_rs::semantics::{arithmetic, collections, comparison, conversion};
-use neo_vm_rs::{stack_value_span_bytes, StackValue};
+use neo_vm_rs::{
+    stack_value_span_bytes, StackValue, NEOVM_STACK_ITEM_TYPE_ARRAY,
+    NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER, NEOVM_STACK_ITEM_TYPE_STRUCT,
+};
 
 #[test]
 fn arithmetic_semantics_cover_riscv_runtime_integer_ops() {
@@ -83,21 +86,38 @@ fn comparison_and_conversion_semantics_use_shared_stack_value_rules() {
     assert!(comparison::nz(&StackValue::Integer(42)));
     assert!(comparison::is_null(&StackValue::Null));
 
-    assert!(conversion::is_type(&StackValue::Integer(42), 0x21));
+    assert!(conversion::is_type(
+        &StackValue::Integer(42),
+        NEOVM_STACK_ITEM_TYPE_INTEGER
+    ));
+    assert!(conversion::is_type(
+        &StackValue::BigInteger(vec![0xff, 0x00]),
+        NEOVM_STACK_ITEM_TYPE_INTEGER
+    ));
+    assert!(!conversion::is_type(
+        &StackValue::BigInteger(vec![0xff, 0x00]),
+        NEOVM_STACK_ITEM_TYPE_BYTESTRING
+    ));
     assert_eq!(
-        conversion::convert_value(StackValue::Integer(256), 0x28),
+        conversion::convert_value(StackValue::Integer(256), NEOVM_STACK_ITEM_TYPE_BYTESTRING),
         Ok(StackValue::ByteString(vec![0, 1]))
     );
     assert_eq!(
-        conversion::convert_value(StackValue::Array(vec![StackValue::Integer(1)]), 0x41),
+        conversion::convert_value(
+            StackValue::Array(vec![StackValue::Integer(1)]),
+            NEOVM_STACK_ITEM_TYPE_STRUCT
+        ),
         Ok(StackValue::Struct(vec![StackValue::Integer(1)]))
     );
     assert_eq!(
-        conversion::convert_value(StackValue::Null, 0x30),
+        conversion::convert_value(StackValue::Null, NEOVM_STACK_ITEM_TYPE_ARRAY),
         Ok(StackValue::Null)
     );
     assert_eq!(
-        conversion::convert_value(StackValue::Map(Vec::new()), 0x28),
+        conversion::convert_value(
+            StackValue::Map(Vec::new()),
+            NEOVM_STACK_ITEM_TYPE_BYTESTRING
+        ),
         Err("CONVERT: cannot convert to ByteString".to_string())
     );
 }

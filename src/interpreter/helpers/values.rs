@@ -5,10 +5,10 @@ use crate::{
         collections as collection_rules, comparison as comparison_rules,
         conversion as conversion_rules, numeric,
     },
-    stack_value_span_bytes, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
-    NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
-    NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
-    NEOVM_STACK_ITEM_TYPE_STRUCT,
+    stack_value_span_bytes, StackItemType, NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY,
+    NEOVM_STACK_ITEM_TYPE_BOOLEAN, NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING,
+    NEOVM_STACK_ITEM_TYPE_INTEGER, NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE,
+    NEOVM_STACK_ITEM_TYPE_MAP, NEOVM_STACK_ITEM_TYPE_STRUCT,
 };
 
 #[inline]
@@ -133,6 +133,21 @@ pub(crate) fn convert_value(
         }),
         _ => Err(format!("unsupported CONVERT target 0x{kind:02x}")),
     }
+}
+
+pub(crate) fn is_type(kind: u8, value: &StackValue) -> Result<bool, String> {
+    match StackItemType::from_byte(kind) {
+        Some(StackItemType::Any) => Err(format!(
+            "unsupported ISTYPE kind {NEOVM_STACK_ITEM_TYPE_ANY:#04x}"
+        )),
+        Some(_) => Ok(conversion_rules::is_type(&to_abi_value(value), kind)),
+        None => Err(format!("unsupported ISTYPE kind 0x{kind:02x}")),
+    }
+}
+
+#[inline]
+pub(crate) fn is_null(value: &StackValue) -> bool {
+    comparison_rules::is_null(&to_abi_value(value))
 }
 
 #[inline]

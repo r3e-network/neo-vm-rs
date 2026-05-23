@@ -386,6 +386,46 @@ fn interpreter_uses_central_stack_item_type_tags() {
 }
 
 #[test]
+fn interpreter_type_checks_reuse_shared_semantics() {
+    let compound_ops = read_workspace_source("src/interpreter/executor/compound_ops.rs");
+    let values = read_workspace_source("src/interpreter/helpers/values.rs");
+
+    assert!(
+        values.contains("pub(crate) fn is_type(")
+            && values.contains("conversion_rules::is_type(&to_abi_value(value), kind)"),
+        "interpreter ISTYPE should route through a helper backed by semantics::conversion"
+    );
+    assert!(
+        values.contains("pub(crate) fn is_null(")
+            && values.contains("comparison_rules::is_null(&to_abi_value(value))"),
+        "interpreter ISNULL should route through a helper backed by semantics::comparison"
+    );
+    assert!(
+        compound_ops.contains("let result = is_type(kind, &item)?;")
+            && compound_ops.contains("StackValue::Boolean(is_null(&item))"),
+        "compound_ops should call shared type-check helpers instead of matching StackValue variants directly"
+    );
+
+    for duplicate in [
+        "matches!(item, StackValue::Pointer(_))",
+        "matches!(item, StackValue::Boolean(_))",
+        "matches!(item, StackValue::Integer(_) | StackValue::BigInteger(_))",
+        "matches!(item, StackValue::ByteString(_))",
+        "matches!(item, StackValue::Buffer(_, _))",
+        "matches!(item, StackValue::Array(_, _))",
+        "matches!(item, StackValue::Struct(_, _))",
+        "matches!(item, StackValue::Map(_, _))",
+        "matches!(item, StackValue::Interop(_))",
+        "matches!(item, StackValue::Null)",
+    ] {
+        assert!(
+            !compound_ops.contains(duplicate),
+            "compound_ops should not keep a private type-check match: {duplicate}"
+        );
+    }
+}
+
+#[test]
 fn internal_codecs_use_shared_stack_value_codec_tags() {
     let fast_codec = read_workspace_source("src/abi/fast_codec.rs");
     let helpers_mod = read_workspace_source("src/interpreter/helpers/mod.rs");

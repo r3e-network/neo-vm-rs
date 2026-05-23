@@ -7,10 +7,6 @@ use super::super::state::{remember_consumed_mutation, PendingException, TryStack
 use super::control::Dispatch;
 use crate::{
     new_array_default_value_for_neovm_type_tag, semantics::collections as collection_rules,
-    NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
-    NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
-    NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
-    NEOVM_STACK_ITEM_TYPE_POINTER, NEOVM_STACK_ITEM_TYPE_STRUCT,
 };
 use alloc::{
     format,
@@ -608,34 +604,14 @@ pub(super) fn execute(
             }
             let kind = script[ip + 1];
             let item = pop_item(stack)?;
-            let result = match kind {
-                NEOVM_STACK_ITEM_TYPE_ANY => {
-                    return Err(format!(
-                        "unsupported ISTYPE kind {NEOVM_STACK_ITEM_TYPE_ANY:#04x}"
-                    ))
-                }
-                NEOVM_STACK_ITEM_TYPE_POINTER => matches!(item, StackValue::Pointer(_)),
-                NEOVM_STACK_ITEM_TYPE_BOOLEAN => matches!(item, StackValue::Boolean(_)),
-                NEOVM_STACK_ITEM_TYPE_INTEGER => {
-                    matches!(item, StackValue::Integer(_) | StackValue::BigInteger(_))
-                }
-                NEOVM_STACK_ITEM_TYPE_BYTESTRING => matches!(item, StackValue::ByteString(_)),
-                NEOVM_STACK_ITEM_TYPE_BUFFER => matches!(item, StackValue::Buffer(_, _)),
-                NEOVM_STACK_ITEM_TYPE_ARRAY => matches!(item, StackValue::Array(_, _)),
-                NEOVM_STACK_ITEM_TYPE_STRUCT => matches!(item, StackValue::Struct(_, _)),
-                NEOVM_STACK_ITEM_TYPE_MAP => matches!(item, StackValue::Map(_, _)),
-                NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => {
-                    matches!(item, StackValue::Interop(_))
-                }
-                _ => return Err(format!("unsupported ISTYPE kind 0x{kind:02x}")),
-            };
+            let result = is_type(kind, &item)?;
             stack.push(StackValue::Boolean(result));
             ip += 2;
             finish!(Dispatch::Continue);
         }
         ISNULL => {
             let item = pop_item(stack)?;
-            stack.push(StackValue::Boolean(matches!(item, StackValue::Null)));
+            stack.push(StackValue::Boolean(is_null(&item)));
         }
         _ => unreachable!("opcode routed to compound_ops: 0x{opcode:02x}"),
     }

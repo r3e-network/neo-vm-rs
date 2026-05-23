@@ -4,14 +4,21 @@ use alloc::{format, string::String};
 
 use crate::semantics::{arithmetic, comparison, numeric};
 use crate::{
-    normalize_stack_item_type_tag, StackValue, COMPACT_TAG_ARRAY, COMPACT_TAG_BOOLEAN,
-    COMPACT_TAG_BUFFER, COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER, COMPACT_TAG_STRUCT,
+    normalize_stack_item_type_tag, StackValue, COMPACT_TAG_ARRAY, COMPACT_TAG_BIG_INTEGER,
+    COMPACT_TAG_BOOLEAN, COMPACT_TAG_BUFFER, COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER,
+    COMPACT_TAG_STRUCT,
 };
 
 /// Return whether a value has the requested compact or NeoVM stack item type.
 #[must_use]
 pub fn is_type(value: &StackValue, type_tag: u8) -> bool {
-    value.compact_type_tag() == normalize_stack_item_type_tag(type_tag)
+    match (
+        value.compact_type_tag(),
+        normalize_stack_item_type_tag(type_tag),
+    ) {
+        (COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_INTEGER) => true,
+        (actual, expected) => actual == expected,
+    }
 }
 
 /// Convert a public ABI stack value to the requested compact or NeoVM type.
