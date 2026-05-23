@@ -346,7 +346,7 @@ pub fn pack_map(pairs: Vec<(StackValue, StackValue)>) -> StackValue {
     StackValue::Map(pairs)
 }
 
-fn non_negative_count(value: i64, error: &'static str) -> Result<usize, String> {
+pub(crate) fn non_negative_count(value: i64, error: &'static str) -> Result<usize, String> {
     usize::try_from(value).map_err(|_| error.into())
 }
 

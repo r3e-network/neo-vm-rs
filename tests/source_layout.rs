@@ -253,6 +253,7 @@ fn collection_constructor_rules_are_not_reimplemented_per_layer() {
     let interpreter_byte_ops = read_workspace_source("src/interpreter/executor/byte_ops.rs");
     let interpreter_compound_ops =
         read_workspace_source("src/interpreter/executor/compound_ops.rs");
+    let collection_semantics = read_workspace_source("src/semantics/collections.rs");
 
     assert!(
         runtime_collections.contains("rules::new_array(0)")
@@ -272,6 +273,15 @@ fn collection_constructor_rules_are_not_reimplemented_per_layer() {
             && !interpreter_compound_ops
                 .contains("NEOVM_STACK_ITEM_TYPE_BYTESTRING => StackValue::ByteString"),
         "interpreter NEWARRAY_T should reuse the shared default-value rule"
+    );
+    assert!(
+        collection_semantics.contains("pub(crate) fn non_negative_count"),
+        "collection semantics should expose the shared non-negative count rule"
+    );
+    assert!(
+        runtime_collections.contains("rules::non_negative_count")
+            && !runtime_collections.contains("fn positive_count"),
+        "runtime collection adapters should not keep a private count validator"
     );
 }
 

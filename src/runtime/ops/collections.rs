@@ -108,8 +108,12 @@ pub fn values<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 
 pub fn pack<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let count = runtime.pop_i64();
-    let Some(count) = positive_count(runtime, count, "PACK") else {
-        return;
+    let count = match rules::non_negative_count(count, "PACK: negative count") {
+        Ok(count) => count,
+        Err(message) => {
+            runtime.fault(&message);
+            return;
+        }
     };
     let mut items = Vec::with_capacity(count);
     for _ in 0..count {
@@ -164,8 +168,12 @@ pub fn pop_item<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 
 pub fn pack_struct<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let count = runtime.pop_i64();
-    let Some(count) = positive_count(runtime, count, "PACKSTRUCT") else {
-        return;
+    let count = match rules::non_negative_count(count, "PACKSTRUCT: negative count") {
+        Ok(count) => count,
+        Err(message) => {
+            runtime.fault(&message);
+            return;
+        }
     };
     let mut items = Vec::with_capacity(count);
     for _ in 0..count {
@@ -177,8 +185,12 @@ pub fn pack_struct<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 
 pub fn pack_map<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let count = runtime.pop_i64();
-    let Some(count) = positive_count(runtime, count, "PACKMAP") else {
-        return;
+    let count = match rules::non_negative_count(count, "PACKMAP: negative count") {
+        Ok(count) => count,
+        Err(message) => {
+            runtime.fault(&message);
+            return;
+        }
     };
     let mut pairs = Vec::with_capacity(count);
     for _ in 0..count {
@@ -188,16 +200,4 @@ pub fn pack_map<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     }
     pairs.reverse();
     runtime.push_value(rules::pack_map(pairs));
-}
-
-fn positive_count<R: RuntimeStack + ?Sized>(
-    runtime: &mut R,
-    count: i64,
-    opcode: &str,
-) -> Option<usize> {
-    if count < 0 {
-        runtime.fault(&alloc::format!("{opcode}: negative count"));
-        return None;
-    }
-    Some(count as usize)
 }
