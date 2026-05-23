@@ -629,6 +629,11 @@ fn interpreter_numeric_helpers_call_canonical_rules_directly() {
             && values.contains("crate::abi::encode_integer"),
         "interpreter value helpers should call canonical numeric and ABI integer rules directly"
     );
+    assert_eq!(
+        values.matches("numeric::decode_signed_le_bytes_i64").count(),
+        1,
+        "interpreter value helpers should keep one primitive i64 decoder table shared by integer and shift-count pops"
+    );
     assert!(
         push_ops.contains("numeric::trim_le_bytes_slice"),
         "PUSHINT128/PUSHINT256 should trim through canonical numeric rules directly"

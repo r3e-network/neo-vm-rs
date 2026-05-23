@@ -18,27 +18,38 @@ pub(crate) fn pop_item(stack: &mut Vec<StackValue>) -> Result<StackValue, String
 
 #[inline]
 pub(crate) fn pop_integer(stack: &mut Vec<StackValue>) -> Result<i64, String> {
-    match stack.pop() {
-        Some(StackValue::Integer(value)) => Ok(value),
-        Some(StackValue::Boolean(value)) => Ok(if value { 1 } else { 0 }),
-        Some(StackValue::ByteString(value)) => numeric::decode_signed_le_bytes_i64(&value),
-        Some(StackValue::BigInteger(value)) => numeric::decode_signed_le_bytes_i64(&value),
-        Some(StackValue::Buffer(_, bytes)) => numeric::decode_signed_le_bytes_i64(&bytes),
-        Some(_) => Err("expected integer on stack".to_string()),
-        None => Err("stack underflow".to_string()),
-    }
+    let value = pop_item(stack)?;
+    stack_value_i64(&value, true)?.ok_or_else(|| "expected integer on stack".to_string())
 }
 
 pub(crate) fn pop_shift_count(stack: &mut Vec<StackValue>) -> Result<i64, String> {
-    match stack.pop() {
-        Some(StackValue::Integer(value)) => Ok(value),
-        Some(StackValue::Boolean(value)) => Ok(if value { 1 } else { 0 }),
-        Some(StackValue::ByteString(value)) => numeric::decode_signed_le_bytes_i64(&value),
-        Some(StackValue::BigInteger(value)) => numeric::decode_signed_le_bytes_i64(&value),
-        Some(StackValue::Null) => Err("expected integer-compatible value".to_string()),
-        Some(StackValue::Buffer(_, _)) => Err("expected integer-compatible value".to_string()),
-        Some(_) => Err("expected integer-compatible shift count".to_string()),
-        None => Err("stack underflow".to_string()),
+    let value = pop_item(stack)?;
+    if let Some(integer) = stack_value_i64(&value, false)? {
+        return Ok(integer);
+    }
+
+    match value {
+        StackValue::Null | StackValue::Buffer(_, _) => {
+            Err("expected integer-compatible value".to_string())
+        }
+        _ => Err("expected integer-compatible shift count".to_string()),
+    }
+}
+
+fn stack_value_i64(value: &StackValue, accept_buffer: bool) -> Result<Option<i64>, String> {
+    match value {
+        StackValue::Integer(value) => Ok(Some(*value)),
+        StackValue::Boolean(value) => Ok(Some(if *value { 1 } else { 0 })),
+        _ => {
+            let bytes = match value {
+                StackValue::ByteString(bytes) | StackValue::BigInteger(bytes) => {
+                    Some(bytes.as_slice())
+                }
+                StackValue::Buffer(_, bytes) if accept_buffer => Some(bytes.as_slice()),
+                _ => None,
+            };
+            bytes.map(numeric::decode_signed_le_bytes_i64).transpose()
+        }
     }
 }
 
