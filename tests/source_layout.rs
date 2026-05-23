@@ -441,6 +441,31 @@ fn interpreter_map_key_lookup_reuses_collection_semantics() {
 }
 
 #[test]
+fn interpreter_collection_mutations_commit_through_one_helper() {
+    let interpreter_compound_ops =
+        read_workspace_source("src/interpreter/executor/compound_ops.rs");
+
+    assert!(
+        interpreter_compound_ops.contains("fn commit_collection_update("),
+        "compound_ops should centralize consumed-mutation tracking and alias propagation"
+    );
+    assert_eq!(
+        interpreter_compound_ops
+            .matches("remember_consumed_mutation(")
+            .count(),
+        1,
+        "collection mutation opcodes should not repeat consumed-mutation tracking"
+    );
+    assert_eq!(
+        interpreter_compound_ops
+            .matches("propagate_update(")
+            .count(),
+        1,
+        "collection mutation opcodes should not repeat alias propagation"
+    );
+}
+
+#[test]
 fn interpreter_opcode_aliases_come_from_canonical_opcode_enum() {
     let source = read_workspace_source("src/interpreter/opcodes.rs");
 

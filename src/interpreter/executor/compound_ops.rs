@@ -15,6 +15,28 @@ use alloc::{
     vec::Vec,
 };
 
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn commit_collection_update(
+    updated: &StackValue,
+    stack: &mut [StackValue],
+    locals: &mut [StackValue],
+    args: &mut [StackValue],
+    static_fields: &mut [StackValue],
+    consumed_mutations: &mut Vec<StackValue>,
+    affected_stack_indices: Option<&[usize]>,
+) {
+    remember_consumed_mutation(consumed_mutations, updated);
+    propagate_update(
+        updated,
+        stack,
+        locals,
+        args,
+        static_fields,
+        affected_stack_indices,
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 #[inline]
 pub(super) fn execute(
@@ -217,28 +239,28 @@ pub(super) fn execute(
                 StackValue::Array(id, mut items) => {
                     items.push(ids.clone_struct_for_storage(&value));
                     let updated = StackValue::Array(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
                 StackValue::Struct(id, mut items) => {
                     items.push(ids.clone_struct_for_storage(&value));
                     let updated = StackValue::Struct(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -344,14 +366,14 @@ pub(super) fn execute(
                     };
                     bytes[index as usize] = byte;
                     let updated = StackValue::Buffer(id, bytes);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -362,14 +384,14 @@ pub(super) fn execute(
                     }
                     items[index as usize] = ids.clone_struct_for_storage(&value);
                     let updated = StackValue::Array(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -380,14 +402,14 @@ pub(super) fn execute(
                     }
                     items[index as usize] = ids.clone_struct_for_storage(&value);
                     let updated = StackValue::Struct(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -406,14 +428,14 @@ pub(super) fn execute(
                         items = updated_items;
                     }
                     let updated = StackValue::Map(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -431,14 +453,14 @@ pub(super) fn execute(
                     }
                     items.remove(index as usize);
                     let updated = StackValue::Array(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -449,14 +471,14 @@ pub(super) fn execute(
                     }
                     items.remove(index as usize);
                     let updated = StackValue::Struct(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -470,14 +492,14 @@ pub(super) fn execute(
                     .ok_or_else(|| "key not found for REMOVE".to_string())?;
                     items.remove(index);
                     let updated = StackValue::Map(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
                     let affected = find_affected_indices(id, stack);
-                    propagate_update(
+                    commit_collection_update(
                         &updated,
                         stack,
                         locals,
                         args,
                         static_fields,
+                        consumed_mutations,
                         Some(&affected),
                     );
                 }
@@ -489,23 +511,51 @@ pub(super) fn execute(
             match item {
                 StackValue::Array(id, _) => {
                     let updated = StackValue::Array(id, Vec::new());
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                 }
                 StackValue::Struct(id, _) => {
                     let updated = StackValue::Struct(id, Vec::new());
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                 }
                 StackValue::Map(id, _) => {
                     let updated = StackValue::Map(id, Vec::new());
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                 }
                 StackValue::Buffer(id, _) => {
                     let updated = StackValue::Buffer(id, Vec::new());
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                 }
                 _ => return Err("CLEARITEMS expects a compound value".to_string()),
             }
@@ -518,8 +568,15 @@ pub(super) fn execute(
                         .pop()
                         .ok_or_else(|| "POPITEM on empty array".to_string())?;
                     let updated = StackValue::Array(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                     stack.push(popped);
                 }
                 StackValue::Struct(id, mut items) => {
@@ -527,8 +584,15 @@ pub(super) fn execute(
                         .pop()
                         .ok_or_else(|| "POPITEM on empty struct".to_string())?;
                     let updated = StackValue::Struct(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                     stack.push(popped);
                 }
                 StackValue::Map(id, mut entries) => {
@@ -536,8 +600,15 @@ pub(super) fn execute(
                         .pop()
                         .ok_or_else(|| "POPITEM on empty map".to_string())?;
                     let updated = StackValue::Map(id, entries);
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                     stack.push(key);
                     stack.push(value);
                 }
@@ -546,8 +617,15 @@ pub(super) fn execute(
                         .pop()
                         .ok_or_else(|| "POPITEM on empty buffer".to_string())?;
                     let updated = StackValue::Buffer(id, bytes);
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                     stack.push(StackValue::Integer(byte as i64));
                 }
                 _ => return Err("POPITEM expects a compound value".to_string()),
@@ -570,20 +648,41 @@ pub(super) fn execute(
                 StackValue::Array(id, mut items) => {
                     items.reverse();
                     let updated = StackValue::Array(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                 }
                 StackValue::Struct(id, mut items) => {
                     items.reverse();
                     let updated = StackValue::Struct(id, items);
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                 }
                 StackValue::Buffer(id, mut bytes) => {
                     bytes.reverse();
                     let updated = StackValue::Buffer(id, bytes);
-                    remember_consumed_mutation(consumed_mutations, &updated);
-                    propagate_update(&updated, stack, locals, args, static_fields, None);
+                    commit_collection_update(
+                        &updated,
+                        stack,
+                        locals,
+                        args,
+                        static_fields,
+                        consumed_mutations,
+                        None,
+                    );
                 }
                 _ => {
                     return Err(format!(
