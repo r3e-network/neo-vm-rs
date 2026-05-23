@@ -140,6 +140,24 @@ impl StackItemType {
             Self::InteropInterface => NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE,
         }
     }
+
+    /// Returns the canonical NeoVM stack item type name.
+    #[inline]
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Any => "Any",
+            Self::Pointer => "Pointer",
+            Self::Boolean => "Boolean",
+            Self::Integer => "Integer",
+            Self::ByteString => "ByteString",
+            Self::Buffer => "Buffer",
+            Self::Array => "Array",
+            Self::Struct => "Struct",
+            Self::Map => "Map",
+            Self::InteropInterface => "InteropInterface",
+        }
+    }
 }
 
 /// Normalize NeoVM StackItemType tags and compact runtime tags into one compact tag space.
@@ -665,6 +683,23 @@ mod tests {
         assert_eq!(
             super::normalize_stack_item_type_tag(super::COMPACT_TAG_POINTER),
             super::COMPACT_TAG_POINTER
+        );
+    }
+
+    #[test]
+    fn stack_item_type_names_match_neo_vm() {
+        assert_eq!(super::StackItemType::Any.name(), "Any");
+        assert_eq!(super::StackItemType::Pointer.name(), "Pointer");
+        assert_eq!(super::StackItemType::Boolean.name(), "Boolean");
+        assert_eq!(super::StackItemType::Integer.name(), "Integer");
+        assert_eq!(super::StackItemType::ByteString.name(), "ByteString");
+        assert_eq!(super::StackItemType::Buffer.name(), "Buffer");
+        assert_eq!(super::StackItemType::Array.name(), "Array");
+        assert_eq!(super::StackItemType::Struct.name(), "Struct");
+        assert_eq!(super::StackItemType::Map.name(), "Map");
+        assert_eq!(
+            super::StackItemType::InteropInterface.name(),
+            "InteropInterface"
         );
     }
 
