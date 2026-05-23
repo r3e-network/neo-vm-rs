@@ -606,6 +606,31 @@ fn internal_codecs_use_shared_stack_value_codec_tags() {
 }
 
 #[test]
+fn syscall_metadata_comes_from_one_declaration_table() {
+    let syscall = read_workspace_source("src/host/syscall.rs");
+
+    assert!(
+        syscall.contains("macro_rules! define_syscalls"),
+        "syscall hashes and argument counts should be generated from one metadata declaration"
+    );
+    assert!(
+        syscall.contains("define_syscalls! {"),
+        "syscall.rs should keep one canonical syscall metadata table"
+    );
+    assert!(
+        !syscall.contains("0x525b_7d62 => 4")
+            && !syscall.contains("0x677b_f71a => usize::MAX")
+            && !syscall.contains("0x8cec_27f8 => 1"),
+        "syscall_arg_count must not duplicate hash literals from known_interop_hash"
+    );
+    assert!(
+        !syscall.contains("\"System.Contract.Call\" => Some(0x525b_7d62)")
+            && !syscall.contains("\"System.Runtime.CheckWitness\" => Some(0x8cec_27f8)"),
+        "known_interop_hash must not be a second handwritten hash table"
+    );
+}
+
+#[test]
 fn pending_exception_state_is_shared_between_runtime_and_interpreter() {
     let runtime_mod = read_workspace_source("src/runtime/mod.rs");
     let runtime_exception = read_workspace_source("src/runtime/pending_exception.rs");
