@@ -42,11 +42,10 @@ pub(super) fn execute(
         // COMPOUND TYPE OPERATIONS (0xbe-0xd3)
         // =============================================================================
         PACKMAP => {
-            let count = pop_integer(stack)?;
-            if count < 0 {
-                return Err("negative count for PACKMAP".to_string());
-            }
-            let count = count as usize;
+            let count = collection_rules::non_negative_count(
+                pop_integer(stack)?,
+                "negative count for PACKMAP",
+            )?;
             if stack.len() < count.saturating_mul(2) {
                 return Err("stack underflow for PACKMAP".to_string());
             }
@@ -60,11 +59,10 @@ pub(super) fn execute(
             stack.push(ids.map(pairs));
         }
         PACKSTRUCT => {
-            let count = pop_integer(stack)?;
-            if count < 0 {
-                return Err("negative count for PACKSTRUCT".to_string());
-            }
-            let count = count as usize;
+            let count = collection_rules::non_negative_count(
+                pop_integer(stack)?,
+                "negative count for PACKSTRUCT",
+            )?;
             if stack.len() < count {
                 return Err("stack underflow for PACKSTRUCT".to_string());
             }
@@ -80,11 +78,10 @@ pub(super) fn execute(
             stack.push(ids.r#struct(items));
         }
         PACK => {
-            let count = pop_integer(stack)?;
-            if count < 0 {
-                return Err("negative count for PACK".to_string());
-            }
-            let count = count as usize;
+            let count = collection_rules::non_negative_count(
+                pop_integer(stack)?,
+                "negative count for PACK",
+            )?;
             if stack.len() < count {
                 return Err("stack underflow for PACK".to_string());
             }
@@ -124,29 +121,29 @@ pub(super) fn execute(
             stack.push(ids.array(Vec::new()));
         }
         NEWARRAY => {
-            let count = pop_integer(stack)?;
-            if count < 0 {
-                return Err("negative count for NEWARRAY".to_string());
-            }
-            if count > MAX_STACK_SIZE as i64 {
+            let count = collection_rules::non_negative_count(
+                pop_integer(stack)?,
+                "negative count for NEWARRAY",
+            )?;
+            if count > MAX_STACK_SIZE {
                 return Err("NEWARRAY count exceeds maximum stack size".to_string());
             }
-            stack.push(ids.array(vec![StackValue::Null; count as usize]));
+            stack.push(ids.array(vec![StackValue::Null; count]));
         }
         NEWARRAY_T => {
             if ip + 2 > script.len() {
                 return Err("truncated NEWARRAY_T type".to_string());
             }
-            let count = pop_integer(stack)?;
-            if count < 0 {
-                return Err("negative count for NEWARRAY_T".to_string());
-            }
-            if count > MAX_STACK_SIZE as i64 {
+            let count = collection_rules::non_negative_count(
+                pop_integer(stack)?,
+                "negative count for NEWARRAY_T",
+            )?;
+            if count > MAX_STACK_SIZE {
                 return Err("NEWARRAY_T count exceeds maximum stack size".to_string());
             }
             let kind = script[ip + 1];
             let default_value = ids.import_abi(new_array_default_value_for_neovm_type_tag(kind));
-            stack.push(ids.array(vec![default_value; count as usize]));
+            stack.push(ids.array(vec![default_value; count]));
             ip += 2;
             finish!(Dispatch::Continue);
         }
@@ -154,14 +151,14 @@ pub(super) fn execute(
             stack.push(ids.r#struct(Vec::new()));
         }
         NEWSTRUCT => {
-            let count = pop_integer(stack)?;
-            if count < 0 {
-                return Err("negative count for NEWSTRUCT".to_string());
-            }
-            if count > MAX_STACK_SIZE as i64 {
+            let count = collection_rules::non_negative_count(
+                pop_integer(stack)?,
+                "negative count for NEWSTRUCT",
+            )?;
+            if count > MAX_STACK_SIZE {
                 return Err("NEWSTRUCT count exceeds maximum stack size".to_string());
             }
-            stack.push(ids.r#struct(vec![StackValue::Null; count as usize]));
+            stack.push(ids.r#struct(vec![StackValue::Null; count]));
         }
         NEWMAP => {
             stack.push(ids.map(Vec::new()));

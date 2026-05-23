@@ -283,6 +283,11 @@ fn collection_constructor_rules_are_not_reimplemented_per_layer() {
             && !runtime_collections.contains("fn positive_count"),
         "runtime collection adapters should not keep a private count validator"
     );
+    assert!(
+        interpreter_compound_ops.contains("collection_rules::non_negative_count")
+            && !interpreter_compound_ops.contains("if count < 0"),
+        "interpreter compound collection opcodes should reuse the shared non-negative count rule"
+    );
 }
 
 #[test]
