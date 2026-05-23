@@ -1,7 +1,7 @@
-use super::super::helpers::trim_le_bytes_slice;
 use super::super::opcodes::*;
 use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
+use crate::semantics::numeric;
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -80,7 +80,7 @@ pub(super) fn execute(
             if ip + 17 > script.len() {
                 return Err("truncated PUSHINT128 operand".to_string());
             }
-            stack.push(StackValue::BigInteger(trim_le_bytes_slice(
+            stack.push(StackValue::BigInteger(numeric::trim_le_bytes_slice(
                 &script[ip + 1..ip + 17],
             )));
             ip += 17;
@@ -90,7 +90,7 @@ pub(super) fn execute(
             if ip + 33 > script.len() {
                 return Err("truncated PUSHINT256 operand".to_string());
             }
-            stack.push(StackValue::BigInteger(trim_le_bytes_slice(
+            stack.push(StackValue::BigInteger(numeric::trim_le_bytes_slice(
                 &script[ip + 1..ip + 33],
             )));
             ip += 33;

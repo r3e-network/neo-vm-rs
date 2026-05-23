@@ -21,9 +21,9 @@ pub(crate) fn pop_integer(stack: &mut Vec<StackValue>) -> Result<i64, String> {
     match stack.pop() {
         Some(StackValue::Integer(value)) => Ok(value),
         Some(StackValue::Boolean(value)) => Ok(if value { 1 } else { 0 }),
-        Some(StackValue::ByteString(value)) => decode_signed_le_bytes(&value),
-        Some(StackValue::BigInteger(value)) => decode_signed_le_bytes(&value),
-        Some(StackValue::Buffer(_, bytes)) => decode_signed_le_bytes(&bytes),
+        Some(StackValue::ByteString(value)) => numeric::decode_signed_le_bytes_i64(&value),
+        Some(StackValue::BigInteger(value)) => numeric::decode_signed_le_bytes_i64(&value),
+        Some(StackValue::Buffer(_, bytes)) => numeric::decode_signed_le_bytes_i64(&bytes),
         Some(_) => Err("expected integer on stack".to_string()),
         None => Err("stack underflow".to_string()),
     }
@@ -33,8 +33,8 @@ pub(crate) fn pop_shift_count(stack: &mut Vec<StackValue>) -> Result<i64, String
     match stack.pop() {
         Some(StackValue::Integer(value)) => Ok(value),
         Some(StackValue::Boolean(value)) => Ok(if value { 1 } else { 0 }),
-        Some(StackValue::ByteString(value)) => decode_signed_le_bytes(&value),
-        Some(StackValue::BigInteger(value)) => decode_signed_le_bytes(&value),
+        Some(StackValue::ByteString(value)) => numeric::decode_signed_le_bytes_i64(&value),
+        Some(StackValue::BigInteger(value)) => numeric::decode_signed_le_bytes_i64(&value),
         Some(StackValue::Null) => Err("expected integer-compatible value".to_string()),
         Some(StackValue::Buffer(_, _)) => Err("expected integer-compatible value".to_string()),
         Some(_) => Err("expected integer-compatible shift count".to_string()),
@@ -60,7 +60,9 @@ pub(crate) fn vm_equal(left: &StackValue, right: &StackValue) -> bool {
     match (left, right) {
         (StackValue::Integer(l), StackValue::Integer(r)) => l == r,
         (StackValue::Integer(l), StackValue::BigInteger(r))
-        | (StackValue::BigInteger(r), StackValue::Integer(l)) => encode_integer(*l) == *r,
+        | (StackValue::BigInteger(r), StackValue::Integer(l)) => {
+            crate::abi::encode_integer(*l) == *r
+        }
         (StackValue::BigInteger(l), StackValue::BigInteger(r)) => l == r,
         (StackValue::ByteString(l), StackValue::ByteString(r)) => l == r,
         (StackValue::Boolean(l), StackValue::Boolean(r)) => l == r,
@@ -134,11 +136,6 @@ pub(crate) fn convert_value(
 }
 
 #[inline]
-pub(crate) fn decode_signed_le_bytes(bytes: &[u8]) -> Result<i64, String> {
-    numeric::decode_signed_le_bytes_i64(bytes)
-}
-
-#[inline]
 pub(crate) fn pop_boolean(stack: &mut Vec<StackValue>) -> Result<bool, String> {
     let value = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
     Ok(comparison_rules::boolean_value(&to_abi_value(&value)))
@@ -154,10 +151,6 @@ pub(crate) fn pop_bytes(stack: &mut Vec<StackValue>) -> Result<Vec<u8>, String> 
 pub(crate) fn stack_item_to_bytes(item: StackValue) -> Result<Vec<u8>, String> {
     stack_value_span_bytes(&to_abi_value(&item))
         .ok_or_else(|| "expected byte memory-compatible item on stack".to_string())
-}
-
-pub(crate) fn encode_integer(value: i64) -> Vec<u8> {
-    crate::abi::encode_integer(value)
 }
 
 /// Distinguishes short (i8, 1-byte) from long (i32, 4-byte) jump offsets.
@@ -209,9 +202,4 @@ pub(crate) fn compute_jump_target_offset(
         return Err(format!("{name} target out of bounds"));
     }
     Ok(target as usize)
-}
-
-#[inline]
-pub(crate) fn trim_le_bytes_slice(bytes: &[u8]) -> Vec<u8> {
-    numeric::trim_le_bytes_slice(bytes)
 }

@@ -339,6 +339,33 @@ fn pending_exception_state_is_shared_between_runtime_and_interpreter() {
     );
 }
 
+#[test]
+fn interpreter_numeric_helpers_call_canonical_rules_directly() {
+    let values = read_workspace_source("src/interpreter/helpers/values.rs");
+    let push_ops = read_workspace_source("src/interpreter/executor/push_ops.rs");
+
+    for duplicate in [
+        "fn decode_signed_le_bytes(",
+        "fn encode_integer(",
+        "fn trim_le_bytes_slice(",
+    ] {
+        assert!(
+            !values.contains(duplicate),
+            "interpreter helpers should not keep forwarding numeric helper {duplicate}"
+        );
+    }
+
+    assert!(
+        values.contains("numeric::decode_signed_le_bytes_i64")
+            && values.contains("crate::abi::encode_integer"),
+        "interpreter value helpers should call canonical numeric and ABI integer rules directly"
+    );
+    assert!(
+        push_ops.contains("numeric::trim_le_bytes_slice"),
+        "PUSHINT128/PUSHINT256 should trim through canonical numeric rules directly"
+    );
+}
+
 fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
     for entry in fs::read_dir(dir).expect("interpreter directory should be readable") {
         let entry = entry.expect("interpreter entry should be readable");
