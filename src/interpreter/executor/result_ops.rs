@@ -3,8 +3,24 @@ use super::super::state::{
     PendingException, LAST_RESULT_LIMIT, LAST_RESULT_STACK_LEN, LAST_RESULT_STAGE,
 };
 use crate::{ExecutionResult, VmState};
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::sync::atomic::Ordering;
+
+pub(super) fn fault_result(
+    stack: &[StackValue],
+    locals: &[StackValue],
+    ip: usize,
+    fault_message: String,
+) -> ExecutionResult {
+    ExecutionResult {
+        fee_consumed_pico: 0,
+        state: VmState::Fault,
+        stack: to_abi_stack(stack),
+        fault_message: Some(fault_message),
+        fault_ip: Some(ip as u32),
+        fault_locals: Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(locals))),
+    }
+}
 
 #[inline]
 pub(super) fn trim_halt_stack_for_result_limit(

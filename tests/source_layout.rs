@@ -137,6 +137,13 @@ fn numeric_stack_shapes_are_shared_between_runtime_and_interpreter() {
             && interpreter_numeric.contains("value_stack::"),
         "runtime and interpreter numeric opcode adapters should share value_stack stack-shape helpers"
     );
+    assert!(
+        runtime_arithmetic.contains("value_stack::ternary_bool(stack, rules::within_values)")
+            && interpreter_numeric.contains(
+                "value_stack::ternary_bool(&mut value_stack, arithmetic_rules::within_values)"
+            ),
+        "runtime and interpreter WITHIN adapters should share the ternary bool stack shape"
+    );
 
     for duplicate in [
         "fn unary_value(",
@@ -144,12 +151,17 @@ fn numeric_stack_shapes_are_shared_between_runtime_and_interpreter() {
         "fn ternary_value(",
         "fn binary_bool(",
         "fn bool_binary(",
+        "match rules::within_values",
     ] {
         assert!(
             !interpreter_numeric.contains(duplicate),
             "interpreter numeric_ops should not keep private stack-shape helper {duplicate}"
         );
     }
+    assert!(
+        !runtime_arithmetic.contains("match rules::within_values"),
+        "runtime arithmetic should not hand-roll the WITHIN stack shape"
+    );
 }
 
 #[test]
@@ -179,6 +191,25 @@ fn stack_opcode_shapes_are_shared_between_runtime_and_interpreter() {
             "interpreter stack_ops should not reimplement stack manipulation: {duplicate}"
         );
     }
+}
+
+#[test]
+fn interpreter_fault_results_are_centralized() {
+    let executor = read_workspace_source("src/interpreter/executor/mod.rs");
+    let result_ops = read_workspace_source("src/interpreter/executor/result_ops.rs");
+
+    assert!(
+        result_ops.contains("pub(super) fn fault_result("),
+        "result_ops should own interpreter Fault ExecutionResult construction"
+    );
+    assert!(
+        !executor.contains("ExecutionResult {"),
+        "interpreter executor loop should not duplicate Fault ExecutionResult literals"
+    );
+    assert!(
+        !executor.contains("fast_codec::encode_stack(&to_abi_stack(&cloned))"),
+        "fault locals encoding should be centralized with the fault result constructor"
+    );
 }
 
 #[test]
@@ -271,6 +302,28 @@ fn opcode_byte_lookup_is_generated_from_the_canonical_enum() {
 }
 
 #[test]
+fn opcode_metadata_comes_from_one_declaration_table() {
+    let source = read_workspace_source("src/vm/opcode.rs");
+
+    assert!(
+        source.contains("macro_rules! define_opcodes"),
+        "opcode enum, ALL order, names, and operand metadata should be generated from one table"
+    );
+    assert!(
+        source.contains("define_opcodes! {"),
+        "opcode.rs should keep a single canonical opcode declaration table"
+    );
+    assert!(
+        !source.contains("Self::PUSHINT8,\r\n") && !source.contains("Self::PUSHINT8,\n"),
+        "OpCode::ALL must not be a second hand-maintained opcode list"
+    );
+    assert!(
+        !source.contains("Self::PUSHINT8 => \"PUSHINT8\""),
+        "opcode names should come from the declaration identifier, not a second match table"
+    );
+}
+
+#[test]
 fn interpreter_uses_central_stack_item_type_tags() {
     let sources = [
         read_workspace_source("src/interpreter/executor/compound_ops.rs"),
@@ -343,6 +396,7 @@ fn pending_exception_state_is_shared_between_runtime_and_interpreter() {
 fn interpreter_numeric_helpers_call_canonical_rules_directly() {
     let values = read_workspace_source("src/interpreter/helpers/values.rs");
     let push_ops = read_workspace_source("src/interpreter/executor/push_ops.rs");
+    let stack_value = read_workspace_source("src/abi/stack_value.rs");
 
     for duplicate in [
         "fn decode_signed_le_bytes(",
@@ -363,6 +417,11 @@ fn interpreter_numeric_helpers_call_canonical_rules_directly() {
     assert!(
         push_ops.contains("numeric::trim_le_bytes_slice"),
         "PUSHINT128/PUSHINT256 should trim through canonical numeric rules directly"
+    );
+    assert!(
+        stack_value.contains("numeric::decode_signed_le_bytes_i128")
+            && !stack_value.contains("fn little_endian_twos_complement_i128"),
+        "ABI StackValue should not keep a private two's-complement decoder beside semantics::numeric"
     );
 }
 

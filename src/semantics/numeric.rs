@@ -47,6 +47,25 @@ pub(crate) fn decode_signed_le_bytes_i64(bytes: &[u8]) -> Result<i64, String> {
     Ok(i64::from_le_bytes(buffer))
 }
 
+pub(crate) fn decode_signed_le_bytes_i128(bytes: &[u8]) -> Result<i128, String> {
+    if bytes.is_empty() {
+        return Ok(0);
+    }
+    if bytes.len() > 16 {
+        return Err("integer exceeds i128 range".to_string());
+    }
+
+    let sign_extend = if bytes.last().is_some_and(|byte| byte & 0x80 != 0) {
+        0xff
+    } else {
+        0x00
+    };
+
+    let mut buffer = [sign_extend; 16];
+    buffer[..bytes.len()].copy_from_slice(bytes);
+    Ok(i128::from_le_bytes(buffer))
+}
+
 pub(crate) fn decode_signed_le_bytes_bigint(bytes: &[u8]) -> Result<BigInt, String> {
     if bytes.len() > MAX_INTEGER_SIZE {
         return Err("integer size exceeds maximum".to_string());

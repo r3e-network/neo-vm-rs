@@ -13,7 +13,6 @@ use super::runtime_types::{to_abi_value, CompoundIds, StackValue};
 use super::state::*;
 use crate::{
     semantics::comparison as comparison_rules, ExecutionResult, StackValue as AbiStackValue,
-    VmState,
 };
 use alloc::{
     format,
@@ -236,34 +235,24 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 // ABORT is uncatchable — always FAULT. Return via the Ok(Fault) channel
                 // so we can attribute the faulting IP; the host converts this back to an
                 // Err(String) at the FFI boundary (lib.rs fault-message override).
-                return Ok(ExecutionResult {
-                    fee_consumed_pico: 0,
-                    state: VmState::Fault,
-                    stack: to_abi_stack(&stack),
-                    fault_message: Some("ABORT".to_string()),
-                    fault_ip: Some(ip as u32),
-                    fault_locals: {
-                        let cloned = locals.clone();
-                        Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(&cloned)))
-                    },
-                });
+                return Ok(result_ops::fault_result(
+                    &stack,
+                    &locals,
+                    ip,
+                    "ABORT".to_string(),
+                ));
             }
             ASSERT => {
                 let value = pop_boolean(&mut stack)?;
                 if !value {
                     // ASSERT is uncatchable — always FAULT. Same Ok(Fault) channel as ABORT
                     // so the faulting IP is preserved.
-                    return Ok(ExecutionResult {
-                        fee_consumed_pico: 0,
-                        state: VmState::Fault,
-                        stack: to_abi_stack(&stack),
-                        fault_message: Some("ASSERT failed".to_string()),
-                        fault_ip: Some(ip as u32),
-                        fault_locals: {
-                            let cloned = locals.clone();
-                            Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(&cloned)))
-                        },
-                    });
+                    return Ok(result_ops::fault_result(
+                        &stack,
+                        &locals,
+                        ip,
+                        "ASSERT failed".to_string(),
+                    ));
                 }
             }
             SYSCALL => {
@@ -397,17 +386,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     _ => format!("THROW: {:?}", msg),
                 };
                 if try_frames.is_empty() {
-                    return Ok(ExecutionResult {
-                        fee_consumed_pico: 0,
-                        state: VmState::Fault,
-                        stack: to_abi_stack(&stack),
-                        fault_message: Some(err_msg),
-                        fault_ip: Some(ip as u32),
-                        fault_locals: {
-                            let cloned = locals.clone();
-                            Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(&cloned)))
-                        },
-                    });
+                    return Ok(result_ops::fault_result(&stack, &locals, ip, err_msg));
                 }
                 pending_error = Some(PendingException::thrown_value(msg));
                 continue;
@@ -533,17 +512,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let msg_str = String::from_utf8_lossy(&msg);
                 let err_msg = format!("ABORTMSG is executed. Reason: {}", msg_str);
                 // ABORTMSG is uncatchable — always FAULT
-                return Ok(ExecutionResult {
-                    fee_consumed_pico: 0,
-                    state: VmState::Fault,
-                    stack: to_abi_stack(&stack),
-                    fault_message: Some(err_msg),
-                    fault_ip: Some(ip as u32),
-                    fault_locals: {
-                        let cloned = locals.clone();
-                        Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(&cloned)))
-                    },
-                });
+                return Ok(result_ops::fault_result(&stack, &locals, ip, err_msg));
             }
             ASSERTMSG => {
                 let msg = pop_bytes(&mut stack)?;
@@ -555,17 +524,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                         msg_str
                     );
                     // ASSERTMSG is uncatchable — always FAULT
-                    return Ok(ExecutionResult {
-                        fee_consumed_pico: 0,
-                        state: VmState::Fault,
-                        stack: to_abi_stack(&stack),
-                        fault_message: Some(err_msg),
-                        fault_ip: Some(ip as u32),
-                        fault_locals: {
-                            let cloned = locals.clone();
-                            Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(&cloned)))
-                        },
-                    });
+                    return Ok(result_ops::fault_result(&stack, &locals, ip, err_msg));
                 }
             }
             JMPIFNOT | JMPIFNOT_L => {

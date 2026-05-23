@@ -1,727 +1,319 @@
 //! Canonical NeoVM opcode metadata.
 
-/// NeoVM operation codes.
-///
-/// Values follow the canonical Neo N3 opcode assignment used by Neo.VM 3.9.x.
-/// Execution engines may support additional host-level pseudo operations, but
-/// shared bytecode decoding should use this table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(u8)]
-#[allow(non_camel_case_types)]
-pub enum OpCode {
-    PUSHINT8 = 0x00,
-    PUSHINT16 = 0x01,
-    PUSHINT32 = 0x02,
-    PUSHINT64 = 0x03,
-    PUSHINT128 = 0x04,
-    PUSHINT256 = 0x05,
-    PUSHT = 0x08,
-    PUSHF = 0x09,
-    PUSHA = 0x0A,
-    PUSHNULL = 0x0B,
-    PUSHDATA1 = 0x0C,
-    PUSHDATA2 = 0x0D,
-    PUSHDATA4 = 0x0E,
-    PUSHM1 = 0x0F,
-    PUSH0 = 0x10,
-    PUSH1 = 0x11,
-    PUSH2 = 0x12,
-    PUSH3 = 0x13,
-    PUSH4 = 0x14,
-    PUSH5 = 0x15,
-    PUSH6 = 0x16,
-    PUSH7 = 0x17,
-    PUSH8 = 0x18,
-    PUSH9 = 0x19,
-    PUSH10 = 0x1A,
-    PUSH11 = 0x1B,
-    PUSH12 = 0x1C,
-    PUSH13 = 0x1D,
-    PUSH14 = 0x1E,
-    PUSH15 = 0x1F,
-    PUSH16 = 0x20,
-    NOP = 0x21,
-    JMP = 0x22,
-    JMP_L = 0x23,
-    JMPIF = 0x24,
-    JMPIF_L = 0x25,
-    JMPIFNOT = 0x26,
-    JMPIFNOT_L = 0x27,
-    JMPEQ = 0x28,
-    JMPEQ_L = 0x29,
-    JMPNE = 0x2A,
-    JMPNE_L = 0x2B,
-    JMPGT = 0x2C,
-    JMPGT_L = 0x2D,
-    JMPGE = 0x2E,
-    JMPGE_L = 0x2F,
-    JMPLT = 0x30,
-    JMPLT_L = 0x31,
-    JMPLE = 0x32,
-    JMPLE_L = 0x33,
-    CALL = 0x34,
-    CALL_L = 0x35,
-    CALLA = 0x36,
-    CALLT = 0x37,
-    ABORT = 0x38,
-    ASSERT = 0x39,
-    THROW = 0x3A,
-    TRY = 0x3B,
-    TRY_L = 0x3C,
-    ENDTRY = 0x3D,
-    ENDTRY_L = 0x3E,
-    ENDFINALLY = 0x3F,
-    RET = 0x40,
-    SYSCALL = 0x41,
-    DEPTH = 0x43,
-    DROP = 0x45,
-    NIP = 0x46,
-    XDROP = 0x48,
-    CLEAR = 0x49,
-    DUP = 0x4A,
-    OVER = 0x4B,
-    PICK = 0x4D,
-    TUCK = 0x4E,
-    SWAP = 0x50,
-    ROT = 0x51,
-    ROLL = 0x52,
-    REVERSE3 = 0x53,
-    REVERSE4 = 0x54,
-    REVERSEN = 0x55,
-    INITSSLOT = 0x56,
-    INITSLOT = 0x57,
-    LDSFLD0 = 0x58,
-    LDSFLD1 = 0x59,
-    LDSFLD2 = 0x5A,
-    LDSFLD3 = 0x5B,
-    LDSFLD4 = 0x5C,
-    LDSFLD5 = 0x5D,
-    LDSFLD6 = 0x5E,
-    LDSFLD = 0x5F,
-    STSFLD0 = 0x60,
-    STSFLD1 = 0x61,
-    STSFLD2 = 0x62,
-    STSFLD3 = 0x63,
-    STSFLD4 = 0x64,
-    STSFLD5 = 0x65,
-    STSFLD6 = 0x66,
-    STSFLD = 0x67,
-    LDLOC0 = 0x68,
-    LDLOC1 = 0x69,
-    LDLOC2 = 0x6A,
-    LDLOC3 = 0x6B,
-    LDLOC4 = 0x6C,
-    LDLOC5 = 0x6D,
-    LDLOC6 = 0x6E,
-    LDLOC = 0x6F,
-    STLOC0 = 0x70,
-    STLOC1 = 0x71,
-    STLOC2 = 0x72,
-    STLOC3 = 0x73,
-    STLOC4 = 0x74,
-    STLOC5 = 0x75,
-    STLOC6 = 0x76,
-    STLOC = 0x77,
-    LDARG0 = 0x78,
-    LDARG1 = 0x79,
-    LDARG2 = 0x7A,
-    LDARG3 = 0x7B,
-    LDARG4 = 0x7C,
-    LDARG5 = 0x7D,
-    LDARG6 = 0x7E,
-    LDARG = 0x7F,
-    STARG0 = 0x80,
-    STARG1 = 0x81,
-    STARG2 = 0x82,
-    STARG3 = 0x83,
-    STARG4 = 0x84,
-    STARG5 = 0x85,
-    STARG6 = 0x86,
-    STARG = 0x87,
-    NEWBUFFER = 0x88,
-    MEMCPY = 0x89,
-    CAT = 0x8B,
-    SUBSTR = 0x8C,
-    LEFT = 0x8D,
-    RIGHT = 0x8E,
-    INVERT = 0x90,
-    AND = 0x91,
-    OR = 0x92,
-    XOR = 0x93,
-    EQUAL = 0x97,
-    NOTEQUAL = 0x98,
-    SIGN = 0x99,
-    ABS = 0x9A,
-    NEGATE = 0x9B,
-    INC = 0x9C,
-    DEC = 0x9D,
-    ADD = 0x9E,
-    SUB = 0x9F,
-    MUL = 0xA0,
-    DIV = 0xA1,
-    MOD = 0xA2,
-    POW = 0xA3,
-    SQRT = 0xA4,
-    MODMUL = 0xA5,
-    MODPOW = 0xA6,
-    SHL = 0xA8,
-    SHR = 0xA9,
-    NOT = 0xAA,
-    BOOLAND = 0xAB,
-    BOOLOR = 0xAC,
-    NZ = 0xB1,
-    NUMEQUAL = 0xB3,
-    NUMNOTEQUAL = 0xB4,
-    LT = 0xB5,
-    LE = 0xB6,
-    GT = 0xB7,
-    GE = 0xB8,
-    MIN = 0xB9,
-    MAX = 0xBA,
-    WITHIN = 0xBB,
-    PACKMAP = 0xBE,
-    PACKSTRUCT = 0xBF,
-    PACK = 0xC0,
-    UNPACK = 0xC1,
-    NEWARRAY0 = 0xC2,
-    NEWARRAY = 0xC3,
-    NEWARRAY_T = 0xC4,
-    NEWSTRUCT0 = 0xC5,
-    NEWSTRUCT = 0xC6,
-    NEWMAP = 0xC8,
-    SIZE = 0xCA,
-    HASKEY = 0xCB,
-    KEYS = 0xCC,
-    VALUES = 0xCD,
-    PICKITEM = 0xCE,
-    APPEND = 0xCF,
-    SETITEM = 0xD0,
-    REVERSEITEMS = 0xD1,
-    REMOVE = 0xD2,
-    CLEARITEMS = 0xD3,
-    POPITEM = 0xD4,
-    ISNULL = 0xD8,
-    ISTYPE = 0xD9,
-    CONVERT = 0xDB,
-    ABORTMSG = 0xE0,
-    ASSERTMSG = 0xE1,
+macro_rules! count_opcodes {
+    ($($name:ident),+ $(,)?) => {
+        <[()]>::len(&[$(count_opcodes!(@unit $name)),+])
+    };
+    (@unit $name:ident) => {
+        ()
+    };
 }
 
-impl OpCode {
-    /// All canonical opcodes accepted by this shared metadata table.
-    pub const ALL: [Self; 196] = [
-        Self::PUSHINT8,
-        Self::PUSHINT16,
-        Self::PUSHINT32,
-        Self::PUSHINT64,
-        Self::PUSHINT128,
-        Self::PUSHINT256,
-        Self::PUSHT,
-        Self::PUSHF,
-        Self::PUSHA,
-        Self::PUSHNULL,
-        Self::PUSHDATA1,
-        Self::PUSHDATA2,
-        Self::PUSHDATA4,
-        Self::PUSHM1,
-        Self::PUSH0,
-        Self::PUSH1,
-        Self::PUSH2,
-        Self::PUSH3,
-        Self::PUSH4,
-        Self::PUSH5,
-        Self::PUSH6,
-        Self::PUSH7,
-        Self::PUSH8,
-        Self::PUSH9,
-        Self::PUSH10,
-        Self::PUSH11,
-        Self::PUSH12,
-        Self::PUSH13,
-        Self::PUSH14,
-        Self::PUSH15,
-        Self::PUSH16,
-        Self::NOP,
-        Self::JMP,
-        Self::JMP_L,
-        Self::JMPIF,
-        Self::JMPIF_L,
-        Self::JMPIFNOT,
-        Self::JMPIFNOT_L,
-        Self::JMPEQ,
-        Self::JMPEQ_L,
-        Self::JMPNE,
-        Self::JMPNE_L,
-        Self::JMPGT,
-        Self::JMPGT_L,
-        Self::JMPGE,
-        Self::JMPGE_L,
-        Self::JMPLT,
-        Self::JMPLT_L,
-        Self::JMPLE,
-        Self::JMPLE_L,
-        Self::CALL,
-        Self::CALL_L,
-        Self::CALLA,
-        Self::CALLT,
-        Self::ABORT,
-        Self::ASSERT,
-        Self::THROW,
-        Self::TRY,
-        Self::TRY_L,
-        Self::ENDTRY,
-        Self::ENDTRY_L,
-        Self::ENDFINALLY,
-        Self::RET,
-        Self::SYSCALL,
-        Self::DEPTH,
-        Self::DROP,
-        Self::NIP,
-        Self::XDROP,
-        Self::CLEAR,
-        Self::DUP,
-        Self::OVER,
-        Self::PICK,
-        Self::TUCK,
-        Self::SWAP,
-        Self::ROT,
-        Self::ROLL,
-        Self::REVERSE3,
-        Self::REVERSE4,
-        Self::REVERSEN,
-        Self::INITSSLOT,
-        Self::INITSLOT,
-        Self::LDSFLD0,
-        Self::LDSFLD1,
-        Self::LDSFLD2,
-        Self::LDSFLD3,
-        Self::LDSFLD4,
-        Self::LDSFLD5,
-        Self::LDSFLD6,
-        Self::LDSFLD,
-        Self::STSFLD0,
-        Self::STSFLD1,
-        Self::STSFLD2,
-        Self::STSFLD3,
-        Self::STSFLD4,
-        Self::STSFLD5,
-        Self::STSFLD6,
-        Self::STSFLD,
-        Self::LDLOC0,
-        Self::LDLOC1,
-        Self::LDLOC2,
-        Self::LDLOC3,
-        Self::LDLOC4,
-        Self::LDLOC5,
-        Self::LDLOC6,
-        Self::LDLOC,
-        Self::STLOC0,
-        Self::STLOC1,
-        Self::STLOC2,
-        Self::STLOC3,
-        Self::STLOC4,
-        Self::STLOC5,
-        Self::STLOC6,
-        Self::STLOC,
-        Self::LDARG0,
-        Self::LDARG1,
-        Self::LDARG2,
-        Self::LDARG3,
-        Self::LDARG4,
-        Self::LDARG5,
-        Self::LDARG6,
-        Self::LDARG,
-        Self::STARG0,
-        Self::STARG1,
-        Self::STARG2,
-        Self::STARG3,
-        Self::STARG4,
-        Self::STARG5,
-        Self::STARG6,
-        Self::STARG,
-        Self::NEWBUFFER,
-        Self::MEMCPY,
-        Self::CAT,
-        Self::SUBSTR,
-        Self::LEFT,
-        Self::RIGHT,
-        Self::INVERT,
-        Self::AND,
-        Self::OR,
-        Self::XOR,
-        Self::EQUAL,
-        Self::NOTEQUAL,
-        Self::SIGN,
-        Self::ABS,
-        Self::NEGATE,
-        Self::INC,
-        Self::DEC,
-        Self::ADD,
-        Self::SUB,
-        Self::MUL,
-        Self::DIV,
-        Self::MOD,
-        Self::POW,
-        Self::SQRT,
-        Self::MODMUL,
-        Self::MODPOW,
-        Self::SHL,
-        Self::SHR,
-        Self::NOT,
-        Self::BOOLAND,
-        Self::BOOLOR,
-        Self::NZ,
-        Self::NUMEQUAL,
-        Self::NUMNOTEQUAL,
-        Self::LT,
-        Self::LE,
-        Self::GT,
-        Self::GE,
-        Self::MIN,
-        Self::MAX,
-        Self::WITHIN,
-        Self::PACKMAP,
-        Self::PACKSTRUCT,
-        Self::PACK,
-        Self::UNPACK,
-        Self::NEWARRAY0,
-        Self::NEWARRAY,
-        Self::NEWARRAY_T,
-        Self::NEWSTRUCT0,
-        Self::NEWSTRUCT,
-        Self::NEWMAP,
-        Self::SIZE,
-        Self::HASKEY,
-        Self::KEYS,
-        Self::VALUES,
-        Self::PICKITEM,
-        Self::APPEND,
-        Self::SETITEM,
-        Self::REVERSEITEMS,
-        Self::REMOVE,
-        Self::CLEARITEMS,
-        Self::POPITEM,
-        Self::ISNULL,
-        Self::ISTYPE,
-        Self::CONVERT,
-        Self::ABORTMSG,
-        Self::ASSERTMSG,
-    ];
-
-    const LOOKUP: [Option<Self>; 256] = Self::build_lookup();
-
-    const fn build_lookup() -> [Option<Self>; 256] {
-        let mut lookup = [None; 256];
-        let mut index = 0;
-        while index < Self::ALL.len() {
-            let opcode = Self::ALL[index];
-            lookup[opcode as usize] = Some(opcode);
-            index += 1;
+macro_rules! define_opcodes {
+    ($(
+        $name:ident = $byte:expr, operand_size = $operand_size:expr, operand_prefix = $operand_prefix:expr;
+    )+) => {
+        /// NeoVM operation codes.
+        ///
+        /// Values follow the canonical Neo N3 opcode assignment used by Neo.VM 3.9.x.
+        /// Execution engines may support additional host-level pseudo operations, but
+        /// shared bytecode decoding should use this table.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[repr(u8)]
+        #[allow(non_camel_case_types)]
+        pub enum OpCode {
+            $(
+                $name = $byte,
+            )+
         }
-        lookup
-    }
 
-    /// Convert a byte to an opcode.
-    #[must_use]
-    pub fn from_u8(value: u8) -> Option<Self> {
-        Self::try_from(value).ok()
-    }
+        impl OpCode {
+            /// All canonical opcodes accepted by this shared metadata table.
+            pub const ALL: [Self; count_opcodes!($($name),+)] = [
+                $(
+                    Self::$name,
+                )+
+            ];
 
-    /// Convert a canonical opcode name to an opcode.
-    ///
-    /// The lookup is ASCII case-insensitive so tools can accept assembler-style
-    /// input without carrying their own opcode string tables.
-    #[must_use]
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|opcode| opcode.name().eq_ignore_ascii_case(name))
-    }
+            const LOOKUP: [Option<Self>; 256] = Self::build_lookup();
 
-    /// Return the opcode byte.
-    #[must_use]
-    pub const fn byte(self) -> u8 {
-        self as u8
-    }
+            const fn build_lookup() -> [Option<Self>; 256] {
+                let mut lookup = [None; 256];
+                let mut index = 0;
+                while index < Self::ALL.len() {
+                    let opcode = Self::ALL[index];
+                    lookup[opcode as usize] = Some(opcode);
+                    index += 1;
+                }
+                lookup
+            }
 
-    /// Returns the number of fixed operand bytes that follow this opcode.
-    #[must_use]
-    pub const fn operand_size(self) -> usize {
-        match self {
-            Self::JMP
-            | Self::JMPIF
-            | Self::JMPIFNOT
-            | Self::JMPEQ
-            | Self::JMPNE
-            | Self::JMPGT
-            | Self::JMPGE
-            | Self::JMPLT
-            | Self::JMPLE
-            | Self::CALL
-            | Self::LDARG
-            | Self::STARG
-            | Self::LDLOC
-            | Self::STLOC
-            | Self::LDSFLD
-            | Self::STSFLD
-            | Self::ISTYPE
-            | Self::CONVERT
-            | Self::INITSSLOT
-            | Self::NEWARRAY_T => 1,
-            Self::CALLT | Self::INITSLOT | Self::PUSHINT16 => 2,
-            Self::JMP_L
-            | Self::JMPIF_L
-            | Self::JMPIFNOT_L
-            | Self::JMPEQ_L
-            | Self::JMPNE_L
-            | Self::JMPGT_L
-            | Self::JMPGE_L
-            | Self::JMPLT_L
-            | Self::JMPLE_L
-            | Self::CALL_L
-            | Self::PUSHA
-            | Self::PUSHINT32
-            | Self::SYSCALL => 4,
-            Self::TRY => 2,
-            Self::TRY_L => 8,
-            Self::ENDTRY => 1,
-            Self::ENDTRY_L => 4,
-            Self::PUSHINT8 | Self::PUSHDATA1 => 1,
-            Self::PUSHINT64 => 8,
-            Self::PUSHINT128 => 16,
-            Self::PUSHINT256 => 32,
-            Self::PUSHDATA2 => 2,
-            Self::PUSHDATA4 => 4,
-            _ => 0,
+            /// Convert a byte to an opcode.
+            #[must_use]
+            pub fn from_u8(value: u8) -> Option<Self> {
+                Self::try_from(value).ok()
+            }
+
+            /// Convert a canonical opcode name to an opcode.
+            ///
+            /// The lookup is ASCII case-insensitive so tools can accept assembler-style
+            /// input without carrying their own opcode string tables.
+            #[must_use]
+            pub fn from_name(name: &str) -> Option<Self> {
+                Self::ALL
+                    .iter()
+                    .copied()
+                    .find(|opcode| opcode.name().eq_ignore_ascii_case(name))
+            }
+
+            /// Return the opcode byte.
+            #[must_use]
+            pub const fn byte(self) -> u8 {
+                self as u8
+            }
+
+            /// Returns the number of fixed operand bytes that follow this opcode.
+            #[must_use]
+            pub const fn operand_size(self) -> usize {
+                match self {
+                    $(
+                        Self::$name => $operand_size,
+                    )+
+                }
+            }
+
+            /// Returns the variable-length operand prefix byte count.
+            #[must_use]
+            pub const fn operand_prefix(self) -> usize {
+                match self {
+                    $(
+                        Self::$name => $operand_prefix,
+                    )+
+                }
+            }
+
+            /// Returns the canonical opcode name.
+            #[must_use]
+            pub const fn name(self) -> &'static str {
+                match self {
+                    $(
+                        Self::$name => stringify!($name),
+                    )+
+                }
+            }
         }
-    }
 
-    /// Returns the variable-length operand prefix byte count.
-    #[must_use]
-    pub const fn operand_prefix(self) -> usize {
-        match self {
-            Self::PUSHDATA1 => 1,
-            Self::PUSHDATA2 => 2,
-            Self::PUSHDATA4 => 4,
-            _ => 0,
-        }
-    }
+        impl TryFrom<u8> for OpCode {
+            type Error = u8;
 
-    /// Returns the canonical opcode name.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::PUSHINT8 => "PUSHINT8",
-            Self::PUSHINT16 => "PUSHINT16",
-            Self::PUSHINT32 => "PUSHINT32",
-            Self::PUSHINT64 => "PUSHINT64",
-            Self::PUSHINT128 => "PUSHINT128",
-            Self::PUSHINT256 => "PUSHINT256",
-            Self::PUSHT => "PUSHT",
-            Self::PUSHF => "PUSHF",
-            Self::PUSHA => "PUSHA",
-            Self::PUSHNULL => "PUSHNULL",
-            Self::PUSHDATA1 => "PUSHDATA1",
-            Self::PUSHDATA2 => "PUSHDATA2",
-            Self::PUSHDATA4 => "PUSHDATA4",
-            Self::PUSHM1 => "PUSHM1",
-            Self::PUSH0 => "PUSH0",
-            Self::PUSH1 => "PUSH1",
-            Self::PUSH2 => "PUSH2",
-            Self::PUSH3 => "PUSH3",
-            Self::PUSH4 => "PUSH4",
-            Self::PUSH5 => "PUSH5",
-            Self::PUSH6 => "PUSH6",
-            Self::PUSH7 => "PUSH7",
-            Self::PUSH8 => "PUSH8",
-            Self::PUSH9 => "PUSH9",
-            Self::PUSH10 => "PUSH10",
-            Self::PUSH11 => "PUSH11",
-            Self::PUSH12 => "PUSH12",
-            Self::PUSH13 => "PUSH13",
-            Self::PUSH14 => "PUSH14",
-            Self::PUSH15 => "PUSH15",
-            Self::PUSH16 => "PUSH16",
-            Self::NOP => "NOP",
-            Self::JMP => "JMP",
-            Self::JMP_L => "JMP_L",
-            Self::JMPIF => "JMPIF",
-            Self::JMPIF_L => "JMPIF_L",
-            Self::JMPIFNOT => "JMPIFNOT",
-            Self::JMPIFNOT_L => "JMPIFNOT_L",
-            Self::JMPEQ => "JMPEQ",
-            Self::JMPEQ_L => "JMPEQ_L",
-            Self::JMPNE => "JMPNE",
-            Self::JMPNE_L => "JMPNE_L",
-            Self::JMPGT => "JMPGT",
-            Self::JMPGT_L => "JMPGT_L",
-            Self::JMPGE => "JMPGE",
-            Self::JMPGE_L => "JMPGE_L",
-            Self::JMPLT => "JMPLT",
-            Self::JMPLT_L => "JMPLT_L",
-            Self::JMPLE => "JMPLE",
-            Self::JMPLE_L => "JMPLE_L",
-            Self::CALL => "CALL",
-            Self::CALL_L => "CALL_L",
-            Self::CALLA => "CALLA",
-            Self::CALLT => "CALLT",
-            Self::ABORT => "ABORT",
-            Self::ASSERT => "ASSERT",
-            Self::THROW => "THROW",
-            Self::TRY => "TRY",
-            Self::TRY_L => "TRY_L",
-            Self::ENDTRY => "ENDTRY",
-            Self::ENDTRY_L => "ENDTRY_L",
-            Self::ENDFINALLY => "ENDFINALLY",
-            Self::RET => "RET",
-            Self::SYSCALL => "SYSCALL",
-            Self::DEPTH => "DEPTH",
-            Self::DROP => "DROP",
-            Self::NIP => "NIP",
-            Self::XDROP => "XDROP",
-            Self::CLEAR => "CLEAR",
-            Self::DUP => "DUP",
-            Self::OVER => "OVER",
-            Self::PICK => "PICK",
-            Self::TUCK => "TUCK",
-            Self::SWAP => "SWAP",
-            Self::ROT => "ROT",
-            Self::ROLL => "ROLL",
-            Self::REVERSE3 => "REVERSE3",
-            Self::REVERSE4 => "REVERSE4",
-            Self::REVERSEN => "REVERSEN",
-            Self::INITSSLOT => "INITSSLOT",
-            Self::INITSLOT => "INITSLOT",
-            Self::LDSFLD0 => "LDSFLD0",
-            Self::LDSFLD1 => "LDSFLD1",
-            Self::LDSFLD2 => "LDSFLD2",
-            Self::LDSFLD3 => "LDSFLD3",
-            Self::LDSFLD4 => "LDSFLD4",
-            Self::LDSFLD5 => "LDSFLD5",
-            Self::LDSFLD6 => "LDSFLD6",
-            Self::LDSFLD => "LDSFLD",
-            Self::STSFLD0 => "STSFLD0",
-            Self::STSFLD1 => "STSFLD1",
-            Self::STSFLD2 => "STSFLD2",
-            Self::STSFLD3 => "STSFLD3",
-            Self::STSFLD4 => "STSFLD4",
-            Self::STSFLD5 => "STSFLD5",
-            Self::STSFLD6 => "STSFLD6",
-            Self::STSFLD => "STSFLD",
-            Self::LDLOC0 => "LDLOC0",
-            Self::LDLOC1 => "LDLOC1",
-            Self::LDLOC2 => "LDLOC2",
-            Self::LDLOC3 => "LDLOC3",
-            Self::LDLOC4 => "LDLOC4",
-            Self::LDLOC5 => "LDLOC5",
-            Self::LDLOC6 => "LDLOC6",
-            Self::LDLOC => "LDLOC",
-            Self::STLOC0 => "STLOC0",
-            Self::STLOC1 => "STLOC1",
-            Self::STLOC2 => "STLOC2",
-            Self::STLOC3 => "STLOC3",
-            Self::STLOC4 => "STLOC4",
-            Self::STLOC5 => "STLOC5",
-            Self::STLOC6 => "STLOC6",
-            Self::STLOC => "STLOC",
-            Self::LDARG0 => "LDARG0",
-            Self::LDARG1 => "LDARG1",
-            Self::LDARG2 => "LDARG2",
-            Self::LDARG3 => "LDARG3",
-            Self::LDARG4 => "LDARG4",
-            Self::LDARG5 => "LDARG5",
-            Self::LDARG6 => "LDARG6",
-            Self::LDARG => "LDARG",
-            Self::STARG0 => "STARG0",
-            Self::STARG1 => "STARG1",
-            Self::STARG2 => "STARG2",
-            Self::STARG3 => "STARG3",
-            Self::STARG4 => "STARG4",
-            Self::STARG5 => "STARG5",
-            Self::STARG6 => "STARG6",
-            Self::STARG => "STARG",
-            Self::NEWBUFFER => "NEWBUFFER",
-            Self::MEMCPY => "MEMCPY",
-            Self::CAT => "CAT",
-            Self::SUBSTR => "SUBSTR",
-            Self::LEFT => "LEFT",
-            Self::RIGHT => "RIGHT",
-            Self::INVERT => "INVERT",
-            Self::AND => "AND",
-            Self::OR => "OR",
-            Self::XOR => "XOR",
-            Self::EQUAL => "EQUAL",
-            Self::NOTEQUAL => "NOTEQUAL",
-            Self::SIGN => "SIGN",
-            Self::ABS => "ABS",
-            Self::NEGATE => "NEGATE",
-            Self::INC => "INC",
-            Self::DEC => "DEC",
-            Self::ADD => "ADD",
-            Self::SUB => "SUB",
-            Self::MUL => "MUL",
-            Self::DIV => "DIV",
-            Self::MOD => "MOD",
-            Self::POW => "POW",
-            Self::SQRT => "SQRT",
-            Self::MODMUL => "MODMUL",
-            Self::MODPOW => "MODPOW",
-            Self::SHL => "SHL",
-            Self::SHR => "SHR",
-            Self::NOT => "NOT",
-            Self::BOOLAND => "BOOLAND",
-            Self::BOOLOR => "BOOLOR",
-            Self::NZ => "NZ",
-            Self::NUMEQUAL => "NUMEQUAL",
-            Self::NUMNOTEQUAL => "NUMNOTEQUAL",
-            Self::LT => "LT",
-            Self::LE => "LE",
-            Self::GT => "GT",
-            Self::GE => "GE",
-            Self::MIN => "MIN",
-            Self::MAX => "MAX",
-            Self::WITHIN => "WITHIN",
-            Self::PACKMAP => "PACKMAP",
-            Self::PACKSTRUCT => "PACKSTRUCT",
-            Self::PACK => "PACK",
-            Self::UNPACK => "UNPACK",
-            Self::NEWARRAY0 => "NEWARRAY0",
-            Self::NEWARRAY => "NEWARRAY",
-            Self::NEWARRAY_T => "NEWARRAY_T",
-            Self::NEWSTRUCT0 => "NEWSTRUCT0",
-            Self::NEWSTRUCT => "NEWSTRUCT",
-            Self::NEWMAP => "NEWMAP",
-            Self::SIZE => "SIZE",
-            Self::HASKEY => "HASKEY",
-            Self::KEYS => "KEYS",
-            Self::VALUES => "VALUES",
-            Self::PICKITEM => "PICKITEM",
-            Self::APPEND => "APPEND",
-            Self::SETITEM => "SETITEM",
-            Self::REVERSEITEMS => "REVERSEITEMS",
-            Self::REMOVE => "REMOVE",
-            Self::CLEARITEMS => "CLEARITEMS",
-            Self::POPITEM => "POPITEM",
-            Self::ISNULL => "ISNULL",
-            Self::ISTYPE => "ISTYPE",
-            Self::CONVERT => "CONVERT",
-            Self::ABORTMSG => "ABORTMSG",
-            Self::ASSERTMSG => "ASSERTMSG",
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
+                Self::LOOKUP[value as usize].ok_or(value)
+            }
         }
-    }
+
+        impl core::fmt::Display for OpCode {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str(self.name())
+            }
+        }
+    };
 }
 
-impl TryFrom<u8> for OpCode {
-    type Error = u8;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        Self::LOOKUP[value as usize].ok_or(value)
-    }
-}
-
-impl core::fmt::Display for OpCode {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.name())
-    }
+define_opcodes! {
+    PUSHINT8 = 0x00, operand_size = 1, operand_prefix = 0;
+    PUSHINT16 = 0x01, operand_size = 2, operand_prefix = 0;
+    PUSHINT32 = 0x02, operand_size = 4, operand_prefix = 0;
+    PUSHINT64 = 0x03, operand_size = 8, operand_prefix = 0;
+    PUSHINT128 = 0x04, operand_size = 16, operand_prefix = 0;
+    PUSHINT256 = 0x05, operand_size = 32, operand_prefix = 0;
+    PUSHT = 0x08, operand_size = 0, operand_prefix = 0;
+    PUSHF = 0x09, operand_size = 0, operand_prefix = 0;
+    PUSHA = 0x0A, operand_size = 4, operand_prefix = 0;
+    PUSHNULL = 0x0B, operand_size = 0, operand_prefix = 0;
+    PUSHDATA1 = 0x0C, operand_size = 1, operand_prefix = 1;
+    PUSHDATA2 = 0x0D, operand_size = 2, operand_prefix = 2;
+    PUSHDATA4 = 0x0E, operand_size = 4, operand_prefix = 4;
+    PUSHM1 = 0x0F, operand_size = 0, operand_prefix = 0;
+    PUSH0 = 0x10, operand_size = 0, operand_prefix = 0;
+    PUSH1 = 0x11, operand_size = 0, operand_prefix = 0;
+    PUSH2 = 0x12, operand_size = 0, operand_prefix = 0;
+    PUSH3 = 0x13, operand_size = 0, operand_prefix = 0;
+    PUSH4 = 0x14, operand_size = 0, operand_prefix = 0;
+    PUSH5 = 0x15, operand_size = 0, operand_prefix = 0;
+    PUSH6 = 0x16, operand_size = 0, operand_prefix = 0;
+    PUSH7 = 0x17, operand_size = 0, operand_prefix = 0;
+    PUSH8 = 0x18, operand_size = 0, operand_prefix = 0;
+    PUSH9 = 0x19, operand_size = 0, operand_prefix = 0;
+    PUSH10 = 0x1A, operand_size = 0, operand_prefix = 0;
+    PUSH11 = 0x1B, operand_size = 0, operand_prefix = 0;
+    PUSH12 = 0x1C, operand_size = 0, operand_prefix = 0;
+    PUSH13 = 0x1D, operand_size = 0, operand_prefix = 0;
+    PUSH14 = 0x1E, operand_size = 0, operand_prefix = 0;
+    PUSH15 = 0x1F, operand_size = 0, operand_prefix = 0;
+    PUSH16 = 0x20, operand_size = 0, operand_prefix = 0;
+    NOP = 0x21, operand_size = 0, operand_prefix = 0;
+    JMP = 0x22, operand_size = 1, operand_prefix = 0;
+    JMP_L = 0x23, operand_size = 4, operand_prefix = 0;
+    JMPIF = 0x24, operand_size = 1, operand_prefix = 0;
+    JMPIF_L = 0x25, operand_size = 4, operand_prefix = 0;
+    JMPIFNOT = 0x26, operand_size = 1, operand_prefix = 0;
+    JMPIFNOT_L = 0x27, operand_size = 4, operand_prefix = 0;
+    JMPEQ = 0x28, operand_size = 1, operand_prefix = 0;
+    JMPEQ_L = 0x29, operand_size = 4, operand_prefix = 0;
+    JMPNE = 0x2A, operand_size = 1, operand_prefix = 0;
+    JMPNE_L = 0x2B, operand_size = 4, operand_prefix = 0;
+    JMPGT = 0x2C, operand_size = 1, operand_prefix = 0;
+    JMPGT_L = 0x2D, operand_size = 4, operand_prefix = 0;
+    JMPGE = 0x2E, operand_size = 1, operand_prefix = 0;
+    JMPGE_L = 0x2F, operand_size = 4, operand_prefix = 0;
+    JMPLT = 0x30, operand_size = 1, operand_prefix = 0;
+    JMPLT_L = 0x31, operand_size = 4, operand_prefix = 0;
+    JMPLE = 0x32, operand_size = 1, operand_prefix = 0;
+    JMPLE_L = 0x33, operand_size = 4, operand_prefix = 0;
+    CALL = 0x34, operand_size = 1, operand_prefix = 0;
+    CALL_L = 0x35, operand_size = 4, operand_prefix = 0;
+    CALLA = 0x36, operand_size = 0, operand_prefix = 0;
+    CALLT = 0x37, operand_size = 2, operand_prefix = 0;
+    ABORT = 0x38, operand_size = 0, operand_prefix = 0;
+    ASSERT = 0x39, operand_size = 0, operand_prefix = 0;
+    THROW = 0x3A, operand_size = 0, operand_prefix = 0;
+    TRY = 0x3B, operand_size = 2, operand_prefix = 0;
+    TRY_L = 0x3C, operand_size = 8, operand_prefix = 0;
+    ENDTRY = 0x3D, operand_size = 1, operand_prefix = 0;
+    ENDTRY_L = 0x3E, operand_size = 4, operand_prefix = 0;
+    ENDFINALLY = 0x3F, operand_size = 0, operand_prefix = 0;
+    RET = 0x40, operand_size = 0, operand_prefix = 0;
+    SYSCALL = 0x41, operand_size = 4, operand_prefix = 0;
+    DEPTH = 0x43, operand_size = 0, operand_prefix = 0;
+    DROP = 0x45, operand_size = 0, operand_prefix = 0;
+    NIP = 0x46, operand_size = 0, operand_prefix = 0;
+    XDROP = 0x48, operand_size = 0, operand_prefix = 0;
+    CLEAR = 0x49, operand_size = 0, operand_prefix = 0;
+    DUP = 0x4A, operand_size = 0, operand_prefix = 0;
+    OVER = 0x4B, operand_size = 0, operand_prefix = 0;
+    PICK = 0x4D, operand_size = 0, operand_prefix = 0;
+    TUCK = 0x4E, operand_size = 0, operand_prefix = 0;
+    SWAP = 0x50, operand_size = 0, operand_prefix = 0;
+    ROT = 0x51, operand_size = 0, operand_prefix = 0;
+    ROLL = 0x52, operand_size = 0, operand_prefix = 0;
+    REVERSE3 = 0x53, operand_size = 0, operand_prefix = 0;
+    REVERSE4 = 0x54, operand_size = 0, operand_prefix = 0;
+    REVERSEN = 0x55, operand_size = 0, operand_prefix = 0;
+    INITSSLOT = 0x56, operand_size = 1, operand_prefix = 0;
+    INITSLOT = 0x57, operand_size = 2, operand_prefix = 0;
+    LDSFLD0 = 0x58, operand_size = 0, operand_prefix = 0;
+    LDSFLD1 = 0x59, operand_size = 0, operand_prefix = 0;
+    LDSFLD2 = 0x5A, operand_size = 0, operand_prefix = 0;
+    LDSFLD3 = 0x5B, operand_size = 0, operand_prefix = 0;
+    LDSFLD4 = 0x5C, operand_size = 0, operand_prefix = 0;
+    LDSFLD5 = 0x5D, operand_size = 0, operand_prefix = 0;
+    LDSFLD6 = 0x5E, operand_size = 0, operand_prefix = 0;
+    LDSFLD = 0x5F, operand_size = 1, operand_prefix = 0;
+    STSFLD0 = 0x60, operand_size = 0, operand_prefix = 0;
+    STSFLD1 = 0x61, operand_size = 0, operand_prefix = 0;
+    STSFLD2 = 0x62, operand_size = 0, operand_prefix = 0;
+    STSFLD3 = 0x63, operand_size = 0, operand_prefix = 0;
+    STSFLD4 = 0x64, operand_size = 0, operand_prefix = 0;
+    STSFLD5 = 0x65, operand_size = 0, operand_prefix = 0;
+    STSFLD6 = 0x66, operand_size = 0, operand_prefix = 0;
+    STSFLD = 0x67, operand_size = 1, operand_prefix = 0;
+    LDLOC0 = 0x68, operand_size = 0, operand_prefix = 0;
+    LDLOC1 = 0x69, operand_size = 0, operand_prefix = 0;
+    LDLOC2 = 0x6A, operand_size = 0, operand_prefix = 0;
+    LDLOC3 = 0x6B, operand_size = 0, operand_prefix = 0;
+    LDLOC4 = 0x6C, operand_size = 0, operand_prefix = 0;
+    LDLOC5 = 0x6D, operand_size = 0, operand_prefix = 0;
+    LDLOC6 = 0x6E, operand_size = 0, operand_prefix = 0;
+    LDLOC = 0x6F, operand_size = 1, operand_prefix = 0;
+    STLOC0 = 0x70, operand_size = 0, operand_prefix = 0;
+    STLOC1 = 0x71, operand_size = 0, operand_prefix = 0;
+    STLOC2 = 0x72, operand_size = 0, operand_prefix = 0;
+    STLOC3 = 0x73, operand_size = 0, operand_prefix = 0;
+    STLOC4 = 0x74, operand_size = 0, operand_prefix = 0;
+    STLOC5 = 0x75, operand_size = 0, operand_prefix = 0;
+    STLOC6 = 0x76, operand_size = 0, operand_prefix = 0;
+    STLOC = 0x77, operand_size = 1, operand_prefix = 0;
+    LDARG0 = 0x78, operand_size = 0, operand_prefix = 0;
+    LDARG1 = 0x79, operand_size = 0, operand_prefix = 0;
+    LDARG2 = 0x7A, operand_size = 0, operand_prefix = 0;
+    LDARG3 = 0x7B, operand_size = 0, operand_prefix = 0;
+    LDARG4 = 0x7C, operand_size = 0, operand_prefix = 0;
+    LDARG5 = 0x7D, operand_size = 0, operand_prefix = 0;
+    LDARG6 = 0x7E, operand_size = 0, operand_prefix = 0;
+    LDARG = 0x7F, operand_size = 1, operand_prefix = 0;
+    STARG0 = 0x80, operand_size = 0, operand_prefix = 0;
+    STARG1 = 0x81, operand_size = 0, operand_prefix = 0;
+    STARG2 = 0x82, operand_size = 0, operand_prefix = 0;
+    STARG3 = 0x83, operand_size = 0, operand_prefix = 0;
+    STARG4 = 0x84, operand_size = 0, operand_prefix = 0;
+    STARG5 = 0x85, operand_size = 0, operand_prefix = 0;
+    STARG6 = 0x86, operand_size = 0, operand_prefix = 0;
+    STARG = 0x87, operand_size = 1, operand_prefix = 0;
+    NEWBUFFER = 0x88, operand_size = 0, operand_prefix = 0;
+    MEMCPY = 0x89, operand_size = 0, operand_prefix = 0;
+    CAT = 0x8B, operand_size = 0, operand_prefix = 0;
+    SUBSTR = 0x8C, operand_size = 0, operand_prefix = 0;
+    LEFT = 0x8D, operand_size = 0, operand_prefix = 0;
+    RIGHT = 0x8E, operand_size = 0, operand_prefix = 0;
+    INVERT = 0x90, operand_size = 0, operand_prefix = 0;
+    AND = 0x91, operand_size = 0, operand_prefix = 0;
+    OR = 0x92, operand_size = 0, operand_prefix = 0;
+    XOR = 0x93, operand_size = 0, operand_prefix = 0;
+    EQUAL = 0x97, operand_size = 0, operand_prefix = 0;
+    NOTEQUAL = 0x98, operand_size = 0, operand_prefix = 0;
+    SIGN = 0x99, operand_size = 0, operand_prefix = 0;
+    ABS = 0x9A, operand_size = 0, operand_prefix = 0;
+    NEGATE = 0x9B, operand_size = 0, operand_prefix = 0;
+    INC = 0x9C, operand_size = 0, operand_prefix = 0;
+    DEC = 0x9D, operand_size = 0, operand_prefix = 0;
+    ADD = 0x9E, operand_size = 0, operand_prefix = 0;
+    SUB = 0x9F, operand_size = 0, operand_prefix = 0;
+    MUL = 0xA0, operand_size = 0, operand_prefix = 0;
+    DIV = 0xA1, operand_size = 0, operand_prefix = 0;
+    MOD = 0xA2, operand_size = 0, operand_prefix = 0;
+    POW = 0xA3, operand_size = 0, operand_prefix = 0;
+    SQRT = 0xA4, operand_size = 0, operand_prefix = 0;
+    MODMUL = 0xA5, operand_size = 0, operand_prefix = 0;
+    MODPOW = 0xA6, operand_size = 0, operand_prefix = 0;
+    SHL = 0xA8, operand_size = 0, operand_prefix = 0;
+    SHR = 0xA9, operand_size = 0, operand_prefix = 0;
+    NOT = 0xAA, operand_size = 0, operand_prefix = 0;
+    BOOLAND = 0xAB, operand_size = 0, operand_prefix = 0;
+    BOOLOR = 0xAC, operand_size = 0, operand_prefix = 0;
+    NZ = 0xB1, operand_size = 0, operand_prefix = 0;
+    NUMEQUAL = 0xB3, operand_size = 0, operand_prefix = 0;
+    NUMNOTEQUAL = 0xB4, operand_size = 0, operand_prefix = 0;
+    LT = 0xB5, operand_size = 0, operand_prefix = 0;
+    LE = 0xB6, operand_size = 0, operand_prefix = 0;
+    GT = 0xB7, operand_size = 0, operand_prefix = 0;
+    GE = 0xB8, operand_size = 0, operand_prefix = 0;
+    MIN = 0xB9, operand_size = 0, operand_prefix = 0;
+    MAX = 0xBA, operand_size = 0, operand_prefix = 0;
+    WITHIN = 0xBB, operand_size = 0, operand_prefix = 0;
+    PACKMAP = 0xBE, operand_size = 0, operand_prefix = 0;
+    PACKSTRUCT = 0xBF, operand_size = 0, operand_prefix = 0;
+    PACK = 0xC0, operand_size = 0, operand_prefix = 0;
+    UNPACK = 0xC1, operand_size = 0, operand_prefix = 0;
+    NEWARRAY0 = 0xC2, operand_size = 0, operand_prefix = 0;
+    NEWARRAY = 0xC3, operand_size = 0, operand_prefix = 0;
+    NEWARRAY_T = 0xC4, operand_size = 1, operand_prefix = 0;
+    NEWSTRUCT0 = 0xC5, operand_size = 0, operand_prefix = 0;
+    NEWSTRUCT = 0xC6, operand_size = 0, operand_prefix = 0;
+    NEWMAP = 0xC8, operand_size = 0, operand_prefix = 0;
+    SIZE = 0xCA, operand_size = 0, operand_prefix = 0;
+    HASKEY = 0xCB, operand_size = 0, operand_prefix = 0;
+    KEYS = 0xCC, operand_size = 0, operand_prefix = 0;
+    VALUES = 0xCD, operand_size = 0, operand_prefix = 0;
+    PICKITEM = 0xCE, operand_size = 0, operand_prefix = 0;
+    APPEND = 0xCF, operand_size = 0, operand_prefix = 0;
+    SETITEM = 0xD0, operand_size = 0, operand_prefix = 0;
+    REVERSEITEMS = 0xD1, operand_size = 0, operand_prefix = 0;
+    REMOVE = 0xD2, operand_size = 0, operand_prefix = 0;
+    CLEARITEMS = 0xD3, operand_size = 0, operand_prefix = 0;
+    POPITEM = 0xD4, operand_size = 0, operand_prefix = 0;
+    ISNULL = 0xD8, operand_size = 0, operand_prefix = 0;
+    ISTYPE = 0xD9, operand_size = 1, operand_prefix = 0;
+    CONVERT = 0xDB, operand_size = 1, operand_prefix = 0;
+    ABORTMSG = 0xE0, operand_size = 0, operand_prefix = 0;
+    ASSERTMSG = 0xE1, operand_size = 0, operand_prefix = 0;
 }

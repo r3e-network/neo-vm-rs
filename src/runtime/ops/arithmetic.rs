@@ -137,11 +137,7 @@ pub fn dec<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 }
 
 pub fn within<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    let x = runtime.pop_value();
-    match rules::within_values(x, a, b) {
-        Ok(value) => runtime.push_bool(value),
-        Err(message) => runtime.fault(&message),
-    }
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::ternary_bool(stack, rules::within_values)
+    });
 }

@@ -4,6 +4,8 @@ use alloc::{format, string::String, vec::Vec};
 use core::convert::TryInto;
 use serde::{Deserialize, Serialize};
 
+use crate::semantics::numeric;
+
 /// Compact integer tag used by generated RISC-V runtime helpers.
 pub const COMPACT_TAG_INTEGER: u8 = 0;
 /// Compact boolean tag used by generated RISC-V runtime helpers.
@@ -445,7 +447,7 @@ impl StackValue {
             Self::Integer(value) => Some(i128::from(*value)),
             Self::Boolean(value) => Some(i128::from(*value as i8)),
             Self::BigInteger(bytes) | Self::ByteString(bytes) | Self::Buffer(bytes) => {
-                little_endian_twos_complement_i128(bytes)
+                numeric::decode_signed_le_bytes_i128(bytes).ok()
             }
             _ => None,
         }
@@ -499,26 +501,6 @@ impl StackValue {
         }
         self.to_byte_string_bytes().map(Self::Buffer)
     }
-}
-
-fn little_endian_twos_complement_i128(bytes: &[u8]) -> Option<i128> {
-    if bytes.is_empty() {
-        return Some(0);
-    }
-    if bytes.len() > 16 {
-        return None;
-    }
-
-    let mut raw = 0u128;
-    for (index, byte) in bytes.iter().enumerate() {
-        raw |= u128::from(*byte) << (index * 8);
-    }
-
-    if bytes.len() < 16 && bytes[bytes.len() - 1] & 0x80 != 0 {
-        raw |= u128::MAX << (bytes.len() * 8);
-    }
-
-    Some(i128::from_le_bytes(raw.to_le_bytes()))
 }
 
 #[cfg(test)]
