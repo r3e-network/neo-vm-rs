@@ -1,47 +1,13 @@
 //! Shared NeoVM execution context used by host-specific runtimes.
 
+mod pending_exception;
+mod try_frame;
+
 use alloc::{format, string::String, string::ToString, vec, vec::Vec};
+use pending_exception::PendingException;
+use try_frame::TryFrame;
 
 use crate::{semantics::runtime::RuntimeStack, ExecutionResult, StackValue, VmState};
-
-#[derive(Debug, Clone)]
-struct TryFrame {
-    catch_pc: i32,
-    finally_pc: i32,
-    caught: bool,
-    in_finally: bool,
-    end_pc: i32,
-}
-
-#[derive(Debug, Clone)]
-enum PendingException {
-    Message(String),
-    ThrownValue(StackValue),
-}
-
-impl PendingException {
-    fn message(message: String) -> Self {
-        Self::Message(message)
-    }
-
-    fn thrown_value(value: StackValue) -> Self {
-        Self::ThrownValue(value)
-    }
-
-    fn into_catch_item(self) -> StackValue {
-        match self {
-            Self::Message(message) => StackValue::ByteString(message.into_bytes()),
-            Self::ThrownValue(value) => value,
-        }
-    }
-
-    fn fault_message(&self) -> String {
-        match self {
-            Self::Message(message) => message.clone(),
-            Self::ThrownValue(value) => format!("exception: {:?}", value),
-        }
-    }
-}
 
 /// Common NeoVM execution state shared by native, RISC-V, and proving runtimes.
 pub struct VmContext {

@@ -1,6 +1,10 @@
 use super::executor::interpret_with_stack_and_syscalls_at_internal;
 use crate::{ExecutionResult, StackValue as AbiStackValue};
-use alloc::{format, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
+
+mod no_syscalls;
+
+use no_syscalls::NoSyscalls;
 
 pub fn interpret(script: &[u8]) -> Result<ExecutionResult, String> {
     let mut host = NoSyscalls;
@@ -129,39 +133,14 @@ pub fn interpret_with_stack_and_syscalls_at_with_initializer_and_result_limit<
     )
 }
 
-struct NoSyscalls;
-
-impl SyscallProvider for NoSyscalls {
-    fn syscall(
-        &mut self,
-        api: u32,
-        _ip: usize,
-        _stack: &mut Vec<AbiStackValue>,
-    ) -> Result<(), String> {
-        Err(format!("unsupported syscall 0x{api:08x}"))
-    }
-}
-
 #[cfg(test)]
 mod try_catch_tests {
     use super::*;
     use crate::{StackValue, VmState};
-    use alloc::{string::ToString, vec};
+    use alloc::vec;
 
-    struct ErrorSyscall;
-    impl SyscallProvider for ErrorSyscall {
-        fn on_instruction(&mut self, _opcode: u8) -> Result<(), String> {
-            Ok(())
-        }
-        fn syscall(
-            &mut self,
-            _api: u32,
-            _ip: usize,
-            _stack: &mut Vec<StackValue>,
-        ) -> Result<(), String> {
-            Err("error".to_string())
-        }
-    }
+    mod error_syscall;
+    use error_syscall::ErrorSyscall;
 
     #[test]
     fn test_try_catch_syscall_exception() {

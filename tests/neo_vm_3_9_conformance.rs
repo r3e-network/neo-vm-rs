@@ -1,27 +1,15 @@
 use std::collections::HashSet;
 
-use neo_vm_rs::{interpret, StackValue, VmState};
-use serde::Deserialize;
+use neo_vm_rs::interpret;
+
+#[path = "neo_vm_3_9_conformance/suite.rs"]
+mod suite;
+#[path = "neo_vm_3_9_conformance/vector.rs"]
+mod vector;
+
+use suite::Suite;
 
 const FIXTURE: &str = include_str!("fixtures/neo_vm_3_9_conformance.json");
-
-#[derive(Debug, Deserialize)]
-struct Suite {
-    neo_node_tag: String,
-    neo_package_version: String,
-    neo_vm_package_version: String,
-    source: String,
-    vectors: Vec<Vector>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Vector {
-    name: String,
-    description: String,
-    script_hex: String,
-    expected_state: VmState,
-    expected_stack: Vec<StackValue>,
-}
 
 #[test]
 fn interpreter_matches_neo_vm_3_9_conformance_vectors() {

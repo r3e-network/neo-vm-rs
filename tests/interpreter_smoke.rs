@@ -1,7 +1,14 @@
 use neo_vm_rs::{
-    interpret, interpret_with_stack_and_syscalls_at, ExecutionResult, StackValue, SyscallProvider,
-    VmState,
+    interpret, interpret_with_stack_and_syscalls_at, ExecutionResult, StackValue, VmState,
 };
+
+#[path = "interpreter_smoke/error_host.rs"]
+mod error_host;
+#[path = "interpreter_smoke/host.rs"]
+mod host;
+
+use error_host::ErrorHost;
+use host::Host;
 
 #[test]
 fn executes_basic_arithmetic_script() {
@@ -28,23 +35,6 @@ fn executes_local_slot_round_trip() {
 
 #[test]
 fn delegates_syscall_to_host_provider() {
-    struct Host {
-        seen_api: Option<u32>,
-    }
-
-    impl SyscallProvider for Host {
-        fn syscall(
-            &mut self,
-            api: u32,
-            _ip: usize,
-            stack: &mut Vec<StackValue>,
-        ) -> Result<(), String> {
-            self.seen_api = Some(api);
-            stack.push(StackValue::Integer(42));
-            Ok(())
-        }
-    }
-
     let mut host = Host { seen_api: None };
     let result = interpret_with_stack_and_syscalls_at(
         &[
@@ -63,19 +53,6 @@ fn delegates_syscall_to_host_provider() {
 
 #[test]
 fn catches_syscall_faults_with_try() {
-    struct ErrorHost;
-
-    impl SyscallProvider for ErrorHost {
-        fn syscall(
-            &mut self,
-            _api: u32,
-            _ip: usize,
-            _stack: &mut Vec<StackValue>,
-        ) -> Result<(), String> {
-            Err("boom".to_string())
-        }
-    }
-
     let mut host = ErrorHost;
     let result = interpret_with_stack_and_syscalls_at(
         &[
