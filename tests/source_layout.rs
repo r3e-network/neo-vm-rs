@@ -499,6 +499,35 @@ fn abi_codecs_share_binary_cursor() {
     }
 }
 
+#[test]
+fn fast_codec_decoder_uses_local_primitive_read_helpers() {
+    let fast_codec = read_workspace_source("src/abi/fast_codec.rs");
+
+    assert!(
+        fast_codec.contains("fn read_exact<'a>(")
+            && fast_codec.contains("fn read_u32(")
+            && fast_codec.contains("fn read_u64(")
+            && fast_codec.contains("fn read_len_prefixed_bytes("),
+        "fast_codec should centralize decoder bounds checks and little-endian primitive reads"
+    );
+
+    let decoder = fast_codec
+        .split("fn decode_value_depth")
+        .nth(1)
+        .expect("fast_codec should define decode_value_depth");
+    for duplicate in [
+        "bytes.len() < pos + 4",
+        "bytes.len() < pos + 8",
+        "bytes[pos + 7]",
+        "u32::from_le_bytes([bytes[pos]",
+    ] {
+        assert!(
+            !decoder.contains(duplicate),
+            "fast_codec decode_value_depth should not duplicate primitive read logic: {duplicate}"
+        );
+    }
+}
+
 fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
     for entry in fs::read_dir(dir).expect("interpreter directory should be readable") {
         let entry = entry.expect("interpreter entry should be readable");

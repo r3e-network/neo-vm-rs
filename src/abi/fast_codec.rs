@@ -55,16 +55,12 @@ const MAX_COLLECTION_LEN: usize = 4096;
 /// Decode stack from binary format
 #[inline]
 pub fn decode_stack(bytes: &[u8]) -> Result<Vec<StackValue>, &'static str> {
-    if bytes.len() < 4 {
-        return Err("truncated stack length");
-    }
-
-    let len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+    let mut pos = 0;
+    let len = read_u32(bytes, &mut pos, "truncated stack length")? as usize;
     if len > MAX_COLLECTION_LEN {
         return Err("collection length exceeds maximum");
     }
     let mut stack = Vec::with_capacity(len);
-    let mut pos = 4;
 
     for _ in 0..len {
         let (value, consumed) = decode_value_depth(&bytes[pos..], 0)?;
@@ -262,6 +258,47 @@ fn encode_value_to_slice(
     }
 }
 
+fn read_exact<'a>(
+    bytes: &'a [u8],
+    pos: &mut usize,
+    len: usize,
+    error: &'static str,
+) -> Result<&'a [u8], &'static str> {
+    let end = pos.checked_add(len).ok_or(error)?;
+    if bytes.len() < end {
+        return Err(error);
+    }
+    let data = &bytes[*pos..end];
+    *pos = end;
+    Ok(data)
+}
+
+fn read_u32(bytes: &[u8], pos: &mut usize, error: &'static str) -> Result<u32, &'static str> {
+    let data = read_exact(bytes, pos, 4, error)?;
+    Ok(u32::from_le_bytes([data[0], data[1], data[2], data[3]]))
+}
+
+fn read_u64(bytes: &[u8], pos: &mut usize, error: &'static str) -> Result<u64, &'static str> {
+    let data = read_exact(bytes, pos, 8, error)?;
+    Ok(u64::from_le_bytes([
+        data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+    ]))
+}
+
+fn read_i64(bytes: &[u8], pos: &mut usize, error: &'static str) -> Result<i64, &'static str> {
+    Ok(read_u64(bytes, pos, error)? as i64)
+}
+
+fn read_len_prefixed_bytes(
+    bytes: &[u8],
+    pos: &mut usize,
+    len_error: &'static str,
+    data_error: &'static str,
+) -> Result<Vec<u8>, &'static str> {
+    let len = read_u32(bytes, pos, len_error)? as usize;
+    Ok(read_exact(bytes, pos, len, data_error)?.to_vec())
+}
+
 #[inline]
 fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize), &'static str> {
     if depth > MAX_DECODE_DEPTH {
@@ -276,86 +313,45 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
 
     let value = match tag {
         STACK_VALUE_CODEC_TAG_INTEGER => {
-            if bytes.len() < pos + 8 {
-                return Err("truncated integer");
-            }
-            let val = i64::from_le_bytes([
-                bytes[pos],
-                bytes[pos + 1],
-                bytes[pos + 2],
-                bytes[pos + 3],
-                bytes[pos + 4],
-                bytes[pos + 5],
-                bytes[pos + 6],
-                bytes[pos + 7],
-            ]);
-            pos += 8;
+            let val = read_i64(bytes, &mut pos, "truncated integer")?;
             StackValue::Integer(val)
         }
         STACK_VALUE_CODEC_TAG_BIG_INTEGER => {
-            if bytes.len() < pos + 4 {
-                return Err("truncated biginteger length");
-            }
-            let len =
-                u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-                    as usize;
-            pos += 4;
-            if bytes.len() < pos + len {
-                return Err("truncated biginteger data");
-            }
-            let data = bytes[pos..pos + len].to_vec();
-            pos += len;
+            let data = read_len_prefixed_bytes(
+                bytes,
+                &mut pos,
+                "truncated biginteger length",
+                "truncated biginteger data",
+            )?;
             StackValue::BigInteger(data)
         }
         STACK_VALUE_CODEC_TAG_BYTESTRING => {
-            if bytes.len() < pos + 4 {
-                return Err("truncated bytestring length");
-            }
-            let len =
-                u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-                    as usize;
-            pos += 4;
-            if bytes.len() < pos + len {
-                return Err("truncated bytestring data");
-            }
-            let data = bytes[pos..pos + len].to_vec();
-            pos += len;
+            let data = read_len_prefixed_bytes(
+                bytes,
+                &mut pos,
+                "truncated bytestring length",
+                "truncated bytestring data",
+            )?;
             StackValue::ByteString(data)
         }
         STACK_VALUE_CODEC_TAG_BUFFER => {
-            if bytes.len() < pos + 4 {
-                return Err("truncated buffer length");
-            }
-            let len =
-                u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-                    as usize;
-            pos += 4;
-            if bytes.len() < pos + len {
-                return Err("truncated buffer data");
-            }
-            let data = bytes[pos..pos + len].to_vec();
-            pos += len;
+            let data = read_len_prefixed_bytes(
+                bytes,
+                &mut pos,
+                "truncated buffer length",
+                "truncated buffer data",
+            )?;
             StackValue::Buffer(data)
         }
         STACK_VALUE_CODEC_TAG_BOOLEAN => {
-            if bytes.len() < pos + 1 {
-                return Err("truncated boolean");
-            }
-            let val = bytes[pos] != 0;
-            pos += 1;
+            let val = read_exact(bytes, &mut pos, 1, "truncated boolean")?[0] != 0;
             StackValue::Boolean(val)
         }
         STACK_VALUE_CODEC_TAG_ARRAY => {
-            if bytes.len() < pos + 4 {
-                return Err("truncated array length");
-            }
-            let len =
-                u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-                    as usize;
+            let len = read_u32(bytes, &mut pos, "truncated array length")? as usize;
             if len > MAX_COLLECTION_LEN {
                 return Err("collection length exceeds maximum");
             }
-            pos += 4;
             let mut items = Vec::with_capacity(len);
             for _ in 0..len {
                 let (item, consumed) = decode_value_depth(&bytes[pos..], depth + 1)?;
@@ -365,16 +361,10 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             StackValue::Array(items)
         }
         STACK_VALUE_CODEC_TAG_STRUCT => {
-            if bytes.len() < pos + 4 {
-                return Err("truncated struct length");
-            }
-            let len =
-                u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-                    as usize;
+            let len = read_u32(bytes, &mut pos, "truncated struct length")? as usize;
             if len > MAX_COLLECTION_LEN {
                 return Err("collection length exceeds maximum");
             }
-            pos += 4;
             let mut items = Vec::with_capacity(len);
             for _ in 0..len {
                 let (item, consumed) = decode_value_depth(&bytes[pos..], depth + 1)?;
@@ -384,16 +374,10 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             StackValue::Struct(items)
         }
         STACK_VALUE_CODEC_TAG_MAP => {
-            if bytes.len() < pos + 4 {
-                return Err("truncated map length");
-            }
-            let len =
-                u32::from_le_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
-                    as usize;
+            let len = read_u32(bytes, &mut pos, "truncated map length")? as usize;
             if len > MAX_COLLECTION_LEN {
                 return Err("collection length exceeds maximum");
             }
-            pos += 4;
             let mut pairs = Vec::with_capacity(len);
             for _ in 0..len {
                 let (k, k_consumed) = decode_value_depth(&bytes[pos..], depth + 1)?;
@@ -405,55 +389,16 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
             StackValue::Map(pairs)
         }
         STACK_VALUE_CODEC_TAG_INTEROP => {
-            if bytes.len() < pos + 8 {
-                return Err("truncated interop");
-            }
-            let val = u64::from_le_bytes([
-                bytes[pos],
-                bytes[pos + 1],
-                bytes[pos + 2],
-                bytes[pos + 3],
-                bytes[pos + 4],
-                bytes[pos + 5],
-                bytes[pos + 6],
-                bytes[pos + 7],
-            ]);
-            pos += 8;
+            let val = read_u64(bytes, &mut pos, "truncated interop")?;
             StackValue::Interop(val)
         }
         STACK_VALUE_CODEC_TAG_ITERATOR => {
-            if bytes.len() < pos + 8 {
-                return Err("truncated iterator");
-            }
-            let val = u64::from_le_bytes([
-                bytes[pos],
-                bytes[pos + 1],
-                bytes[pos + 2],
-                bytes[pos + 3],
-                bytes[pos + 4],
-                bytes[pos + 5],
-                bytes[pos + 6],
-                bytes[pos + 7],
-            ]);
-            pos += 8;
+            let val = read_u64(bytes, &mut pos, "truncated iterator")?;
             StackValue::Iterator(val)
         }
         STACK_VALUE_CODEC_TAG_NULL => StackValue::Null,
         STACK_VALUE_CODEC_TAG_POINTER => {
-            if bytes.len() < pos + 8 {
-                return Err("truncated pointer");
-            }
-            let val = i64::from_le_bytes([
-                bytes[pos],
-                bytes[pos + 1],
-                bytes[pos + 2],
-                bytes[pos + 3],
-                bytes[pos + 4],
-                bytes[pos + 5],
-                bytes[pos + 6],
-                bytes[pos + 7],
-            ]);
-            pos += 8;
+            let val = read_i64(bytes, &mut pos, "truncated pointer")?;
             StackValue::Pointer(val)
         }
         _ => return Err("invalid tag"),
