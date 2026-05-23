@@ -69,6 +69,19 @@ fn opcode_metadata_handles_fixed_and_prefixed_operands() {
 }
 
 #[test]
+fn opcode_names_roundtrip_through_canonical_metadata() {
+    for opcode in OpCode::ALL {
+        assert_eq!(OpCode::from_name(opcode.name()), Some(opcode));
+        assert_eq!(
+            OpCode::from_name(&opcode.name().to_ascii_lowercase()),
+            Some(opcode)
+        );
+    }
+
+    assert_eq!(OpCode::from_name("NOT_A_REAL_OPCODE"), None);
+}
+
+#[test]
 fn instruction_parsing_uses_shared_opcode_metadata() {
     let script = vec![
         OpCode::PUSH1.byte(),

@@ -427,6 +427,18 @@ impl OpCode {
         Self::try_from(value).ok()
     }
 
+    /// Convert a canonical opcode name to an opcode.
+    ///
+    /// The lookup is ASCII case-insensitive so tools can accept assembler-style
+    /// input without carrying their own opcode string tables.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|opcode| opcode.name().eq_ignore_ascii_case(name))
+    }
+
     /// Return the opcode byte.
     #[must_use]
     pub const fn byte(self) -> u8 {
