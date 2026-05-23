@@ -1,48 +1,12 @@
-//! Shared stack-shape helpers for value-only opcode adapters.
+//! Shared stack-shape helpers for value-only opcode semantics.
 
 use alloc::string::String;
 
-use crate::{runtime::RuntimeStack, StackValue};
+use crate::StackValue;
 
 pub(crate) trait ValueStack {
     fn pop_value(&mut self) -> Result<StackValue, String>;
     fn push_value(&mut self, value: StackValue) -> Result<(), String>;
-}
-
-pub(crate) struct RuntimeValueStack<'a, R: RuntimeStack + ?Sized> {
-    runtime: &'a mut R,
-}
-
-impl<'a, R: RuntimeStack + ?Sized> RuntimeValueStack<'a, R> {
-    pub(crate) fn new(runtime: &'a mut R) -> Self {
-        Self { runtime }
-    }
-}
-
-impl<R: RuntimeStack + ?Sized> ValueStack for RuntimeValueStack<'_, R> {
-    fn pop_value(&mut self) -> Result<StackValue, String> {
-        Ok(self.runtime.pop_value())
-    }
-
-    fn push_value(&mut self, value: StackValue) -> Result<(), String> {
-        self.runtime.push_value(value);
-        Ok(())
-    }
-}
-
-pub(crate) fn apply_or_fault<R, F>(runtime: &mut R, apply: F)
-where
-    R: RuntimeStack + ?Sized,
-    F: FnOnce(&mut RuntimeValueStack<'_, R>) -> Result<(), String>,
-{
-    let result = {
-        let mut stack = RuntimeValueStack::new(runtime);
-        apply(&mut stack)
-    };
-
-    if let Err(message) = result {
-        runtime.fault(&message);
-    }
 }
 
 pub(crate) fn unary_value<S>(

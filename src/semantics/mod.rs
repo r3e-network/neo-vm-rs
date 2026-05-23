@@ -12,3 +12,4 @@ pub mod conversion;
 pub(crate) mod numeric;
 pub mod splice;
 pub(crate) mod stack;
+pub(crate) mod stack_shape;

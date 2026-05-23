@@ -132,15 +132,15 @@ fn numeric_stack_shapes_are_shared_between_runtime_and_interpreter() {
     let interpreter_numeric = read_workspace_source("src/interpreter/executor/numeric_ops.rs");
 
     assert!(
-        runtime_arithmetic.contains("value_stack::")
-            && runtime_comparison.contains("value_stack::")
-            && interpreter_numeric.contains("value_stack::"),
-        "runtime and interpreter numeric opcode adapters should share value_stack stack-shape helpers"
+        runtime_arithmetic.contains("stack_shape::")
+            && runtime_comparison.contains("stack_shape::")
+            && interpreter_numeric.contains("stack_shape::"),
+        "runtime and interpreter numeric opcode adapters should share stack_shape helpers"
     );
     assert!(
-        runtime_arithmetic.contains("value_stack::ternary_bool(stack, rules::within_values)")
+        runtime_arithmetic.contains("stack_shape::ternary_bool(stack, rules::within_values)")
             && interpreter_numeric.contains(
-                "value_stack::ternary_bool(&mut value_stack, arithmetic_rules::within_values)"
+                "stack_shape::ternary_bool(&mut value_stack, arithmetic_rules::within_values)"
             ),
         "runtime and interpreter WITHIN adapters should share the ternary bool stack shape"
     );
@@ -161,6 +161,41 @@ fn numeric_stack_shapes_are_shared_between_runtime_and_interpreter() {
     assert!(
         !runtime_arithmetic.contains("match rules::within_values"),
         "runtime arithmetic should not hand-roll the WITHIN stack shape"
+    );
+}
+
+#[test]
+fn numeric_stack_shape_helpers_live_with_semantics_not_runtime_adapters() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let semantics_mod = read_workspace_source("src/semantics/mod.rs");
+    let runtime_ops_mod = read_workspace_source("src/runtime/ops/mod.rs");
+    let runtime_arithmetic = read_workspace_source("src/runtime/ops/arithmetic.rs");
+    let interpreter_numeric = read_workspace_source("src/interpreter/executor/numeric_ops.rs");
+
+    assert!(
+        semantics_mod.contains("pub(crate) mod stack_shape;"),
+        "shared value-stack opcode shapes should live under semantics::stack_shape"
+    );
+    assert!(
+        !root.join("src/runtime/ops/value_stack.rs").exists(),
+        "runtime::ops should not own the shared value-stack opcode shape helpers"
+    );
+    assert!(
+        runtime_ops_mod.contains("impl<R: RuntimeStack + ?Sized> ValueStack for R"),
+        "runtime::ops should only adapt RuntimeStack into the shared ValueStack abstraction"
+    );
+    assert!(
+        runtime_arithmetic.contains("stack_shape::binary_value"),
+        "runtime numeric adapters should call semantics::stack_shape helpers"
+    );
+    assert!(
+        !interpreter_numeric.contains("runtime::ops::value_stack"),
+        "interpreter numeric execution should not depend on runtime adapter internals"
+    );
+    assert!(
+        interpreter_numeric.contains("semantics::{")
+            && interpreter_numeric.contains("stack_shape::{self, ValueStack}"),
+        "interpreter numeric execution should import shared stack shapes from semantics"
     );
 }
 
