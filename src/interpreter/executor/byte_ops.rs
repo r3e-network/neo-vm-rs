@@ -3,13 +3,8 @@ use super::super::opcodes::*;
 use super::super::runtime_types::{propagate_update, to_abi_value, CompoundIds, StackValue};
 use super::super::state::remember_consumed_mutation;
 use super::control::Dispatch;
-use crate::semantics::splice as splice_rules;
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use crate::semantics::{collections as collection_rules, splice as splice_rules};
+use alloc::{format, string::String, vec::Vec};
 
 #[allow(clippy::too_many_arguments)]
 #[inline]
@@ -40,13 +35,8 @@ pub(super) fn execute(
         }
         NEWBUFFER => {
             let count = pop_integer(stack)?;
-            if count < 0 {
-                return Err("negative count for NEWBUFFER".to_string());
-            }
-            if count > 1_048_576 {
-                return Err("buffer size exceeds MaxItemSize (1MB)".to_string());
-            }
-            stack.push(ids.buffer(vec![0u8; count as usize]));
+            let buffer = collection_rules::new_buffer(count)?;
+            stack.push(ids.import_abi(buffer));
         }
         RIGHT => {
             let count = pop_integer(stack)?;

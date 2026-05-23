@@ -182,6 +182,59 @@ fn stack_opcode_shapes_are_shared_between_runtime_and_interpreter() {
 }
 
 #[test]
+fn collection_constructor_rules_are_not_reimplemented_per_layer() {
+    let runtime_collections = read_workspace_source("src/runtime/ops/collections.rs");
+    let interpreter_byte_ops = read_workspace_source("src/interpreter/executor/byte_ops.rs");
+    let interpreter_compound_ops =
+        read_workspace_source("src/interpreter/executor/compound_ops.rs");
+
+    assert!(
+        runtime_collections.contains("rules::new_array(0)")
+            && runtime_collections.contains("rules::new_struct(0)")
+            && runtime_collections.contains("rules::new_map()"),
+        "runtime collection constructors should use semantics::collections instead of constructing ABI values directly"
+    );
+    assert!(
+        interpreter_byte_ops.contains("collection_rules::new_buffer(count)")
+            && !interpreter_byte_ops.contains("1_048_576"),
+        "interpreter NEWBUFFER should reuse collection constructor limits instead of carrying a private size check"
+    );
+    assert!(
+        interpreter_compound_ops.contains("new_array_default_value_for_neovm_type_tag(kind)")
+            && !interpreter_compound_ops
+                .contains("NEOVM_STACK_ITEM_TYPE_INTEGER => StackValue::Integer(0)")
+            && !interpreter_compound_ops
+                .contains("NEOVM_STACK_ITEM_TYPE_BYTESTRING => StackValue::ByteString"),
+        "interpreter NEWARRAY_T should reuse the shared default-value rule"
+    );
+}
+
+#[test]
+fn interpreter_map_key_lookup_reuses_collection_semantics() {
+    let interpreter_compound_ops =
+        read_workspace_source("src/interpreter/executor/compound_ops.rs");
+    let collection_semantics = read_workspace_source("src/semantics/collections.rs");
+
+    assert!(
+        collection_semantics.contains("pub fn map_entry_index"),
+        "collection semantics should own primitive map-key lookup"
+    );
+    assert!(
+        interpreter_compound_ops.contains("collection_rules::map_entry_index"),
+        "interpreter map opcodes should reuse shared primitive map-key lookup"
+    );
+    for duplicate in [
+        ".find(|(candidate, _)| primitive_key_equals",
+        ".position(|(candidate, _)| primitive_key_equals",
+    ] {
+        assert!(
+            !interpreter_compound_ops.contains(duplicate),
+            "interpreter compound_ops should not reimplement map-key lookup: {duplicate}"
+        );
+    }
+}
+
+#[test]
 fn interpreter_opcode_aliases_come_from_canonical_opcode_enum() {
     let source = read_workspace_source("src/interpreter/opcodes.rs");
 

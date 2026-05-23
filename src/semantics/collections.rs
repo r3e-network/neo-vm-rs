@@ -6,7 +6,9 @@ use alloc::{
     vec::Vec,
 };
 
-use crate::{new_array_default_value_for_type_tag, semantics::numeric, StackValue};
+use crate::{
+    new_array_default_value_for_neovm_type_tag, semantics::numeric, StackValue, MAX_ITEM_SIZE,
+};
 
 /// Convert a primitive NeoVM value into an index used by collection opcodes.
 pub fn collection_index_value(value: &StackValue) -> Result<i64, String> {
@@ -48,6 +50,27 @@ pub fn primitive_key_equal(left: &StackValue, right: &StackValue) -> bool {
     }
 }
 
+/// Return the index for a primitive map key.
+pub fn map_entry_index(
+    pairs: &[(StackValue, StackValue)],
+    key: &StackValue,
+) -> Result<Option<usize>, String> {
+    map_entry_index_by(pairs, key, primitive_key_equal, validate_map_key_value)
+}
+
+/// Return the index for a primitive map key using caller-owned value storage.
+pub fn map_entry_index_by<T>(
+    pairs: &[(T, T)],
+    key: &T,
+    mut key_equal: impl FnMut(&T, &T) -> bool,
+    mut validate_key: impl FnMut(&T) -> Result<(), String>,
+) -> Result<Option<usize>, String> {
+    validate_key(key)?;
+    Ok(pairs
+        .iter()
+        .position(|(candidate, _)| key_equal(candidate, key)))
+}
+
 /// Create a null-filled array.
 pub fn new_array(count: i64) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWARRAY: negative count")?;
@@ -58,9 +81,7 @@ pub fn new_array(count: i64) -> Result<StackValue, String> {
 pub fn new_array_t(count: i64, type_tag: u8) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWARRAY_T: negative count")?;
     Ok(StackValue::Array(vec![
-        new_array_default_value_for_type_tag(
-            type_tag
-        );
+        new_array_default_value_for_neovm_type_tag(type_tag);
         count
     ]))
 }
@@ -74,7 +95,16 @@ pub fn new_struct(count: i64) -> Result<StackValue, String> {
 /// Create a zero-filled buffer.
 pub fn new_buffer(size: i64) -> Result<StackValue, String> {
     let size = non_negative_count(size, "NEWBUFFER: negative size")?;
+    if size > MAX_ITEM_SIZE {
+        return Err("buffer size exceeds MaxItemSize (1MB)".into());
+    }
     Ok(StackValue::Buffer(vec![0u8; size]))
+}
+
+/// Create an empty ordered map.
+#[must_use]
+pub fn new_map() -> StackValue {
+    StackValue::Map(Vec::new())
 }
 
 /// Append a value to an array or struct.
@@ -108,12 +138,9 @@ pub fn set_item(
             Ok(())
         }
         StackValue::Map(pairs) => {
-            validate_map_key_value(&key)?;
-            for pair in pairs.iter_mut() {
-                if primitive_key_equal(&pair.0, &key) {
-                    pair.1 = value;
-                    return Ok(());
-                }
+            if let Some(index) = map_entry_index(pairs, &key)? {
+                pairs[index].1 = value;
+                return Ok(());
             }
             pairs.push((key, value));
             Ok(())
@@ -150,12 +177,10 @@ pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue
                 .ok_or_else(|| "PICKITEM: index out of range".into())
         }
         StackValue::Map(pairs) => {
-            validate_map_key_value(key)?;
-            pairs
-                .iter()
-                .find(|(map_key, _)| primitive_key_equal(map_key, key))
-                .map(|(_, value)| value.clone())
-                .ok_or_else(|| "PICKITEM: key not found in map".into())
+            let Some(index) = map_entry_index(pairs, key)? else {
+                return Err("PICKITEM: key not found in map".into());
+            };
+            Ok(pairs[index].1.clone())
         }
         StackValue::ByteString(bytes) => pick_byte(bytes, key, "PICKITEM: byte index out of range"),
         StackValue::Buffer(bytes) => pick_byte(bytes, key, "PICKITEM: buffer index out of range"),
@@ -183,8 +208,9 @@ pub fn remove(collection: &mut StackValue, key: &StackValue) -> Result<(), Strin
             Ok(())
         }
         StackValue::Map(pairs) => {
-            validate_map_key_value(key)?;
-            pairs.retain(|(map_key, _)| !primitive_key_equal(map_key, key));
+            if let Some(index) = map_entry_index(pairs, key)? {
+                pairs.remove(index);
+            }
             Ok(())
         }
         _ => Err("REMOVE: not a collection".into()),
@@ -211,12 +237,7 @@ pub fn has_key(collection: &StackValue, key: &StackValue) -> Result<bool, String
             Ok(non_negative_index(collection_index_value(key)?)
                 .is_some_and(|index| index < items.len()))
         }
-        StackValue::Map(pairs) => {
-            validate_map_key_value(key)?;
-            Ok(pairs
-                .iter()
-                .any(|(map_key, _)| primitive_key_equal(map_key, key)))
-        }
+        StackValue::Map(pairs) => Ok(map_entry_index(pairs, key)?.is_some()),
         StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => {
             Ok(non_negative_index(collection_index_value(key)?)
                 .is_some_and(|index| index < bytes.len()))

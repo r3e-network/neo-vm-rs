@@ -157,7 +157,11 @@ pub fn normalize_stack_item_type_tag(type_tag: u8) -> u8 {
     }
 }
 
-/// Return the shared default value for a compact runtime or NeoVM StackItemType tag.
+/// Return the shared default value for compact runtime tags and non-ambiguous
+/// NeoVM StackItemType tags.
+///
+/// Compact integer is `0`, which is also NeoVM `StackItemType.Any`; use
+/// [`new_array_default_value_for_neovm_type_tag`] for `NEWARRAY_T` operands.
 #[must_use]
 pub fn default_value_for_type_tag(type_tag: u8) -> StackValue {
     match normalize_stack_item_type_tag(type_tag) {
@@ -173,12 +177,27 @@ pub fn default_value_for_type_tag(type_tag: u8) -> StackValue {
     }
 }
 
-/// Return the NeoVM `NEWARRAY_T` item default for a compact or NeoVM type tag.
+/// Return the `NEWARRAY_T` item default for compact runtime tags and
+/// non-ambiguous NeoVM StackItemType tags.
+///
+/// Compact integer is `0`, which is also NeoVM `StackItemType.Any`; use
+/// [`new_array_default_value_for_neovm_type_tag`] for raw NeoVM opcode
+/// operands.
 #[must_use]
 pub fn new_array_default_value_for_type_tag(type_tag: u8) -> StackValue {
     match normalize_stack_item_type_tag(type_tag) {
         COMPACT_TAG_INTEGER => StackValue::Integer(0),
         COMPACT_TAG_BYTESTRING => StackValue::ByteString(Vec::new()),
+        _ => StackValue::Null,
+    }
+}
+
+/// Return the NeoVM `NEWARRAY_T` item default for a NeoVM StackItemType operand.
+#[must_use]
+pub fn new_array_default_value_for_neovm_type_tag(type_tag: u8) -> StackValue {
+    match type_tag {
+        NEOVM_STACK_ITEM_TYPE_INTEGER => StackValue::Integer(0),
+        NEOVM_STACK_ITEM_TYPE_BYTESTRING => StackValue::ByteString(Vec::new()),
         _ => StackValue::Null,
     }
 }
@@ -733,6 +752,20 @@ mod tests {
         assert_eq!(
             super::new_array_default_value_for_type_tag(0xff),
             StackValue::Null
+        );
+        assert_eq!(
+            super::new_array_default_value_for_neovm_type_tag(super::NEOVM_STACK_ITEM_TYPE_ANY),
+            StackValue::Null
+        );
+        assert_eq!(
+            super::new_array_default_value_for_neovm_type_tag(super::NEOVM_STACK_ITEM_TYPE_INTEGER),
+            StackValue::Integer(0)
+        );
+        assert_eq!(
+            super::new_array_default_value_for_neovm_type_tag(
+                super::NEOVM_STACK_ITEM_TYPE_BYTESTRING
+            ),
+            StackValue::ByteString(Vec::new())
         );
     }
 

@@ -1,11 +1,11 @@
 //! Runtime stack adapters for collection opcodes.
 
 use crate::runtime::{push_value_result, RuntimeStack};
-use crate::{semantics::collections as rules, StackValue};
+use crate::semantics::collections as rules;
 use alloc::vec::Vec;
 
 pub fn new_array_0<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    runtime.push_value(StackValue::Array(Vec::new()));
+    push_value_result(runtime, rules::new_array(0));
 }
 
 pub fn new_array<R: RuntimeStack + ?Sized>(runtime: &mut R) {
@@ -19,7 +19,7 @@ pub fn new_array_t<R: RuntimeStack + ?Sized>(runtime: &mut R, type_byte: u8) {
 }
 
 pub fn new_struct_0<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    runtime.push_value(StackValue::Struct(Vec::new()));
+    push_value_result(runtime, rules::new_struct(0));
 }
 
 pub fn new_struct<R: RuntimeStack + ?Sized>(runtime: &mut R) {
@@ -28,7 +28,7 @@ pub fn new_struct<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 }
 
 pub fn new_map<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    runtime.push_value(StackValue::Map(Vec::new()));
+    runtime.push_value(rules::new_map());
 }
 
 pub fn new_buffer<R: RuntimeStack + ?Sized>(runtime: &mut R) {

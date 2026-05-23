@@ -6,9 +6,9 @@ use super::super::runtime_types::{
 use super::super::state::{remember_consumed_mutation, PendingException, TryStack, MAX_STACK_SIZE};
 use super::control::Dispatch;
 use crate::{
-    semantics::collections as collection_rules, NEOVM_STACK_ITEM_TYPE_ANY,
-    NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN, NEOVM_STACK_ITEM_TYPE_BUFFER,
-    NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
+    new_array_default_value_for_neovm_type_tag, semantics::collections as collection_rules,
+    NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
+    NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
     NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
     NEOVM_STACK_ITEM_TYPE_POINTER, NEOVM_STACK_ITEM_TYPE_STRUCT,
 };
@@ -149,11 +149,7 @@ pub(super) fn execute(
                 return Err("NEWARRAY_T count exceeds maximum stack size".to_string());
             }
             let kind = script[ip + 1];
-            let default_value = match kind {
-                NEOVM_STACK_ITEM_TYPE_INTEGER => StackValue::Integer(0),
-                NEOVM_STACK_ITEM_TYPE_BYTESTRING => StackValue::ByteString(Vec::new()),
-                _ => StackValue::Null,
-            };
+            let default_value = ids.import_abi(new_array_default_value_for_neovm_type_tag(kind));
             stack.push(ids.array(vec![default_value; count as usize]));
             ip += 2;
             finish!(Dispatch::Continue);
@@ -263,13 +259,14 @@ pub(super) fn execute(
                 match item {
                     StackValue::Map(_, items) => {
                         // Map key can be any primitive type
-                        validate_map_key(&key_or_index)?;
-                        let value = items
-                            .iter()
-                            .find(|(candidate, _)| primitive_key_equals(candidate, &key_or_index))
-                            .map(|(_, value)| value.clone())
-                            .ok_or_else(|| "key not found for PICKITEM".to_string())?;
-                        stack.push(value);
+                        let index = collection_rules::map_entry_index_by(
+                            &items,
+                            &key_or_index,
+                            primitive_key_equals,
+                            validate_map_key,
+                        )?
+                        .ok_or_else(|| "key not found for PICKITEM".to_string())?;
+                        stack.push(items[index].1.clone());
                     }
                     StackValue::ByteString(_)
                     | StackValue::Buffer(_, _)
@@ -402,11 +399,12 @@ pub(super) fn execute(
                     );
                 }
                 StackValue::Map(id, mut items) => {
-                    validate_map_key(&key)?;
-                    if let Some(index) = items
-                        .iter()
-                        .position(|(candidate, _)| primitive_key_equals(candidate, &key))
-                    {
+                    if let Some(index) = collection_rules::map_entry_index_by(
+                        &items,
+                        &key,
+                        primitive_key_equals,
+                        validate_map_key,
+                    )? {
                         items[index].1 = ids.clone_struct_for_storage(&value);
                     } else {
                         let mut updated_items = Vec::with_capacity(items.len() + 1);
@@ -470,11 +468,13 @@ pub(super) fn execute(
                     );
                 }
                 StackValue::Map(id, mut items) => {
-                    validate_map_key(&key)?;
-                    let index = items
-                        .iter()
-                        .position(|(candidate, _)| primitive_key_equals(candidate, &key))
-                        .ok_or_else(|| "key not found for REMOVE".to_string())?;
+                    let index = collection_rules::map_entry_index_by(
+                        &items,
+                        &key,
+                        primitive_key_equals,
+                        validate_map_key,
+                    )?
+                    .ok_or_else(|| "key not found for REMOVE".to_string())?;
                     items.remove(index);
                     let updated = StackValue::Map(id, items);
                     remember_consumed_mutation(consumed_mutations, &updated);
