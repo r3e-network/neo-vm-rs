@@ -17,6 +17,12 @@ pub(crate) enum StackValue {
     Null,
 }
 
+impl crate::runtime::PendingExceptionValue for StackValue {
+    fn from_exception_message(message: alloc::string::String) -> Self {
+        Self::ByteString(message.into_bytes())
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct CompoundIds {
     next: u64,

@@ -1,33 +1,53 @@
 use alloc::{format, string::String};
 
-use crate::StackValue;
-
 #[derive(Debug, Clone)]
-pub(super) enum PendingException {
+pub(crate) enum PendingException<V> {
     Message(String),
-    ThrownValue(StackValue),
+    ThrownValue(V),
 }
 
-impl PendingException {
-    pub(super) fn message(message: String) -> Self {
+pub(crate) trait PendingExceptionValue {
+    fn from_exception_message(message: String) -> Self;
+}
+
+impl PendingExceptionValue for crate::StackValue {
+    fn from_exception_message(message: String) -> Self {
+        Self::ByteString(message.into_bytes())
+    }
+}
+
+impl<V> PendingException<V> {
+    pub(crate) fn message(message: String) -> Self {
         Self::Message(message)
     }
 
-    pub(super) fn thrown_value(value: StackValue) -> Self {
+    pub(crate) fn thrown_value(value: V) -> Self {
         Self::ThrownValue(value)
     }
 
-    pub(super) fn into_catch_item(self) -> StackValue {
+    pub(crate) fn into_catch_item(self) -> V
+    where
+        V: PendingExceptionValue,
+    {
         match self {
-            Self::Message(message) => StackValue::ByteString(message.into_bytes()),
+            Self::Message(message) => V::from_exception_message(message),
             Self::ThrownValue(value) => value,
         }
     }
+}
 
-    pub(super) fn fault_message(&self) -> String {
+impl<V: core::fmt::Debug> PendingException<V> {
+    pub(crate) fn fault_message(&self) -> String {
         match self {
             Self::Message(message) => message.clone(),
             Self::ThrownValue(value) => format!("exception: {:?}", value),
+        }
+    }
+
+    pub(crate) fn into_fault_message(self) -> String {
+        match self {
+            Self::Message(message) => message,
+            Self::ThrownValue(value) => format!("THROW: {:?}", value),
         }
     }
 }

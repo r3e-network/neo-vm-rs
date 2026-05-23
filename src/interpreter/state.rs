@@ -8,8 +8,10 @@ pub(super) use call_stack::CallStack;
 pub(super) use try_frame::TryFrame;
 pub(super) use try_stack::TryStack;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, Ordering};
+
+pub(super) type PendingException = crate::runtime::PendingException<StackValue>;
 
 pub(super) static LAST_INTERPRETER_IP: AtomicU32 = AtomicU32::new(u32::MAX);
 pub(super) static LAST_RESULT_STAGE: AtomicU32 = AtomicU32::new(0);
@@ -89,36 +91,6 @@ pub(super) fn reset_consumed_mutations(consumed_mutations: &mut Vec<StackValue>)
         }
     } else {
         consumed_mutations.clear();
-    }
-}
-
-#[derive(Debug)]
-pub(super) enum PendingException {
-    Message(String),
-    ThrownValue(StackValue),
-}
-
-impl PendingException {
-    pub(super) fn message(message: String) -> Self {
-        Self::Message(message)
-    }
-
-    pub(super) fn thrown_value(value: StackValue) -> Self {
-        Self::ThrownValue(value)
-    }
-
-    pub(super) fn into_catch_item(self) -> StackValue {
-        match self {
-            Self::Message(message) => StackValue::ByteString(message.into_bytes()),
-            Self::ThrownValue(value) => value,
-        }
-    }
-
-    pub(super) fn into_fault_message(self) -> String {
-        match self {
-            Self::Message(message) => message,
-            Self::ThrownValue(value) => format!("THROW: {:?}", value),
-        }
     }
 }
 

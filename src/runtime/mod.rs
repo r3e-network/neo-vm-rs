@@ -5,7 +5,7 @@ mod pending_exception;
 mod try_frame;
 
 use alloc::{format, string::String, string::ToString, vec, vec::Vec};
-use pending_exception::PendingException;
+pub(crate) use pending_exception::{PendingException, PendingExceptionValue};
 use try_frame::TryFrame;
 
 use crate::{ExecutionResult, StackValue, VmState};
@@ -89,7 +89,7 @@ pub struct VmContext {
     /// Current execution state.
     pub state: VmState,
     try_stack: Vec<TryFrame>,
-    pending_error: Option<PendingException>,
+    pending_error: Option<PendingException<StackValue>>,
     call_stack: Vec<i32>,
 }
 

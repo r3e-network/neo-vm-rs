@@ -312,6 +312,33 @@ fn internal_codecs_use_shared_stack_value_codec_tags() {
     );
 }
 
+#[test]
+fn pending_exception_state_is_shared_between_runtime_and_interpreter() {
+    let runtime_mod = read_workspace_source("src/runtime/mod.rs");
+    let runtime_exception = read_workspace_source("src/runtime/pending_exception.rs");
+    let interpreter_state = read_workspace_source("src/interpreter/state.rs");
+
+    assert!(
+        runtime_mod.contains("pub(crate) use pending_exception::{")
+            && runtime_mod.contains("PendingException, PendingExceptionValue"),
+        "runtime should expose the shared pending-exception representation crate-internally"
+    );
+    assert!(
+        runtime_exception.contains("pub(crate) enum PendingException<V>"),
+        "pending_exception.rs should own the single generic PendingException type"
+    );
+    assert!(
+        interpreter_state.contains(
+            "pub(super) type PendingException = crate::runtime::PendingException<StackValue>;"
+        ),
+        "interpreter state should alias the runtime PendingException instead of redefining it"
+    );
+    assert!(
+        !interpreter_state.contains("enum PendingException"),
+        "interpreter state must not keep a duplicate PendingException definition"
+    );
+}
+
 fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
     for entry in fs::read_dir(dir).expect("interpreter directory should be readable") {
         let entry = entry.expect("interpreter entry should be readable");
