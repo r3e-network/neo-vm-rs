@@ -5,62 +5,162 @@ use neo_vm_rs::{
 };
 
 #[test]
-fn arithmetic_semantics_cover_riscv_runtime_integer_ops() {
-    assert_eq!(arithmetic::add_i64(10, 3), 13);
-    assert_eq!(arithmetic::sub_i64(10, 3), 7);
-    assert_eq!(arithmetic::mul_i64(6, 7), 42);
-    assert_eq!(arithmetic::div_i64(10, 3), Ok(3));
-    assert_eq!(arithmetic::modulo_i64(10, 3), Ok(1));
-    assert_eq!(arithmetic::negate_i64(5), -5);
-    assert_eq!(arithmetic::abs_i64(-7), 7);
-    assert_eq!(arithmetic::sign_i64(-3), -1);
-    assert_eq!(arithmetic::max_i64(3, 7), 7);
-    assert_eq!(arithmetic::min_i64(3, 7), 3);
-    assert_eq!(arithmetic::pow_i64(2, 10), Ok(1024));
-    assert_eq!(arithmetic::sqrt_i64(49), Ok(7));
-    assert_eq!(arithmetic::modmul_i64(7, 8, 10), Ok(6));
-    assert_eq!(arithmetic::modpow_i64(2, 10, 100), Ok(24));
-    assert_eq!(arithmetic::shl_i64(1, 4), Ok(16));
-    assert_eq!(arithmetic::shr_i64(16, 2), Ok(4));
-    assert_eq!(arithmetic::bitwise_and_i64(0b1100, 0b1010), 0b1000);
-    assert_eq!(arithmetic::bitwise_or_i64(0b1100, 0b1010), 0b1110);
-    assert_eq!(arithmetic::bitwise_xor_i64(0b1100, 0b1010), 0b0110);
-    assert_eq!(arithmetic::bitwise_not_i64(0), -1);
-    assert_eq!(arithmetic::inc_i64(41), 42);
-    assert_eq!(arithmetic::dec_i64(43), 42);
-    assert!(arithmetic::within_i64(5, 3, 7));
-    assert!(!arithmetic::within_i64(7, 3, 7));
+fn arithmetic_semantics_cover_stack_value_opcode_rules() {
+    assert_eq!(
+        arithmetic::add_values(StackValue::Integer(10), StackValue::Integer(3)),
+        Ok(StackValue::Integer(13))
+    );
+    assert_eq!(
+        arithmetic::sub_values(StackValue::Integer(10), StackValue::Integer(3)),
+        Ok(StackValue::Integer(7))
+    );
+    assert_eq!(
+        arithmetic::mul_values(StackValue::Integer(6), StackValue::Integer(7)),
+        Ok(StackValue::Integer(42))
+    );
+    assert_eq!(
+        arithmetic::div_values(StackValue::Integer(10), StackValue::Integer(3)),
+        Ok(StackValue::Integer(3))
+    );
+    assert_eq!(
+        arithmetic::modulo_values(StackValue::Integer(10), StackValue::Integer(3)),
+        Ok(StackValue::Integer(1))
+    );
+    assert_eq!(
+        arithmetic::negate_value(StackValue::Integer(5)),
+        Ok(StackValue::Integer(-5))
+    );
+    assert_eq!(
+        arithmetic::abs_value(StackValue::Integer(-7)),
+        Ok(StackValue::Integer(7))
+    );
+    assert_eq!(
+        arithmetic::sign_value(StackValue::Integer(-3)),
+        Ok(StackValue::Integer(-1))
+    );
+    assert_eq!(
+        arithmetic::max_values(StackValue::Integer(3), StackValue::Integer(7)),
+        Ok(StackValue::Integer(7))
+    );
+    assert_eq!(
+        arithmetic::min_values(StackValue::Integer(3), StackValue::Integer(7)),
+        Ok(StackValue::Integer(3))
+    );
+    assert_eq!(
+        arithmetic::pow_values(StackValue::Integer(2), StackValue::Integer(10)),
+        Ok(StackValue::Integer(1024))
+    );
+    assert_eq!(
+        arithmetic::sqrt_value(StackValue::Integer(49)),
+        Ok(StackValue::Integer(7))
+    );
+    assert_eq!(
+        arithmetic::modmul_values(
+            StackValue::Integer(7),
+            StackValue::Integer(8),
+            StackValue::Integer(10)
+        ),
+        Ok(StackValue::Integer(6))
+    );
+    assert_eq!(
+        arithmetic::modpow_values(
+            StackValue::Integer(2),
+            StackValue::Integer(10),
+            StackValue::Integer(100)
+        ),
+        Ok(StackValue::Integer(24))
+    );
+    assert_eq!(
+        arithmetic::shl_value(StackValue::Integer(1), 4),
+        Ok(StackValue::Integer(16))
+    );
+    assert_eq!(
+        arithmetic::shr_value(StackValue::Integer(16), 2),
+        Ok(StackValue::Integer(4))
+    );
+    assert_eq!(
+        arithmetic::bitwise_and_values(StackValue::Integer(0b1100), StackValue::Integer(0b1010)),
+        Ok(StackValue::Integer(0b1000))
+    );
+    assert_eq!(
+        arithmetic::bitwise_or_values(StackValue::Integer(0b1100), StackValue::Integer(0b1010)),
+        Ok(StackValue::Integer(0b1110))
+    );
+    assert_eq!(
+        arithmetic::bitwise_xor_values(StackValue::Integer(0b1100), StackValue::Integer(0b1010)),
+        Ok(StackValue::Integer(0b0110))
+    );
+    assert_eq!(
+        arithmetic::invert_value(StackValue::Integer(0)),
+        Ok(StackValue::Integer(-1))
+    );
+    assert_eq!(
+        arithmetic::inc_value(StackValue::Integer(41)),
+        Ok(StackValue::Integer(42))
+    );
+    assert_eq!(
+        arithmetic::dec_value(StackValue::Integer(43)),
+        Ok(StackValue::Integer(42))
+    );
+    assert_eq!(
+        arithmetic::within_values(
+            StackValue::Integer(5),
+            StackValue::Integer(3),
+            StackValue::Integer(7)
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        arithmetic::within_values(
+            StackValue::Integer(7),
+            StackValue::Integer(3),
+            StackValue::Integer(7)
+        ),
+        Ok(false)
+    );
 }
 
 #[test]
 fn arithmetic_semantics_return_opcode_fault_messages() {
-    assert_eq!(arithmetic::div_i64(10, 0), Err("DIV: division by zero"));
-    assert_eq!(arithmetic::modulo_i64(10, 0), Err("MOD: division by zero"));
-    assert_eq!(arithmetic::pow_i64(2, -1), Err("POW: negative exponent"));
     assert_eq!(
-        arithmetic::pow_i64(2, 64),
-        Err("POW: exponent too large for i64 fast path")
-    );
-    assert_eq!(arithmetic::sqrt_i64(-1), Err("SQRT: negative value"));
-    assert_eq!(
-        arithmetic::modmul_i64(1, 2, 0),
-        Err("MODMUL: division by zero")
+        arithmetic::div_values(StackValue::Integer(10), StackValue::Integer(0)),
+        Err("division by zero for DIV".to_string())
     );
     assert_eq!(
-        arithmetic::modpow_i64(2, -1, 7),
-        Err("MODPOW: negative exponent")
+        arithmetic::modulo_values(StackValue::Integer(10), StackValue::Integer(0)),
+        Err("division by zero for MOD".to_string())
     );
     assert_eq!(
-        arithmetic::modpow_i64(2, 1, 0),
-        Err("MODPOW: division by zero")
+        arithmetic::pow_values(StackValue::Integer(2), StackValue::Integer(-1)),
+        Err("negative exponent for POW".to_string())
     );
     assert_eq!(
-        arithmetic::shl_i64(1, -1),
-        Err("SHL: shift amount out of range")
+        arithmetic::sqrt_value(StackValue::Integer(-1)),
+        Err("negative value for SQRT".to_string())
     );
     assert_eq!(
-        arithmetic::shr_i64(1, 64),
-        Err("SHR: shift amount out of range")
+        arithmetic::modmul_values(
+            StackValue::Integer(1),
+            StackValue::Integer(2),
+            StackValue::Integer(0)
+        ),
+        Err("division by zero for MODMUL".to_string())
+    );
+    assert_eq!(
+        arithmetic::modpow_values(
+            StackValue::Integer(2),
+            StackValue::Integer(1),
+            StackValue::Integer(0)
+        ),
+        Err("division by zero for MODPOW".to_string())
+    );
+    assert_eq!(
+        arithmetic::shl_value(StackValue::Integer(1), -1),
+        Err("shift count out of range for SHL".to_string())
+    );
+    assert_eq!(
+        arithmetic::shr_value(StackValue::Integer(1), 257),
+        Err("shift count out of range for SHR".to_string())
     );
 }
 
@@ -74,16 +174,34 @@ fn comparison_and_conversion_semantics_use_shared_stack_value_rules() {
         &StackValue::Integer(1),
         &StackValue::Integer(2)
     ));
-    assert!(comparison::less_than_i64(3, 5));
-    assert!(comparison::less_or_equal_i64(5, 5));
-    assert!(comparison::greater_than_i64(5, 3));
-    assert!(comparison::greater_or_equal_i64(5, 5));
-    assert!(comparison::num_equal_i64(10, 10));
-    assert!(comparison::num_not_equal_i64(10, 11));
+    assert_eq!(
+        comparison::less_than_values(&StackValue::Integer(3), &StackValue::Integer(5)),
+        Ok(true)
+    );
+    assert_eq!(
+        comparison::less_or_equal_values(&StackValue::Integer(5), &StackValue::Integer(5)),
+        Ok(true)
+    );
+    assert_eq!(
+        comparison::greater_than_values(&StackValue::Integer(5), &StackValue::Integer(3)),
+        Ok(true)
+    );
+    assert_eq!(
+        comparison::greater_or_equal_values(&StackValue::Integer(5), &StackValue::Integer(5)),
+        Ok(true)
+    );
+    assert_eq!(
+        comparison::num_equal_values(&StackValue::Integer(10), &StackValue::Integer(10)),
+        Ok(true)
+    );
+    assert_eq!(
+        comparison::num_not_equal_values(&StackValue::Integer(10), &StackValue::Integer(11)),
+        Ok(true)
+    );
     assert!(comparison::bool_and(true, true));
     assert!(comparison::bool_or(false, true));
-    assert!(!comparison::bool_not(true));
-    assert!(comparison::nz(&StackValue::Integer(42)));
+    assert_eq!(comparison::not_value(&StackValue::Boolean(true)), Ok(false));
+    assert_eq!(comparison::nz_value(&StackValue::Integer(42)), Ok(true));
     assert!(comparison::is_null(&StackValue::Null));
 
     assert!(conversion::is_type(

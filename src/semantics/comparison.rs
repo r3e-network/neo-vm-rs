@@ -19,42 +19,6 @@ pub fn not_equal_values(left: &StackValue, right: &StackValue) -> bool {
     !equal_values(left, right)
 }
 
-/// Numeric less-than.
-#[must_use]
-pub fn less_than_i64(left: i64, right: i64) -> bool {
-    left < right
-}
-
-/// Numeric less-than-or-equal.
-#[must_use]
-pub fn less_or_equal_i64(left: i64, right: i64) -> bool {
-    left <= right
-}
-
-/// Numeric greater-than.
-#[must_use]
-pub fn greater_than_i64(left: i64, right: i64) -> bool {
-    left > right
-}
-
-/// Numeric greater-than-or-equal.
-#[must_use]
-pub fn greater_or_equal_i64(left: i64, right: i64) -> bool {
-    left >= right
-}
-
-/// Numeric equality.
-#[must_use]
-pub fn num_equal_i64(left: i64, right: i64) -> bool {
-    left == right
-}
-
-/// Numeric inequality.
-#[must_use]
-pub fn num_not_equal_i64(left: i64, right: i64) -> bool {
-    left != right
-}
-
 /// Numeric equality across primitive numeric and byte-string values.
 pub fn num_equal_values(left: &StackValue, right: &StackValue) -> Result<bool, String> {
     Ok(integer_value_for_num_equal(left)? == integer_value_for_num_equal(right)?)
@@ -150,18 +114,6 @@ pub fn bool_and(left: bool, right: bool) -> bool {
 #[must_use]
 pub fn bool_or(left: bool, right: bool) -> bool {
     left || right
-}
-
-/// Boolean NOT.
-#[must_use]
-pub fn bool_not(value: bool) -> bool {
-    !value
-}
-
-/// NeoVM truthiness for general boolean conversion.
-#[must_use]
-pub fn nz(value: &StackValue) -> bool {
-    boolean_value(value)
 }
 
 /// NeoVM `NZ`, which is a numeric zero check rather than general truthiness.

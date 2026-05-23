@@ -233,6 +233,73 @@ fn numeric_stack_shape_helpers_live_with_semantics_not_runtime_adapters() {
 }
 
 #[test]
+fn arithmetic_semantics_expose_stack_value_rules_not_parallel_i64_api() {
+    let arithmetic = read_workspace_source("src/semantics/arithmetic.rs");
+
+    for helper in [
+        "pub fn add_i64(",
+        "pub fn sub_i64(",
+        "pub fn mul_i64(",
+        "pub fn div_i64(",
+        "pub fn modulo_i64(",
+        "pub fn negate_i64(",
+        "pub fn abs_i64(",
+        "pub fn sign_i64(",
+        "pub fn max_i64(",
+        "pub fn min_i64(",
+        "pub fn pow_i64(",
+        "pub fn sqrt_i64(",
+        "pub fn modmul_i64(",
+        "pub fn modpow_i64(",
+        "pub fn shl_i64(",
+        "pub fn shr_i64(",
+        "pub fn bitwise_and_i64(",
+        "pub fn bitwise_or_i64(",
+        "pub fn bitwise_xor_i64(",
+        "pub fn bitwise_not_i64(",
+        "pub fn inc_i64(",
+        "pub fn dec_i64(",
+        "pub fn within_i64(",
+    ] {
+        assert!(
+            !arithmetic.contains(helper),
+            "arithmetic semantics should expose canonical StackValue rules only, not parallel i64 helper {helper}"
+        );
+    }
+}
+
+#[test]
+fn comparison_semantics_expose_stack_value_rules_not_parallel_i64_api() {
+    let comparison = read_workspace_source("src/semantics/comparison.rs");
+
+    for helper in [
+        "pub fn less_than_i64(",
+        "pub fn less_or_equal_i64(",
+        "pub fn greater_than_i64(",
+        "pub fn greater_or_equal_i64(",
+        "pub fn num_equal_i64(",
+        "pub fn num_not_equal_i64(",
+    ] {
+        assert!(
+            !comparison.contains(helper),
+            "comparison semantics should expose canonical StackValue rules only, not parallel i64 helper {helper}"
+        );
+    }
+}
+
+#[test]
+fn comparison_semantics_do_not_expose_ambiguous_boolean_aliases() {
+    let comparison = read_workspace_source("src/semantics/comparison.rs");
+
+    for helper in ["pub fn bool_not(", "pub fn nz("] {
+        assert!(
+            !comparison.contains(helper),
+            "comparison semantics should expose opcode-specific not_value/nz_value or boolean_value, not ambiguous alias {helper}"
+        );
+    }
+}
+
+#[test]
 fn stack_opcode_shapes_are_shared_between_runtime_and_interpreter() {
     let stack_semantics = read_workspace_source("src/semantics/stack.rs");
     let runtime_stack = read_workspace_source("src/runtime/ops/stack.rs");
