@@ -2,10 +2,12 @@
 
 use crate::semantics::collections as rules;
 use crate::{
-    runtime::{push_value_result, RuntimeStack},
+    runtime::{
+        push_bool_result, push_i64_result, push_value_result, push_values_result, RuntimeStack,
+    },
     StackValue,
 };
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 
 pub fn new_array_0<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     push_value_result(runtime, rules::new_array(0));
@@ -41,25 +43,19 @@ pub fn new_buffer<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 
 pub fn append<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let value = runtime.pop_value();
-    let result = match runtime.top_value_mut() {
-        Some(collection) => rules::append(collection, value),
-        None => Err("APPEND: top-1 is not an array or struct".into()),
-    };
-    if let Err(message) = result {
-        runtime.fault(&message);
-    }
+    apply_top_mut(
+        runtime,
+        "APPEND: top-1 is not an array or struct",
+        |collection| rules::append(collection, value),
+    );
 }
 
 pub fn set_item<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let value = runtime.pop_value();
     let key = runtime.pop_value();
-    let result = match runtime.top_value_mut() {
-        Some(collection) => rules::set_item(collection, key, value),
-        None => Err("SETITEM: not a collection".into()),
-    };
-    if let Err(message) = result {
-        runtime.fault(&message);
-    }
+    apply_top_mut(runtime, "SETITEM: not a collection", |collection| {
+        rules::set_item(collection, key, value)
+    });
 }
 
 pub fn pick_item<R: RuntimeStack + ?Sized>(runtime: &mut R) {
@@ -73,30 +69,20 @@ pub fn pick_item<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 
 pub fn remove<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let key = runtime.pop_value();
-    let result = match runtime.top_value_mut() {
-        Some(collection) => rules::remove(collection, &key),
-        None => Err("REMOVE: not a collection".into()),
-    };
-    if let Err(message) = result {
-        runtime.fault(&message);
-    }
+    apply_top_mut(runtime, "REMOVE: not a collection", |collection| {
+        rules::remove(collection, &key)
+    });
 }
 
 pub fn size<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let value = runtime.pop_value();
-    match rules::size(&value) {
-        Ok(size) => runtime.push_i64(size),
-        Err(message) => runtime.fault(&message),
-    }
+    push_i64_result(runtime, rules::size(&value));
 }
 
 pub fn has_key<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let key = runtime.pop_value();
     let collection = runtime.pop_value();
-    match rules::has_key(&collection, &key) {
-        Ok(found) => runtime.push_bool(found),
-        Err(message) => runtime.fault(&message),
-    }
+    push_bool_result(runtime, rules::has_key(&collection, &key));
 }
 
 pub fn keys<R: RuntimeStack + ?Sized>(runtime: &mut R) {
@@ -119,45 +105,24 @@ pub fn pack<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 
 pub fn unpack<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let value = runtime.pop_value();
-    match rules::unpack(value) {
-        Ok(values) => {
-            for value in values {
-                runtime.push_value(value);
-            }
-        }
-        Err(message) => runtime.fault(&message),
-    }
+    push_values_result(runtime, rules::unpack(value));
 }
 
 pub fn reverse_items<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let result = match runtime.top_value_mut() {
-        Some(collection) => rules::reverse_items(collection),
-        None => Err("REVERSEITEMS: not an array or struct".into()),
-    };
-    if let Err(message) = result {
-        runtime.fault(&message);
-    }
+    apply_top_mut(
+        runtime,
+        "REVERSEITEMS: not an array or struct",
+        rules::reverse_items,
+    );
 }
 
 pub fn clear_items<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let result = match runtime.top_value_mut() {
-        Some(collection) => rules::clear_items(collection),
-        None => Err("CLEARITEMS: not a collection".into()),
-    };
-    if let Err(message) = result {
-        runtime.fault(&message);
-    }
+    apply_top_mut(runtime, "CLEARITEMS: not a collection", rules::clear_items);
 }
 
 pub fn pop_item<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    match rules::pop_item(runtime.pop_value()) {
-        Ok(values) => {
-            for value in values {
-                runtime.push_value(value);
-            }
-        }
-        Err(message) => runtime.fault(&message),
-    }
+    let value = runtime.pop_value();
+    push_values_result(runtime, rules::pop_item(value));
 }
 
 pub fn pack_struct<R: RuntimeStack + ?Sized>(runtime: &mut R) {
@@ -210,4 +175,15 @@ fn pop_pairs<R: RuntimeStack + ?Sized>(
     }
     pairs.reverse();
     pairs
+}
+
+fn apply_top_mut<R, F>(runtime: &mut R, missing_error: &'static str, apply: F)
+where
+    R: RuntimeStack + ?Sized,
+    F: FnOnce(&mut StackValue) -> Result<(), String>,
+{
+    super::apply_or_fault(runtime, |runtime| match runtime.top_value_mut() {
+        Some(collection) => apply(collection),
+        None => Err(missing_error.into()),
+    });
 }

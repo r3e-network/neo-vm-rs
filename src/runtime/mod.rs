@@ -69,6 +69,40 @@ pub(crate) fn push_value_result(
     }
 }
 
+pub(crate) fn push_i64_result(
+    runtime: &mut (impl RuntimeStack + ?Sized),
+    result: Result<i64, String>,
+) {
+    match result {
+        Ok(value) => runtime.push_i64(value),
+        Err(message) => runtime.fault(&message),
+    }
+}
+
+pub(crate) fn push_bool_result(
+    runtime: &mut (impl RuntimeStack + ?Sized),
+    result: Result<bool, String>,
+) {
+    match result {
+        Ok(value) => runtime.push_bool(value),
+        Err(message) => runtime.fault(&message),
+    }
+}
+
+pub(crate) fn push_values_result(
+    runtime: &mut (impl RuntimeStack + ?Sized),
+    result: Result<Vec<StackValue>, String>,
+) {
+    match result {
+        Ok(values) => {
+            for value in values {
+                runtime.push_value(value);
+            }
+        }
+        Err(message) => runtime.fault(&message),
+    }
+}
+
 /// Common NeoVM execution state shared by native, RISC-V, and proving runtimes.
 pub struct VmContext {
     /// Evaluation stack.

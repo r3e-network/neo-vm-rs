@@ -492,6 +492,43 @@ fn runtime_collection_pack_shapes_are_shared() {
 }
 
 #[test]
+fn runtime_collection_result_adapters_are_centralized() {
+    let runtime_mod = read_workspace_source("src/runtime/mod.rs");
+    let runtime_collections = read_workspace_source("src/runtime/ops/collections.rs");
+
+    for helper in [
+        "pub(crate) fn push_i64_result",
+        "pub(crate) fn push_bool_result",
+        "pub(crate) fn push_values_result",
+    ] {
+        assert!(
+            runtime_mod.contains(helper),
+            "runtime should centralize scalar/vector Result push adapters through {helper}"
+        );
+    }
+    assert!(
+        runtime_collections.contains("fn apply_top_mut"),
+        "mutable collection opcodes should share one top-value mutation adapter"
+    );
+    assert_eq!(
+        runtime_collections.matches("top_value_mut()").count(),
+        1,
+        "runtime collection adapters should not repeat top-value mutation dispatch"
+    );
+    for duplicate in [
+        "match rules::size",
+        "match rules::has_key",
+        "for value in values",
+        "if let Err(message)",
+    ] {
+        assert!(
+            !runtime_collections.contains(duplicate),
+            "runtime collection adapters should not repeat Result/fault plumbing: {duplicate}"
+        );
+    }
+}
+
+#[test]
 fn interpreter_map_key_lookup_reuses_collection_semantics() {
     let interpreter_compound_ops =
         read_workspace_source("src/interpreter/executor/compound_ops.rs");
