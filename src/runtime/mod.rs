@@ -105,12 +105,6 @@ impl VmContext {
         }
     }
 
-    /// Backwards-compatible name for ABI-originated stacks.
-    #[must_use]
-    pub fn from_abi_stack(stack: Vec<StackValue>) -> Self {
-        Self::from_stack(stack)
-    }
-
     /// Initializes local and argument slots.
     pub fn init_slot(&mut self, local_count: usize, arg_count: usize) {
         self.locals = vec![StackValue::Null; local_count];
@@ -152,12 +146,6 @@ impl VmContext {
             fault_ip: None,
             fault_locals: None,
         }
-    }
-
-    /// Converts this context into an execution result.
-    #[must_use]
-    pub fn to_execution_result(self, fee_consumed_pico: i64) -> ExecutionResult {
-        self.into_execution_result(fee_consumed_pico)
     }
 
     /// Pushes a value onto the evaluation stack.

@@ -300,6 +300,18 @@ fn comparison_semantics_do_not_expose_ambiguous_boolean_aliases() {
 }
 
 #[test]
+fn vm_context_exposes_one_canonical_boundary_name_per_operation() {
+    let runtime_mod = read_workspace_source("src/runtime/mod.rs");
+
+    for alias in ["pub fn from_abi_stack(", "pub fn to_execution_result("] {
+        assert!(
+            !runtime_mod.contains(alias),
+            "VmContext should expose canonical from_stack/into_execution_result only, not compatibility alias {alias}"
+        );
+    }
+}
+
+#[test]
 fn stack_opcode_shapes_are_shared_between_runtime_and_interpreter() {
     let stack_semantics = read_workspace_source("src/semantics/stack.rs");
     let runtime_stack = read_workspace_source("src/runtime/ops/stack.rs");
