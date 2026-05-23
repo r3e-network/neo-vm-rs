@@ -30,3 +30,23 @@ fn execution_result_codec_is_shared_at_vm_boundary() {
 
     assert_eq!(decoded, original);
 }
+
+#[test]
+fn execution_result_codec_rejects_non_final_vm_state() {
+    let original = Ok(ExecutionResult {
+        fee_consumed_pico: 0,
+        state: VmState::Break,
+        stack: Vec::new(),
+        fault_message: None,
+        fault_ip: None,
+        fault_locals: None,
+    });
+
+    let encoded = result_codec::encode_execution_result(&original);
+    let decoded = result_codec::decode_execution_result(&encoded).expect("decode should succeed");
+
+    assert_eq!(
+        decoded,
+        Err("Break is not a final execution result state".to_string())
+    );
+}

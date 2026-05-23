@@ -1,5 +1,6 @@
 use neo_vm_rs::{
-    interpret, interpret_with_stack_and_syscalls_at, ExecutionResult, StackValue, VmState,
+    interpret, interpret_with_stack_and_syscalls_at, ExecutionResult, OpCode, StackValue,
+    VmState,
 };
 
 #[path = "interpreter_smoke/error_host.rs"]
@@ -16,6 +17,72 @@ fn executes_basic_arithmetic_script() {
 
     assert_eq!(result.state, VmState::Halt);
     assert_eq!(result.stack, vec![StackValue::Integer(5)]);
+}
+
+#[test]
+fn executes_historical_size_and_pickitem_primitive_cases() {
+    let size_int = interpret(&[
+        OpCode::PUSHINT16.byte(),
+        0x80,
+        0x00,
+        OpCode::SIZE.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("SIZE should accept Integer");
+    assert_eq!(size_int.stack, vec![StackValue::Integer(2)]);
+
+    let size_bool = interpret(&[
+        OpCode::PUSHT.byte(),
+        OpCode::SIZE.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("SIZE should accept Boolean");
+    assert_eq!(size_bool.stack, vec![StackValue::Integer(1)]);
+
+    let pick_int = interpret(&[
+        OpCode::PUSHINT16.byte(),
+        0x80,
+        0x00,
+        OpCode::PUSH0.byte(),
+        OpCode::PICKITEM.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("PICKITEM should index Integer memory");
+    assert_eq!(pick_int.stack, vec![StackValue::Integer(128)]);
+
+    let pick_false = interpret(&[
+        OpCode::PUSHF.byte(),
+        OpCode::PUSH0.byte(),
+        OpCode::PICKITEM.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("PICKITEM should index Boolean(false) memory");
+    assert_eq!(pick_false.stack, vec![StackValue::Integer(0)]);
+}
+
+#[test]
+fn equal_keeps_primitive_types_strict() {
+    let equal = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::PUSHDATA1.byte(),
+        0x01,
+        0x01,
+        OpCode::EQUAL.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("EQUAL should execute");
+    assert_eq!(equal.stack, vec![StackValue::Boolean(false)]);
+
+    let not_equal = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::PUSHDATA1.byte(),
+        0x01,
+        0x01,
+        OpCode::NOTEQUAL.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("NOTEQUAL should execute");
+    assert_eq!(not_equal.stack, vec![StackValue::Boolean(true)]);
 }
 
 #[test]

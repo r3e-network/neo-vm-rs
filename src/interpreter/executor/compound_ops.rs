@@ -358,6 +358,13 @@ pub(super) fn execute(
                                     })?;
                                     stack.push(StackValue::Integer(i64::from(value)));
                                 }
+                                StackValue::Boolean(value) => {
+                                    let bytes = [u8::from(value)];
+                                    let value = bytes.get(index).copied().ok_or_else(|| {
+                                        "index out of range for PICKITEM".to_string()
+                                    })?;
+                                    stack.push(StackValue::Integer(i64::from(value)));
+                                }
                                 StackValue::BigInteger(bytes) => {
                                     let value = bytes.get(index).copied().ok_or_else(|| {
                                         "index out of range for PICKITEM".to_string()

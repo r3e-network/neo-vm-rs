@@ -75,6 +75,71 @@ pub const NEOVM_STACK_ITEM_TYPE_MAP: u8 = 0x48;
 /// NeoVM `StackItemType.InteropInterface`.
 pub const NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE: u8 = 0x60;
 
+/// C# Neo.VM stack item type tags.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StackItemType {
+    /// Represents any type.
+    Any = NEOVM_STACK_ITEM_TYPE_ANY,
+    /// Represents a code pointer.
+    Pointer = NEOVM_STACK_ITEM_TYPE_POINTER,
+    /// Represents a boolean value.
+    Boolean = NEOVM_STACK_ITEM_TYPE_BOOLEAN,
+    /// Represents an integer value.
+    Integer = NEOVM_STACK_ITEM_TYPE_INTEGER,
+    /// Represents an immutable byte sequence.
+    ByteString = NEOVM_STACK_ITEM_TYPE_BYTESTRING,
+    /// Represents a mutable byte sequence.
+    Buffer = NEOVM_STACK_ITEM_TYPE_BUFFER,
+    /// Represents an array.
+    Array = NEOVM_STACK_ITEM_TYPE_ARRAY,
+    /// Represents a structure.
+    Struct = NEOVM_STACK_ITEM_TYPE_STRUCT,
+    /// Represents an ordered key-value map.
+    Map = NEOVM_STACK_ITEM_TYPE_MAP,
+    /// Represents a host interop interface.
+    InteropInterface = NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE,
+}
+
+impl StackItemType {
+    /// Converts a C# Neo.VM stack item type byte into a typed tag.
+    #[inline]
+    #[must_use]
+    pub const fn from_byte(value: u8) -> Option<Self> {
+        match value {
+            NEOVM_STACK_ITEM_TYPE_ANY => Some(Self::Any),
+            NEOVM_STACK_ITEM_TYPE_POINTER => Some(Self::Pointer),
+            NEOVM_STACK_ITEM_TYPE_BOOLEAN => Some(Self::Boolean),
+            NEOVM_STACK_ITEM_TYPE_INTEGER => Some(Self::Integer),
+            NEOVM_STACK_ITEM_TYPE_BYTESTRING => Some(Self::ByteString),
+            NEOVM_STACK_ITEM_TYPE_BUFFER => Some(Self::Buffer),
+            NEOVM_STACK_ITEM_TYPE_ARRAY => Some(Self::Array),
+            NEOVM_STACK_ITEM_TYPE_STRUCT => Some(Self::Struct),
+            NEOVM_STACK_ITEM_TYPE_MAP => Some(Self::Map),
+            NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => Some(Self::InteropInterface),
+            _ => None,
+        }
+    }
+
+    /// Returns the C# Neo.VM stack item type byte.
+    #[inline]
+    #[must_use]
+    pub const fn to_byte(self) -> u8 {
+        match self {
+            Self::Any => NEOVM_STACK_ITEM_TYPE_ANY,
+            Self::Pointer => NEOVM_STACK_ITEM_TYPE_POINTER,
+            Self::Boolean => NEOVM_STACK_ITEM_TYPE_BOOLEAN,
+            Self::Integer => NEOVM_STACK_ITEM_TYPE_INTEGER,
+            Self::ByteString => NEOVM_STACK_ITEM_TYPE_BYTESTRING,
+            Self::Buffer => NEOVM_STACK_ITEM_TYPE_BUFFER,
+            Self::Array => NEOVM_STACK_ITEM_TYPE_ARRAY,
+            Self::Struct => NEOVM_STACK_ITEM_TYPE_STRUCT,
+            Self::Map => NEOVM_STACK_ITEM_TYPE_MAP,
+            Self::InteropInterface => NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE,
+        }
+    }
+}
+
 /// Normalize NeoVM StackItemType tags and compact runtime tags into one compact tag space.
 #[must_use]
 pub fn normalize_stack_item_type_tag(type_tag: u8) -> u8 {

@@ -1,6 +1,7 @@
 extern crate alloc;
 
 use alloc::{
+    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -23,10 +24,16 @@ pub fn encode_execution_result(result: &Result<ExecutionResult, String>) -> Vec<
             );
             out.push(0);
             out.extend_from_slice(&execution.fee_consumed_pico.to_le_bytes());
-            out.push(match execution.state {
+            let state_tag = match execution.state {
                 VmState::Halt => 0,
                 VmState::Fault => 1,
-            });
+                state => {
+                    return encode_error_payload(&format!(
+                        "{state:?} is not a final execution result state"
+                    ));
+                }
+            };
+            out.push(state_tag);
             out.push(u8::from(execution.fault_message.is_some()));
             out.extend_from_slice(&(fault_bytes.len() as u32).to_le_bytes());
             out.extend_from_slice(fault_bytes);
@@ -49,15 +56,17 @@ pub fn encode_execution_result(result: &Result<ExecutionResult, String>) -> Vec<
             }
             out
         }
-        Err(message) => {
-            let bytes = message.as_bytes();
-            let mut out = Vec::with_capacity(1 + 4 + bytes.len());
-            out.push(1);
-            out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
-            out.extend_from_slice(bytes);
-            out
-        }
+        Err(message) => encode_error_payload(message),
     }
+}
+
+fn encode_error_payload(message: &str) -> Vec<u8> {
+    let bytes = message.as_bytes();
+    let mut out = Vec::with_capacity(1 + 4 + bytes.len());
+    out.push(1);
+    out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+    out.extend_from_slice(bytes);
+    out
 }
 
 pub fn decode_execution_result(bytes: &[u8]) -> Result<Result<ExecutionResult, String>, String> {

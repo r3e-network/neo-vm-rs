@@ -159,6 +159,10 @@ pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue
         }
         StackValue::ByteString(bytes) => pick_byte(bytes, key, "PICKITEM: byte index out of range"),
         StackValue::Buffer(bytes) => pick_byte(bytes, key, "PICKITEM: buffer index out of range"),
+        StackValue::Integer(_) | StackValue::BigInteger(_) | StackValue::Boolean(_) => {
+            let bytes = primitive_memory(collection);
+            pick_byte(&bytes, key, "PICKITEM: byte index out of range")
+        }
         _ => Err("PICKITEM: unsupported types".into()),
     }
 }
@@ -193,6 +197,9 @@ pub fn size(value: &StackValue) -> Result<i64, String> {
         StackValue::Array(items) | StackValue::Struct(items) => Ok(items.len() as i64),
         StackValue::Map(pairs) => Ok(pairs.len() as i64),
         StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => Ok(bytes.len() as i64),
+        StackValue::Integer(_) | StackValue::BigInteger(_) | StackValue::Boolean(_) => {
+            Ok(primitive_memory(value).len() as i64)
+        }
         _ => Err("SIZE: unsupported type".into()),
     }
 }
@@ -352,4 +359,13 @@ fn pick_byte(
         .get(index)
         .map(|value| StackValue::Integer(i64::from(*value)))
         .ok_or_else(|| range_error.into())
+}
+
+fn primitive_memory(value: &StackValue) -> Vec<u8> {
+    match value {
+        StackValue::Integer(_) | StackValue::BigInteger(_) | StackValue::Boolean(_) => value
+            .to_byte_string_bytes()
+            .expect("primitive values have byte-string memory"),
+        _ => Vec::new(),
+    }
 }
