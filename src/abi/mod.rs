@@ -1,6 +1,7 @@
 //! Shared ABI and result types used at VM host/proof boundaries.
 
 pub mod callback_codec;
+mod cursor;
 mod execution;
 pub mod fast_codec;
 pub mod result_codec;

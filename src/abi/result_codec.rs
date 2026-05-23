@@ -6,6 +6,7 @@ use alloc::{
     vec::Vec,
 };
 
+use super::cursor::Cursor;
 use crate::{fast_codec, ExecutionResult, VmState};
 
 #[inline]
@@ -117,7 +118,7 @@ pub fn decode_execution_result(bytes: &[u8]) -> Result<Result<ExecutionResult, S
                     None
                 }
             };
-            cursor.expect_eof()?;
+            cursor.expect_eof("trailing bytes after execution result")?;
             Ok(Ok(ExecutionResult {
                 fee_consumed_pico: fee,
                 state,
@@ -131,66 +132,9 @@ pub fn decode_execution_result(bytes: &[u8]) -> Result<Result<ExecutionResult, S
             let error_len = cursor.read_u32()? as usize;
             let error = String::from_utf8(cursor.read_exact(error_len)?.to_vec())
                 .map_err(|_| "invalid utf-8 error payload".to_string())?;
-            cursor.expect_eof()?;
+            cursor.expect_eof("trailing bytes after execution result")?;
             Ok(Err(error))
         }
         _ => Err("invalid execution result tag".to_string()),
-    }
-}
-
-struct Cursor<'a> {
-    bytes: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> Cursor<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, offset: 0 }
-    }
-
-    fn read_u8(&mut self) -> Result<u8, String> {
-        if self.offset >= self.bytes.len() {
-            return Err("unexpected end of input".to_string());
-        }
-        let byte = self.bytes[self.offset];
-        self.offset += 1;
-        Ok(byte)
-    }
-
-    fn read_u32(&mut self) -> Result<u32, String> {
-        let bytes = self.read_exact(4)?;
-        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-
-    fn read_i64(&mut self) -> Result<i64, String> {
-        let bytes = self.read_exact(8)?;
-        Ok(i64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
-    }
-
-    fn read_exact(&mut self, len: usize) -> Result<&'a [u8], String> {
-        let end = self
-            .offset
-            .checked_add(len)
-            .ok_or_else(|| "offset overflow".to_string())?;
-        if end > self.bytes.len() {
-            return Err("unexpected end of input".to_string());
-        }
-        let slice = &self.bytes[self.offset..end];
-        self.offset = end;
-        Ok(slice)
-    }
-
-    fn expect_eof(&self) -> Result<(), String> {
-        if self.offset == self.bytes.len() {
-            Ok(())
-        } else {
-            Err("trailing bytes after execution result".to_string())
-        }
-    }
-
-    fn is_eof(&self) -> bool {
-        self.offset >= self.bytes.len()
     }
 }

@@ -6,6 +6,130 @@ fn stabilize_allocator_after_host_call() {
     }
 }
 
+#[derive(Clone, Copy)]
+struct RetainedHostState {
+    stack: Option<usize>,
+    locals: Option<usize>,
+    args: Option<usize>,
+    static_fields: Option<usize>,
+    consumed_mutations: Option<usize>,
+}
+
+impl RetainedHostState {
+    fn capture(
+        stack: &[StackValue],
+        args: &[StackValue],
+        locals: &[StackValue],
+        static_fields: &[StackValue],
+        consumed_mutations: &[StackValue],
+    ) -> Result<Self, String> {
+        Ok(Self {
+            stack: retain_values(stack, &RETAINED_STACK_BUF, true)?,
+            locals: retain_values(locals, &RETAINED_LOCALS_BUF, false)?,
+            args: retain_values(args, &RETAINED_ARGS_BUF, false)?,
+            static_fields: retain_values(static_fields, &RETAINED_STATIC_FIELDS_BUF, false)?,
+            consumed_mutations: retain_values(
+                consumed_mutations,
+                &RETAINED_CONSUMED_MUTATIONS_BUF,
+                false,
+            )?,
+        })
+    }
+
+    fn has_stack(self) -> bool {
+        self.stack.is_some()
+    }
+
+    fn restore_non_stack(
+        self,
+        consumed_mutations: &mut Vec<StackValue>,
+        locals: &mut Vec<StackValue>,
+        args: &mut Vec<StackValue>,
+        static_fields: &mut Vec<StackValue>,
+    ) -> Result<(), String> {
+        restore_retained_values(
+            consumed_mutations,
+            self.consumed_mutations,
+            &RETAINED_CONSUMED_MUTATIONS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        )?;
+        restore_retained_values(
+            locals,
+            self.locals,
+            &RETAINED_LOCALS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        )?;
+        restore_retained_values(
+            args,
+            self.args,
+            &RETAINED_ARGS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        )?;
+        restore_retained_values(
+            static_fields,
+            self.static_fields,
+            &RETAINED_STATIC_FIELDS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        )?;
+        Ok(())
+    }
+
+    fn restore_non_stack_best_effort(
+        self,
+        consumed_mutations: &mut Vec<StackValue>,
+        locals: &mut Vec<StackValue>,
+        args: &mut Vec<StackValue>,
+        static_fields: &mut Vec<StackValue>,
+    ) {
+        let _ = restore_retained_values(
+            consumed_mutations,
+            self.consumed_mutations,
+            &RETAINED_CONSUMED_MUTATIONS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        );
+        let _ = restore_retained_values(
+            locals,
+            self.locals,
+            &RETAINED_LOCALS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        );
+        let _ = restore_retained_values(
+            args,
+            self.args,
+            &RETAINED_ARGS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        );
+        let _ = restore_retained_values(
+            static_fields,
+            self.static_fields,
+            &RETAINED_STATIC_FIELDS_BUF,
+            POST_SYSCALL_STACK_HEADROOM,
+        );
+    }
+
+    fn restore_stack(self, stack: &mut Vec<StackValue>, min_capacity: usize) -> Result<(), String> {
+        restore_retained_values(stack, self.stack, &RETAINED_STACK_BUF, min_capacity)
+    }
+
+    fn restore_stack_best_effort(self, stack: &mut Vec<StackValue>, min_capacity: usize) {
+        let _ = self.restore_stack(stack, min_capacity);
+    }
+}
+
+fn retain_values(
+    values: &[StackValue],
+    buf: &RetainedPrefixBuffer,
+    retain_empty: bool,
+) -> Result<Option<usize>, String> {
+    if cfg!(target_arch = "riscv32") && (retain_empty || !values.is_empty()) {
+        let buf = unsafe { buf.as_mut_slice() };
+        encode_retained_prefix_to_slice(values, buf).map(Some)
+    } else {
+        let _ = (values, buf);
+        Ok(None)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn invoke_syscall<H: SyscallProvider>(
     host: &mut H,
@@ -26,69 +150,15 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
         abi_args.push(to_abi_value(item));
     }
 
-    let retained_stack_len = if cfg!(target_arch = "riscv32") {
-        let buf = unsafe { RETAINED_STACK_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(stack, buf)?)
-    } else {
-        None
-    };
-    let retained_locals_len = if cfg!(target_arch = "riscv32") && !locals.is_empty() {
-        let buf = unsafe { RETAINED_LOCALS_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(locals, buf)?)
-    } else {
-        None
-    };
-    let retained_args_len = if cfg!(target_arch = "riscv32") && !args.is_empty() {
-        let buf = unsafe { RETAINED_ARGS_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(args, buf)?)
-    } else {
-        None
-    };
-    let retained_static_fields_len = if cfg!(target_arch = "riscv32") && !static_fields.is_empty() {
-        let buf = unsafe { RETAINED_STATIC_FIELDS_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(static_fields, buf)?)
-    } else {
-        None
-    };
-    let retained_consumed_mutations_len =
-        if cfg!(target_arch = "riscv32") && !consumed_mutations.is_empty() {
-            let buf = unsafe { RETAINED_CONSUMED_MUTATIONS_BUF.as_mut_slice() };
-            Some(encode_retained_prefix_to_slice(consumed_mutations, buf)?)
-        } else {
-            None
-        };
+    let retained =
+        RetainedHostState::capture(stack, args, locals, static_fields, consumed_mutations)?;
     match host.syscall(api, ip, &mut abi_args) {
         Ok(()) => {
             stabilize_allocator_after_host_call();
-            if let Some(retained_len) = retained_stack_len {
-                restore_retained_values(
-                    consumed_mutations,
-                    retained_consumed_mutations_len,
-                    &RETAINED_CONSUMED_MUTATIONS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    locals,
-                    retained_locals_len,
-                    &RETAINED_LOCALS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    args,
-                    retained_args_len,
-                    &RETAINED_ARGS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    static_fields,
-                    retained_static_fields_len,
-                    &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
+            if retained.has_stack() {
+                retained.restore_non_stack(consumed_mutations, locals, args, static_fields)?;
+                retained.restore_stack(
                     stack,
-                    Some(retained_len),
-                    &RETAINED_STACK_BUF,
                     keep.saturating_add(abi_args.len())
                         .max(POST_SYSCALL_STACK_HEADROOM),
                 )?;
@@ -108,37 +178,15 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
             Ok(())
         }
         Err(e) => {
-            if let Some(retained_len) = retained_stack_len {
-                let _ = restore_retained_values(
+            if retained.has_stack() {
+                retained.restore_non_stack_best_effort(
                     consumed_mutations,
-                    retained_consumed_mutations_len,
-                    &RETAINED_CONSUMED_MUTATIONS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
                     locals,
-                    retained_locals_len,
-                    &RETAINED_LOCALS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
                     args,
-                    retained_args_len,
-                    &RETAINED_ARGS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
                     static_fields,
-                    retained_static_fields_len,
-                    &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
                 );
-                let _ = restore_retained_values(
-                    stack,
-                    Some(retained_len),
-                    &RETAINED_STACK_BUF,
-                    stack.len().max(POST_SYSCALL_STACK_HEADROOM),
-                );
+                retained
+                    .restore_stack_best_effort(stack, stack.len().max(POST_SYSCALL_STACK_HEADROOM));
             }
             core::mem::forget(abi_args);
             Err(e)
@@ -153,18 +201,9 @@ pub(crate) fn complete_initializer_retaining_state<H: SyscallProvider>(
     static_fields: &mut Vec<StackValue>,
 ) -> Result<(), String> {
     let retained_method_stack_len =
-        if cfg!(target_arch = "riscv32") && !method_initial_stack.is_empty() {
-            let buf = unsafe { RETAINED_STACK_BUF.as_mut_slice() };
-            Some(encode_retained_prefix_to_slice(method_initial_stack, buf)?)
-        } else {
-            None
-        };
-    let retained_static_fields_len = if cfg!(target_arch = "riscv32") && !static_fields.is_empty() {
-        let buf = unsafe { RETAINED_STATIC_FIELDS_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(static_fields, buf)?)
-    } else {
-        None
-    };
+        retain_values(method_initial_stack, &RETAINED_STACK_BUF, false)?;
+    let retained_static_fields_len =
+        retain_values(static_fields, &RETAINED_STATIC_FIELDS_BUF, false)?;
 
     let result = host.initializer_complete(ip);
     if result.is_ok() {
@@ -270,71 +309,14 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
     ids: &mut CompoundIds,
 ) -> Result<(), String> {
     let mut abi_stack = to_abi_stack(stack);
-    let retained_stack_len = if cfg!(target_arch = "riscv32") {
-        let buf = unsafe { RETAINED_STACK_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(stack, buf)?)
-    } else {
-        None
-    };
-    let retained_locals_len = if cfg!(target_arch = "riscv32") && !locals.is_empty() {
-        let buf = unsafe { RETAINED_LOCALS_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(locals, buf)?)
-    } else {
-        None
-    };
-    let retained_args_len = if cfg!(target_arch = "riscv32") && !args.is_empty() {
-        let buf = unsafe { RETAINED_ARGS_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(args, buf)?)
-    } else {
-        None
-    };
-    let retained_static_fields_len = if cfg!(target_arch = "riscv32") && !static_fields.is_empty() {
-        let buf = unsafe { RETAINED_STATIC_FIELDS_BUF.as_mut_slice() };
-        Some(encode_retained_prefix_to_slice(static_fields, buf)?)
-    } else {
-        None
-    };
-    let retained_consumed_mutations_len =
-        if cfg!(target_arch = "riscv32") && !consumed_mutations.is_empty() {
-            let buf = unsafe { RETAINED_CONSUMED_MUTATIONS_BUF.as_mut_slice() };
-            Some(encode_retained_prefix_to_slice(consumed_mutations, buf)?)
-        } else {
-            None
-        };
+    let retained =
+        RetainedHostState::capture(stack, args, locals, static_fields, consumed_mutations)?;
     match host.callt(token, ip, &mut abi_stack) {
         Ok(()) => {
             stabilize_allocator_after_host_call();
-            if let Some(retained_len) = retained_stack_len {
-                restore_retained_values(
-                    consumed_mutations,
-                    retained_consumed_mutations_len,
-                    &RETAINED_CONSUMED_MUTATIONS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    locals,
-                    retained_locals_len,
-                    &RETAINED_LOCALS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    args,
-                    retained_args_len,
-                    &RETAINED_ARGS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    static_fields,
-                    retained_static_fields_len,
-                    &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                )?;
-                restore_retained_values(
-                    stack,
-                    Some(retained_len),
-                    &RETAINED_STACK_BUF,
-                    stack.len().max(POST_SYSCALL_STACK_HEADROOM),
-                )?;
+            if retained.has_stack() {
+                retained.restore_non_stack(consumed_mutations, locals, args, static_fields)?;
+                retained.restore_stack(stack, stack.len().max(POST_SYSCALL_STACK_HEADROOM))?;
             }
 
             let mut imported_stack =
@@ -387,37 +369,15 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
             Ok(())
         }
         Err(e) => {
-            if let Some(retained_len) = retained_stack_len {
-                let _ = restore_retained_values(
+            if retained.has_stack() {
+                retained.restore_non_stack_best_effort(
                     consumed_mutations,
-                    retained_consumed_mutations_len,
-                    &RETAINED_CONSUMED_MUTATIONS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
                     locals,
-                    retained_locals_len,
-                    &RETAINED_LOCALS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
                     args,
-                    retained_args_len,
-                    &RETAINED_ARGS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
-                );
-                let _ = restore_retained_values(
                     static_fields,
-                    retained_static_fields_len,
-                    &RETAINED_STATIC_FIELDS_BUF,
-                    POST_SYSCALL_STACK_HEADROOM,
                 );
-                let _ = restore_retained_values(
-                    stack,
-                    Some(retained_len),
-                    &RETAINED_STACK_BUF,
-                    stack.len().max(POST_SYSCALL_STACK_HEADROOM),
-                );
+                retained
+                    .restore_stack_best_effort(stack, stack.len().max(POST_SYSCALL_STACK_HEADROOM));
             }
             // Leak abi_stack on error to avoid talc free-list corruption on RISC-V/PolkaVM
             core::mem::forget(abi_stack);

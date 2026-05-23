@@ -6,6 +6,7 @@ use alloc::{
     vec::Vec,
 };
 
+use super::cursor::Cursor;
 use crate::StackValue;
 
 const TAG_OK_STACK: u8 = 0;
@@ -158,7 +159,7 @@ pub fn decode_stack_result_into(
         }
         _ => return Err("invalid stack result tag".to_string()),
     };
-    cursor.expect_eof()?;
+    cursor.expect_eof("trailing bytes in payload")?;
     Ok(value)
 }
 
@@ -194,7 +195,7 @@ pub fn decode_stack_result(bytes: &[u8]) -> Result<Result<Vec<StackValue>, Strin
         TAG_OK_BUFFER => Ok(vec![StackValue::Buffer(cursor.read_bytes()?.to_vec())]),
         _ => return Err("invalid stack result tag".to_string()),
     };
-    cursor.expect_eof()?;
+    cursor.expect_eof("trailing bytes in payload")?;
     Ok(value)
 }
 
@@ -326,66 +327,4 @@ fn encode_bytes(bytes: &[u8], out: &mut Vec<u8>) {
     len_buf.copy_from_slice(&(bytes.len() as u32).to_le_bytes());
     out.extend_from_slice(&len_buf);
     out.extend_from_slice(bytes);
-}
-
-struct Cursor<'a> {
-    bytes: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> Cursor<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, offset: 0 }
-    }
-
-    fn read_u8(&mut self) -> Result<u8, String> {
-        if self.offset >= self.bytes.len() {
-            return Err("unexpected end of input".to_string());
-        }
-        let value = self.bytes[self.offset];
-        self.offset += 1;
-        Ok(value)
-    }
-
-    fn read_u32(&mut self) -> Result<u32, String> {
-        let bytes = self.read_exact(4)?;
-        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-    }
-
-    fn read_u64(&mut self) -> Result<u64, String> {
-        let bytes = self.read_exact(8)?;
-        Ok(u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-        ]))
-    }
-
-    fn read_i64(&mut self) -> Result<i64, String> {
-        Ok(self.read_u64()? as i64)
-    }
-
-    fn read_bytes(&mut self) -> Result<&'a [u8], String> {
-        let len = self.read_u32()? as usize;
-        self.read_exact(len)
-    }
-
-    fn read_exact(&mut self, len: usize) -> Result<&'a [u8], String> {
-        let end = self
-            .offset
-            .checked_add(len)
-            .ok_or_else(|| "offset overflow".to_string())?;
-        if end > self.bytes.len() {
-            return Err("unexpected end of input".to_string());
-        }
-        let slice = &self.bytes[self.offset..end];
-        self.offset = end;
-        Ok(slice)
-    }
-
-    fn expect_eof(&self) -> Result<(), String> {
-        if self.offset == self.bytes.len() {
-            Ok(())
-        } else {
-            Err("trailing bytes in payload".to_string())
-        }
-    }
 }

@@ -425,6 +425,80 @@ fn interpreter_numeric_helpers_call_canonical_rules_directly() {
     );
 }
 
+#[test]
+fn host_call_retained_state_is_centralized() {
+    let bridge = read_workspace_source("src/interpreter/helpers/bridge.rs");
+
+    assert!(
+        bridge.contains("struct RetainedHostState"),
+        "bridge host calls should capture retained interpreter state through one shared state object"
+    );
+    assert!(
+        bridge.contains("fn retain_values("),
+        "bridge host calls should use one retained-value capture helper instead of repeating cfg/buffer blocks"
+    );
+    assert!(
+        bridge.contains("fn restore_non_stack(")
+            && bridge.contains("fn restore_non_stack_best_effort("),
+        "shared retained state should own strict and best-effort non-stack restoration"
+    );
+
+    for duplicate in [
+        "encode_retained_prefix_to_slice(locals",
+        "encode_retained_prefix_to_slice(args",
+        "encode_retained_prefix_to_slice(static_fields",
+        "encode_retained_prefix_to_slice(consumed_mutations",
+        "cfg!(target_arch = \"riscv32\") && !locals.is_empty()",
+        "cfg!(target_arch = \"riscv32\") && !args.is_empty()",
+        "cfg!(target_arch = \"riscv32\") && !static_fields.is_empty()",
+        "cfg!(target_arch = \"riscv32\") && !consumed_mutations.is_empty()",
+    ] {
+        assert!(
+            !bridge.contains(duplicate),
+            "bridge host calls should not duplicate retained-state capture: {duplicate}"
+        );
+    }
+}
+
+#[test]
+fn abi_codecs_share_binary_cursor() {
+    let abi_mod = read_workspace_source("src/abi/mod.rs");
+    let cursor = read_workspace_source("src/abi/cursor.rs");
+    let result_codec = read_workspace_source("src/abi/result_codec.rs");
+    let callback_codec = read_workspace_source("src/abi/callback_codec.rs");
+
+    assert!(
+        abi_mod.contains("mod cursor;"),
+        "ABI should keep shared binary cursor utilities in src/abi/cursor.rs"
+    );
+    assert!(
+        cursor.contains("pub(super) struct Cursor<'a>")
+            && cursor.contains("pub(super) fn read_u64(")
+            && cursor.contains("pub(super) fn expect_eof("),
+        "shared ABI cursor should own primitive little-endian reads and EOF checks"
+    );
+
+    for (name, source) in [
+        ("result_codec", result_codec.as_str()),
+        ("callback_codec", callback_codec.as_str()),
+    ] {
+        assert!(
+            source.contains("use super::cursor::Cursor;"),
+            "{name} should import the shared ABI cursor"
+        );
+        assert!(
+            !source.contains("struct Cursor<'a>"),
+            "{name} should not define a private cursor copy"
+        );
+        assert!(
+            !source.contains("fn read_u32(&mut self)")
+                && !source.contains("fn read_u64(&mut self)")
+                && !source.contains("fn read_exact(&mut self"),
+            "{name} should not duplicate cursor primitive readers"
+        );
+    }
+}
+
 fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
     for entry in fs::read_dir(dir).expect("interpreter directory should be readable") {
         let entry = entry.expect("interpreter entry should be readable");
