@@ -1,5 +1,5 @@
 use neo_vm_rs::semantics::{arithmetic, collections, comparison, conversion};
-use neo_vm_rs::StackValue;
+use neo_vm_rs::{stack_value_span_bytes, StackValue};
 
 #[test]
 fn arithmetic_semantics_cover_riscv_runtime_integer_ops() {
@@ -100,6 +100,27 @@ fn comparison_and_conversion_semantics_use_shared_stack_value_rules() {
         conversion::convert_value(StackValue::Map(Vec::new()), 0x28),
         Err("CONVERT: cannot convert to ByteString".to_string())
     );
+}
+
+#[test]
+fn stack_value_span_bytes_are_shared_splice_inputs() {
+    assert_eq!(
+        stack_value_span_bytes(&StackValue::Integer(128)),
+        Some(vec![0x80, 0x00])
+    );
+    assert_eq!(
+        stack_value_span_bytes(&StackValue::Boolean(true)),
+        Some(vec![0x01])
+    );
+    assert_eq!(
+        stack_value_span_bytes(&StackValue::ByteString(b"neo".to_vec())),
+        Some(b"neo".to_vec())
+    );
+    assert_eq!(
+        stack_value_span_bytes(&StackValue::Buffer(b"n4".to_vec())),
+        Some(b"n4".to_vec())
+    );
+    assert_eq!(stack_value_span_bytes(&StackValue::Null), None);
 }
 
 #[test]

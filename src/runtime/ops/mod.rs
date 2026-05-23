@@ -11,3 +11,4 @@ pub mod collections;
 pub mod comparison;
 pub mod conversion;
 pub mod stack;
+pub(crate) mod value_stack;

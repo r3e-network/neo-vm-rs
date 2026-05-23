@@ -1,22 +1,15 @@
 use super::*;
 use crate::{
+    interpreter::runtime_types::structurally_equal,
     semantics::{
         collections as collection_rules, comparison as comparison_rules,
         conversion as conversion_rules, numeric,
     },
-    NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN, NEOVM_STACK_ITEM_TYPE_BUFFER,
-    NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
+    stack_value_span_bytes, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
+    NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
     NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
     NEOVM_STACK_ITEM_TYPE_STRUCT,
 };
-
-#[inline]
-pub(crate) fn peek_item(stack: &[StackValue]) -> Result<StackValue, String> {
-    stack
-        .last()
-        .cloned()
-        .ok_or_else(|| "stack underflow".to_string())
-}
 
 #[inline]
 pub(crate) fn pop_item(stack: &mut Vec<StackValue>) -> Result<StackValue, String> {
@@ -83,76 +76,9 @@ pub(crate) fn vm_equal(left: &StackValue, right: &StackValue) -> bool {
         {
             true
         }
-        (StackValue::Struct(_, _), StackValue::Struct(_, _)) => struct_equal(left, right),
+        (StackValue::Struct(_, _), StackValue::Struct(_, _)) => structurally_equal(left, right),
         _ => false,
     }
-}
-
-fn struct_equal(left: &StackValue, right: &StackValue) -> bool {
-    let mut pending = vec![(left, right)];
-    while let Some((left, right)) = pending.pop() {
-        match (left, right) {
-            (StackValue::Integer(l), StackValue::Integer(r)) => {
-                if l != r {
-                    return false;
-                }
-            }
-            (StackValue::Integer(l), StackValue::BigInteger(r))
-            | (StackValue::BigInteger(r), StackValue::Integer(l)) => {
-                if encode_integer(*l) != *r {
-                    return false;
-                }
-            }
-            (StackValue::BigInteger(l), StackValue::BigInteger(r)) => {
-                if l != r {
-                    return false;
-                }
-            }
-            (StackValue::ByteString(l), StackValue::ByteString(r)) => {
-                if l != r {
-                    return false;
-                }
-            }
-            (StackValue::Boolean(l), StackValue::Boolean(r)) => {
-                if l != r {
-                    return false;
-                }
-            }
-            (StackValue::Pointer(l), StackValue::Pointer(r)) => {
-                if l != r {
-                    return false;
-                }
-            }
-            (StackValue::Null, StackValue::Null) => {}
-            (StackValue::Interop(l), StackValue::Interop(r)) => {
-                if l != r {
-                    return false;
-                }
-            }
-            (StackValue::Iterator(l), StackValue::Iterator(r)) => {
-                if l != r {
-                    return false;
-                }
-            }
-            (StackValue::Array(left_id, _), StackValue::Array(right_id, _))
-            | (StackValue::Map(left_id, _), StackValue::Map(right_id, _))
-            | (StackValue::Buffer(left_id, _), StackValue::Buffer(right_id, _)) => {
-                if left_id != right_id {
-                    return false;
-                }
-            }
-            (StackValue::Struct(left_id, _), StackValue::Struct(right_id, _))
-                if left_id == right_id => {}
-            (StackValue::Struct(_, left_items), StackValue::Struct(_, right_items)) => {
-                if left_items.len() != right_items.len() {
-                    return false;
-                }
-                pending.extend(left_items.iter().zip(right_items.iter()));
-            }
-            _ => return false,
-        }
-    }
-    true
 }
 
 pub(crate) fn convert_value(
@@ -219,44 +145,15 @@ pub(crate) fn pop_boolean(stack: &mut Vec<StackValue>) -> Result<bool, String> {
 }
 
 pub(crate) fn pop_bytes(stack: &mut Vec<StackValue>) -> Result<Vec<u8>, String> {
-    match stack.pop() {
-        Some(StackValue::ByteString(value)) => Ok(value),
-        Some(StackValue::Buffer(_, value)) => Ok(value),
-        Some(StackValue::Integer(value)) => Ok(encode_integer(value)),
-        Some(StackValue::BigInteger(value)) => Ok(value),
-        Some(StackValue::Boolean(value)) => Ok(vec![if value { 1 } else { 0 }]),
-        Some(StackValue::Null) => Ok(Vec::new()),
-        Some(
-            StackValue::Pointer(_)
-            | StackValue::Array(..)
-            | StackValue::Struct(..)
-            | StackValue::Map(..)
-            | StackValue::Interop(_)
-            | StackValue::Iterator(_),
-        ) => Err("expected byte string-compatible item on stack".to_string()),
-        None => Err("stack underflow".to_string()),
-    }
+    let value = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
+    stack_item_to_bytes(value)
 }
 
 /// Convert a StackValue to bytes without consuming it from the stack.
 /// Used by CAT to determine result type while extracting byte content.
 pub(crate) fn stack_item_to_bytes(item: StackValue) -> Result<Vec<u8>, String> {
-    match item {
-        StackValue::ByteString(value) => Ok(value),
-        StackValue::Buffer(_, value) => Ok(value),
-        StackValue::Integer(value) => Ok(encode_integer(value)),
-        StackValue::BigInteger(value) => Ok(value),
-        StackValue::Boolean(value) => Ok(vec![if value { 1 } else { 0 }]),
-        StackValue::Null => Ok(Vec::new()),
-        StackValue::Pointer(_)
-        | StackValue::Array(..)
-        | StackValue::Struct(..)
-        | StackValue::Map(..)
-        | StackValue::Interop(_)
-        | StackValue::Iterator(_) => {
-            Err("expected byte string-compatible item on stack".to_string())
-        }
-    }
+    stack_value_span_bytes(&to_abi_value(&item))
+        .ok_or_else(|| "expected byte memory-compatible item on stack".to_string())
 }
 
 pub(crate) fn encode_integer(value: i64) -> Vec<u8> {

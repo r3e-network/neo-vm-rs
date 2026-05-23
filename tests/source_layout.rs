@@ -56,6 +56,132 @@ fn runtime_opcode_adapters_live_outside_pure_semantics_tree() {
 }
 
 #[test]
+fn byte_splice_semantics_are_not_reimplemented_per_layer() {
+    let abi_source = read_workspace_source("src/abi/stack_value.rs");
+    let splice_semantics = read_workspace_source("src/semantics/splice.rs");
+    let runtime_bytes = read_workspace_source("src/runtime/ops/bytes.rs");
+    let interpreter_byte_ops = read_workspace_source("src/interpreter/executor/byte_ops.rs");
+    let interpreter_values = read_workspace_source("src/interpreter/helpers/values.rs");
+
+    assert!(
+        abi_source.contains("pub fn stack_value_span_bytes"),
+        "ABI StackValue should expose the canonical NeoVM GetSpan byte semantics"
+    );
+    assert!(
+        splice_semantics.contains("stack_value_span_bytes"),
+        "splice semantics should own the canonical opcode-level GetSpan byte rules"
+    );
+    assert!(
+        runtime_bytes.contains("splice_rules::") && interpreter_byte_ops.contains("splice_rules::"),
+        "runtime and interpreter byte opcode adapters should both reuse semantics::splice"
+    );
+    assert!(
+        interpreter_values.contains("stack_value_span_bytes"),
+        "interpreter byte helpers should reuse ABI span semantics instead of duplicating primitive matches"
+    );
+    assert!(
+        !abi_source.contains("concat_byte_sequences")
+            && !abi_source.contains("slice_byte_sequence"),
+        "ABI must not keep legacy type-preserving byte CAT/SUBSTR helpers beside NeoVM GetSpan splice semantics"
+    );
+    assert!(
+        !interpreter_values.contains("Some(StackValue::ByteString(value)) => Ok(value)")
+            && !interpreter_values.contains("Some(StackValue::Buffer(_, value)) => Ok(value)"),
+        "interpreter byte helpers should not keep a second byte-conversion match table"
+    );
+    for duplicate in [
+        "result_bytes.extend_from_slice",
+        "bytes[..count].to_vec()",
+        "bytes[index..end].to_vec()",
+    ] {
+        assert!(
+            !interpreter_byte_ops.contains(duplicate),
+            "interpreter byte_ops should not reimplement splice byte manipulation: {duplicate}"
+        );
+    }
+}
+
+#[test]
+fn truthiness_semantics_delegate_to_stack_value() {
+    let comparison = read_workspace_source("src/semantics/comparison.rs");
+
+    assert!(
+        comparison.contains("value.to_bool()"),
+        "boolean_value should delegate to StackValue::to_bool instead of duplicating truthiness rules"
+    );
+}
+
+#[test]
+fn interpreter_struct_equality_reuses_runtime_value_graph_comparison() {
+    let values = read_workspace_source("src/interpreter/helpers/values.rs");
+
+    assert!(
+        values.contains("structurally_equal(left, right)"),
+        "interpreter Struct equality should reuse the shared runtime value graph comparison"
+    );
+    assert!(
+        !values.contains("fn struct_equal"),
+        "interpreter helpers should not duplicate recursive Struct equality"
+    );
+}
+
+#[test]
+fn numeric_stack_shapes_are_shared_between_runtime_and_interpreter() {
+    let runtime_arithmetic = read_workspace_source("src/runtime/ops/arithmetic.rs");
+    let runtime_comparison = read_workspace_source("src/runtime/ops/comparison.rs");
+    let interpreter_numeric = read_workspace_source("src/interpreter/executor/numeric_ops.rs");
+
+    assert!(
+        runtime_arithmetic.contains("value_stack::")
+            && runtime_comparison.contains("value_stack::")
+            && interpreter_numeric.contains("value_stack::"),
+        "runtime and interpreter numeric opcode adapters should share value_stack stack-shape helpers"
+    );
+
+    for duplicate in [
+        "fn unary_value(",
+        "fn binary_value(",
+        "fn ternary_value(",
+        "fn binary_bool(",
+        "fn bool_binary(",
+    ] {
+        assert!(
+            !interpreter_numeric.contains(duplicate),
+            "interpreter numeric_ops should not keep private stack-shape helper {duplicate}"
+        );
+    }
+}
+
+#[test]
+fn stack_opcode_shapes_are_shared_between_runtime_and_interpreter() {
+    let stack_semantics = read_workspace_source("src/semantics/stack.rs");
+    let runtime_stack = read_workspace_source("src/runtime/ops/stack.rs");
+    let interpreter_stack = read_workspace_source("src/interpreter/executor/stack_ops.rs");
+
+    assert!(
+        stack_semantics.contains("pub(crate) fn dup")
+            && stack_semantics.contains("pub(crate) fn roll"),
+        "semantics::stack should own shared VM stack transformations"
+    );
+    assert!(
+        runtime_stack.contains("stack_rules::") && interpreter_stack.contains("stack_rules::"),
+        "runtime and interpreter stack opcode adapters should both reuse semantics::stack"
+    );
+
+    for duplicate in [
+        "stack.swap(last, last - 1)",
+        "stack.insert(stack.len() - 2",
+        "stack[start..].reverse()",
+        "let idx = stack.len() - 1 - n",
+    ] {
+        assert!(
+            !interpreter_stack.contains(duplicate),
+            "interpreter stack_ops should not reimplement stack manipulation: {duplicate}"
+        );
+    }
+}
+
+#[test]
 fn interpreter_opcode_aliases_come_from_canonical_opcode_enum() {
     let source = read_workspace_source("src/interpreter/opcodes.rs");
 

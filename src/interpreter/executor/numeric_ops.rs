@@ -3,6 +3,7 @@ use super::super::opcodes::*;
 use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
 use crate::{
+    runtime::ops::value_stack::{self, ValueStack},
     semantics::{arithmetic as arithmetic_rules, comparison as comparison_rules},
     StackValue as AbiStackValue,
 };
@@ -13,161 +14,143 @@ use alloc::{
 
 #[inline]
 pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatch, String> {
+    let mut value_stack = InterpreterValueStack::new(stack);
+
     match opcode {
         // =============================================================================
         // BITWISE LOGIC OPERATIONS (0x90-0x98)
         // =============================================================================
-        INVERT => unary_value(stack, arithmetic_rules::invert_value)?,
-        AND => binary_value(stack, arithmetic_rules::bitwise_and_values)?,
-        OR => binary_value(stack, arithmetic_rules::bitwise_or_values)?,
-        XOR => binary_value(stack, arithmetic_rules::bitwise_xor_values)?,
-        NUMEQUAL => binary_bool(stack, comparison_rules::num_equal_values)?,
-        NUMNOTEQUAL => binary_bool(stack, comparison_rules::num_not_equal_values)?,
+        INVERT => value_stack::unary_value(&mut value_stack, arithmetic_rules::invert_value)?,
+        AND => value_stack::binary_value(&mut value_stack, arithmetic_rules::bitwise_and_values)?,
+        OR => value_stack::binary_value(&mut value_stack, arithmetic_rules::bitwise_or_values)?,
+        XOR => value_stack::binary_value(&mut value_stack, arithmetic_rules::bitwise_xor_values)?,
+        NUMEQUAL => value_stack::binary_bool(&mut value_stack, comparison_rules::num_equal_values)?,
+        NUMNOTEQUAL => {
+            value_stack::binary_bool(&mut value_stack, comparison_rules::num_not_equal_values)?
+        }
         EQUAL => {
-            let right = pop_item(stack)?;
-            let left = pop_item(stack)?;
-            stack.push(StackValue::Boolean(vm_equal(&left, &right)));
+            let right = value_stack.pop_interpreter_value()?;
+            let left = value_stack.pop_interpreter_value()?;
+            value_stack.push_interpreter_value(StackValue::Boolean(vm_equal(&left, &right)));
         }
         NOTEQUAL => {
-            let right = pop_item(stack)?;
-            let left = pop_item(stack)?;
-            stack.push(StackValue::Boolean(!vm_equal(&left, &right)));
+            let right = value_stack.pop_interpreter_value()?;
+            let left = value_stack.pop_interpreter_value()?;
+            value_stack.push_interpreter_value(StackValue::Boolean(!vm_equal(&left, &right)));
         }
-        LT => binary_bool(stack, comparison_rules::less_than_values)?,
-        LE => binary_bool(stack, comparison_rules::less_or_equal_values)?,
-        GT => binary_bool(stack, comparison_rules::greater_than_values)?,
-        GE => binary_bool(stack, comparison_rules::greater_or_equal_values)?,
+        LT => value_stack::binary_bool(&mut value_stack, comparison_rules::less_than_values)?,
+        LE => value_stack::binary_bool(&mut value_stack, comparison_rules::less_or_equal_values)?,
+        GT => value_stack::binary_bool(&mut value_stack, comparison_rules::greater_than_values)?,
+        GE => {
+            value_stack::binary_bool(&mut value_stack, comparison_rules::greater_or_equal_values)?
+        }
         // =============================================================================
         // ARITHMETIC OPERATIONS (0x99-0xbb)
         // =============================================================================
-        SIGN => unary_value(stack, arithmetic_rules::sign_value)?,
-        ABS => unary_value(stack, arithmetic_rules::abs_value)?,
-        NEGATE => unary_value(stack, arithmetic_rules::negate_value)?,
-        ADD => binary_value(stack, arithmetic_rules::add_values)?,
-        INC => unary_value(stack, arithmetic_rules::inc_value)?,
-        SUB => binary_value(stack, arithmetic_rules::sub_values)?,
-        POW => binary_value(stack, arithmetic_rules::pow_values)?,
-        SQRT => unary_value(stack, arithmetic_rules::sqrt_value)?,
-        MODMUL => ternary_value(stack, arithmetic_rules::modmul_values)?,
-        MODPOW => ternary_value(stack, arithmetic_rules::modpow_values)?,
-        SHL => shift_value(stack, arithmetic_rules::shl_value)?,
-        SHR => shift_value(stack, arithmetic_rules::shr_value)?,
-        NOT => {
-            let value = pop_abi_value(stack)?;
-            stack.push(StackValue::Boolean(comparison_rules::not_value(&value)?));
-        }
-        MUL => binary_value(stack, arithmetic_rules::mul_values)?,
-        DIV => binary_value(stack, arithmetic_rules::div_values)?,
-        MOD => binary_value(stack, arithmetic_rules::modulo_values)?,
-        DEC => unary_value(stack, arithmetic_rules::dec_value)?,
-        BOOLAND => bool_binary(stack, comparison_rules::bool_and)?,
-        BOOLOR => bool_binary(stack, comparison_rules::bool_or)?,
-        NZ => {
-            let value = pop_abi_value(stack)?;
-            stack.push(StackValue::Boolean(comparison_rules::nz_value(&value)?));
-        }
-        MIN => binary_value(stack, arithmetic_rules::min_values)?,
-        MAX => binary_value(stack, arithmetic_rules::max_values)?,
-        WITHIN => {
-            let upper = pop_abi_value(stack)?;
-            let lower = pop_abi_value(stack)?;
-            let value = pop_abi_value(stack)?;
-            stack.push(StackValue::Boolean(arithmetic_rules::within_values(
-                value, lower, upper,
-            )?));
-        }
+        SIGN => value_stack::unary_value(&mut value_stack, arithmetic_rules::sign_value)?,
+        ABS => value_stack::unary_value(&mut value_stack, arithmetic_rules::abs_value)?,
+        NEGATE => value_stack::unary_value(&mut value_stack, arithmetic_rules::negate_value)?,
+        ADD => value_stack::binary_value(&mut value_stack, arithmetic_rules::add_values)?,
+        INC => value_stack::unary_value(&mut value_stack, arithmetic_rules::inc_value)?,
+        SUB => value_stack::binary_value(&mut value_stack, arithmetic_rules::sub_values)?,
+        POW => value_stack::binary_value(&mut value_stack, arithmetic_rules::pow_values)?,
+        SQRT => value_stack::unary_value(&mut value_stack, arithmetic_rules::sqrt_value)?,
+        MODMUL => value_stack::ternary_value(&mut value_stack, arithmetic_rules::modmul_values)?,
+        MODPOW => value_stack::ternary_value(&mut value_stack, arithmetic_rules::modpow_values)?,
+        SHL => shift_value(&mut value_stack, arithmetic_rules::shl_value)?,
+        SHR => shift_value(&mut value_stack, arithmetic_rules::shr_value)?,
+        NOT => value_stack::unary_bool(&mut value_stack, comparison_rules::not_value)?,
+        MUL => value_stack::binary_value(&mut value_stack, arithmetic_rules::mul_values)?,
+        DIV => value_stack::binary_value(&mut value_stack, arithmetic_rules::div_values)?,
+        MOD => value_stack::binary_value(&mut value_stack, arithmetic_rules::modulo_values)?,
+        DEC => value_stack::unary_value(&mut value_stack, arithmetic_rules::dec_value)?,
+        BOOLAND => value_stack::bool_binary(
+            &mut value_stack,
+            comparison_rules::bool_and,
+            comparison_rules::boolean_value,
+        )?,
+        BOOLOR => value_stack::bool_binary(
+            &mut value_stack,
+            comparison_rules::bool_or,
+            comparison_rules::boolean_value,
+        )?,
+        NZ => value_stack::unary_bool(&mut value_stack, comparison_rules::nz_value)?,
+        MIN => value_stack::binary_value(&mut value_stack, arithmetic_rules::min_values)?,
+        MAX => value_stack::binary_value(&mut value_stack, arithmetic_rules::max_values)?,
+        WITHIN => value_stack::ternary_bool(&mut value_stack, arithmetic_rules::within_values)?,
         _ => unreachable!("opcode routed to numeric_ops: 0x{opcode:02x}"),
     }
     Ok(Dispatch::Fallthrough)
 }
 
-fn unary_value(
-    stack: &mut Vec<StackValue>,
-    op: fn(AbiStackValue) -> Result<AbiStackValue, String>,
-) -> Result<(), String> {
-    let value = pop_abi_value(stack)?;
-    push_abi_value(stack, op(value)?)
-}
-
-fn binary_value(
-    stack: &mut Vec<StackValue>,
-    op: fn(AbiStackValue, AbiStackValue) -> Result<AbiStackValue, String>,
-) -> Result<(), String> {
-    let right = pop_abi_value(stack)?;
-    let left = pop_abi_value(stack)?;
-    push_abi_value(stack, op(left, right)?)
-}
-
-fn ternary_value(
-    stack: &mut Vec<StackValue>,
-    op: fn(AbiStackValue, AbiStackValue, AbiStackValue) -> Result<AbiStackValue, String>,
-) -> Result<(), String> {
-    let third = pop_abi_value(stack)?;
-    let second = pop_abi_value(stack)?;
-    let first = pop_abi_value(stack)?;
-    push_abi_value(stack, op(first, second, third)?)
-}
-
-fn binary_bool(
-    stack: &mut Vec<StackValue>,
-    op: fn(&AbiStackValue, &AbiStackValue) -> Result<bool, String>,
-) -> Result<(), String> {
-    let right = pop_abi_value(stack)?;
-    let left = pop_abi_value(stack)?;
-    stack.push(StackValue::Boolean(op(&left, &right)?));
-    Ok(())
-}
-
-fn bool_binary(stack: &mut Vec<StackValue>, op: fn(bool, bool) -> bool) -> Result<(), String> {
-    let right = pop_abi_value(stack)?;
-    let left = pop_abi_value(stack)?;
-    stack.push(StackValue::Boolean(op(
-        comparison_rules::boolean_value(&left),
-        comparison_rules::boolean_value(&right),
-    )));
-    Ok(())
-}
-
 fn shift_value(
-    stack: &mut Vec<StackValue>,
+    stack: &mut InterpreterValueStack<'_>,
     op: fn(AbiStackValue, i64) -> Result<AbiStackValue, String>,
 ) -> Result<(), String> {
-    let shift = pop_shift_count(stack)?;
-    let value = pop_item(stack)?;
+    let shift = stack.pop_shift_count()?;
+    let value = stack.pop_interpreter_value()?;
     if shift == 0 {
-        stack.push(value);
+        stack.push_interpreter_value(value);
         return Ok(());
     }
-    push_abi_value(stack, op(into_abi_value(value), shift)?)
+    stack.push_abi_value(op(into_abi_value(value), shift)?)
 }
 
-fn pop_abi_value(stack: &mut Vec<StackValue>) -> Result<AbiStackValue, String> {
-    stack
-        .pop()
-        .map(into_abi_value)
-        .ok_or_else(|| "stack underflow".to_string())
+struct InterpreterValueStack<'a> {
+    stack: &'a mut Vec<StackValue>,
 }
 
-fn push_abi_value(stack: &mut Vec<StackValue>, value: AbiStackValue) -> Result<(), String> {
-    stack.push(match value {
-        AbiStackValue::Integer(value) => StackValue::Integer(value),
-        AbiStackValue::BigInteger(value) => StackValue::BigInteger(value),
-        AbiStackValue::ByteString(value) => StackValue::ByteString(value),
-        AbiStackValue::Boolean(value) => StackValue::Boolean(value),
-        AbiStackValue::Null => StackValue::Null,
-        AbiStackValue::Pointer(value) => {
-            StackValue::Pointer(usize::try_from(value).map_err(|_| {
-                "semantic opcode produced a pointer outside the interpreter range".to_string()
-            })?)
-        }
-        AbiStackValue::Buffer(_)
-        | AbiStackValue::Array(_)
-        | AbiStackValue::Struct(_)
-        | AbiStackValue::Map(_)
-        | AbiStackValue::Interop(_)
-        | AbiStackValue::Iterator(_) => {
-            return Err("semantic numeric opcode produced a compound result".to_string())
-        }
-    });
-    Ok(())
+impl<'a> InterpreterValueStack<'a> {
+    fn new(stack: &'a mut Vec<StackValue>) -> Self {
+        Self { stack }
+    }
+
+    fn pop_interpreter_value(&mut self) -> Result<StackValue, String> {
+        pop_item(self.stack)
+    }
+
+    fn push_interpreter_value(&mut self, value: StackValue) {
+        self.stack.push(value);
+    }
+
+    fn pop_shift_count(&mut self) -> Result<i64, String> {
+        pop_shift_count(self.stack)
+    }
+
+    fn push_abi_value(&mut self, value: AbiStackValue) -> Result<(), String> {
+        <Self as ValueStack>::push_value(self, value)
+    }
+}
+
+impl ValueStack for InterpreterValueStack<'_> {
+    fn pop_value(&mut self) -> Result<AbiStackValue, String> {
+        self.stack
+            .pop()
+            .map(into_abi_value)
+            .ok_or_else(|| "stack underflow".to_string())
+    }
+
+    fn push_value(&mut self, value: AbiStackValue) -> Result<(), String> {
+        self.stack.push(match value {
+            AbiStackValue::Integer(value) => StackValue::Integer(value),
+            AbiStackValue::BigInteger(value) => StackValue::BigInteger(value),
+            AbiStackValue::ByteString(value) => StackValue::ByteString(value),
+            AbiStackValue::Boolean(value) => StackValue::Boolean(value),
+            AbiStackValue::Null => StackValue::Null,
+            AbiStackValue::Pointer(value) => {
+                StackValue::Pointer(usize::try_from(value).map_err(|_| {
+                    "semantic opcode produced a pointer outside the interpreter range".to_string()
+                })?)
+            }
+            AbiStackValue::Buffer(_)
+            | AbiStackValue::Array(_)
+            | AbiStackValue::Struct(_)
+            | AbiStackValue::Map(_)
+            | AbiStackValue::Interop(_)
+            | AbiStackValue::Iterator(_) => {
+                return Err("semantic numeric opcode produced a compound result".to_string())
+            }
+        });
+        Ok(())
+    }
 }

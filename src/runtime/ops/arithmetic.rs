@@ -1,88 +1,91 @@
 //! Runtime stack adapters for arithmetic and bitwise opcodes.
 
+use super::value_stack;
 use crate::runtime::{push_value_result, RuntimeStack};
 use crate::semantics::arithmetic as rules;
 
 pub fn add<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::add_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::add_values)
+    });
 }
 
 pub fn sub<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::sub_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::sub_values)
+    });
 }
 
 pub fn mul<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::mul_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::mul_values)
+    });
 }
 
 pub fn div<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::div_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::div_values)
+    });
 }
 
 pub fn modulo<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::modulo_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::modulo_values)
+    });
 }
 
 pub fn negate<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::negate_value(a));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::unary_value(stack, rules::negate_value)
+    });
 }
 
 pub fn abs<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::abs_value(a));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::unary_value(stack, rules::abs_value)
+    });
 }
 
 pub fn sign<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::sign_value(a));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::unary_value(stack, rules::sign_value)
+    });
 }
 
 pub fn max<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::max_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::max_values)
+    });
 }
 
 pub fn min<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::min_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::min_values)
+    });
 }
 
 pub fn pow<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let exponent = runtime.pop_value();
-    let base = runtime.pop_value();
-    push_value_result(runtime, rules::pow_values(base, exponent));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::pow_values)
+    });
 }
 
 pub fn sqrt<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::sqrt_value(a));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::unary_value(stack, rules::sqrt_value)
+    });
 }
 
 pub fn modmul<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let modulus = runtime.pop_value();
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::modmul_values(a, b, modulus));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::ternary_value(stack, rules::modmul_values)
+    });
 }
 
 pub fn modpow<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let modulus = runtime.pop_value();
-    let exponent = runtime.pop_value();
-    let base = runtime.pop_value();
-    push_value_result(runtime, rules::modpow_values(base, exponent, modulus));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::ternary_value(stack, rules::modpow_values)
+    });
 }
 
 pub fn shl<R: RuntimeStack + ?Sized>(runtime: &mut R) {
@@ -98,36 +101,39 @@ pub fn shr<R: RuntimeStack + ?Sized>(runtime: &mut R) {
 }
 
 pub fn bitwise_and<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::bitwise_and_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::bitwise_and_values)
+    });
 }
 
 pub fn bitwise_or<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::bitwise_or_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::bitwise_or_values)
+    });
 }
 
 pub fn bitwise_xor<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let b = runtime.pop_value();
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::bitwise_xor_values(a, b));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::binary_value(stack, rules::bitwise_xor_values)
+    });
 }
 
 pub fn bitwise_not<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::invert_value(a));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::unary_value(stack, rules::invert_value)
+    });
 }
 
 pub fn inc<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::inc_value(a));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::unary_value(stack, rules::inc_value)
+    });
 }
 
 pub fn dec<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let a = runtime.pop_value();
-    push_value_result(runtime, rules::dec_value(a));
+    value_stack::apply_or_fault(runtime, |stack| {
+        value_stack::unary_value(stack, rules::dec_value)
+    });
 }
 
 pub fn within<R: RuntimeStack + ?Sized>(runtime: &mut R) {

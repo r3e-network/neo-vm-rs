@@ -1,153 +1,84 @@
 //! Runtime-level stack opcode adapters.
 
-use crate::{runtime::RuntimeStack, StackValue};
+use alloc::{string::String, vec::Vec};
+
+use crate::{runtime::RuntimeStack, semantics::stack as stack_rules, StackValue};
 
 pub fn drop_top<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let _ = runtime.pop_value();
+    apply_stack_result(runtime, stack_rules::drop_top);
 }
 
 pub fn dup<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let top = runtime
-        .stack_values()
-        .last()
-        .expect("stack underflow: dup on empty stack")
-        .clone();
-    runtime.push_value(top);
+    apply_stack_result(runtime, stack_rules::dup);
 }
 
 pub fn swap<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let stack = runtime.stack_values_mut();
-    let len = stack.len();
-    assert!(len >= 2, "stack underflow: swap requires at least 2 items");
-    stack.swap(len - 1, len - 2);
+    apply_stack_result(runtime, |stack| stack_rules::swap(stack));
 }
 
 pub fn nip<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let stack = runtime.stack_values_mut();
-    let len = stack.len();
-    assert!(len >= 2, "stack underflow: nip requires at least 2 items");
-    stack.remove(len - 2);
+    apply_stack_result(runtime, stack_rules::nip);
 }
 
 pub fn xdrop<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let index = runtime.pop_i64();
-    if index < 0 {
-        runtime.fault("XDROP: negative index");
-        return;
-    }
-    #[allow(clippy::cast_sign_loss)]
-    let index = index as usize;
-    let len = runtime.stack_values().len();
-    if index >= len {
-        runtime.fault("XDROP: index out of range");
-        return;
-    }
-    runtime.stack_values_mut().remove(len - 1 - index);
+    apply_stack_result(runtime, |stack| stack_rules::xdrop(stack, index));
 }
 
 pub fn over<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let stack = runtime.stack_values();
-    let len = stack.len();
-    assert!(len >= 2, "stack underflow: over requires at least 2 items");
-    runtime.push_value(stack[len - 2].clone());
+    apply_stack_result(runtime, stack_rules::over);
 }
 
 pub fn pick<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let index = runtime.pop_i64();
-    if index < 0 {
-        runtime.fault("pick: negative index");
-        return;
-    }
-    #[allow(clippy::cast_sign_loss)]
-    pick_n(runtime, index as usize);
+    apply_stack_result(runtime, |stack| stack_rules::pick(stack, index));
 }
 
 pub fn pick_n<R: RuntimeStack + ?Sized>(runtime: &mut R, index: usize) {
-    let stack = runtime.stack_values();
-    let len = stack.len();
-    if index >= len {
-        runtime.fault(&alloc::format!("pick({index}): stack underflow"));
-        return;
-    }
-    runtime.push_value(stack[len - 1 - index].clone());
+    apply_stack_result(runtime, |stack| stack_rules::pick_n(stack, index));
 }
 
 pub fn tuck<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let stack = runtime.stack_values_mut();
-    let len = stack.len();
-    assert!(len >= 2, "stack underflow: tuck requires at least 2 items");
-    let top = stack[len - 1].clone();
-    stack.insert(len - 2, top);
+    apply_stack_result(runtime, stack_rules::tuck);
 }
 
 pub fn rot<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let stack = runtime.stack_values_mut();
-    let len = stack.len();
-    assert!(len >= 3, "stack underflow: rot requires at least 3 items");
-    let value = stack.remove(len - 3);
-    stack.push(value);
+    apply_stack_result(runtime, stack_rules::rot);
 }
 
 pub fn roll<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let index = runtime.pop_i64();
-    if index < 0 {
-        runtime.fault("roll: negative index");
-        return;
-    }
-    #[allow(clippy::cast_sign_loss)]
-    let index = index as usize;
-    let len = runtime.stack_values().len();
-    if index >= len {
-        runtime.fault(&alloc::format!("roll({index}): stack underflow"));
-        return;
-    }
-    let value = runtime.stack_values_mut().remove(len - 1 - index);
-    runtime.push_value(value);
+    apply_stack_result(runtime, |stack| stack_rules::roll(stack, index));
 }
 
 pub fn reverse3<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let stack = runtime.stack_values_mut();
-    let len = stack.len();
-    assert!(
-        len >= 3,
-        "stack underflow: reverse3 requires at least 3 items"
-    );
-    stack[len - 3..].reverse();
+    apply_stack_result(runtime, |stack| stack_rules::reverse_top(stack, 3));
 }
 
 pub fn reverse4<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let stack = runtime.stack_values_mut();
-    let len = stack.len();
-    assert!(
-        len >= 4,
-        "stack underflow: reverse4 requires at least 4 items"
-    );
-    stack[len - 4..].reverse();
+    apply_stack_result(runtime, |stack| stack_rules::reverse_top(stack, 4));
 }
 
 pub fn reverse_n<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let count = runtime.pop_i64();
-    if count < 0 {
-        runtime.fault("reverse_n: negative count");
-        return;
-    }
-    #[allow(clippy::cast_sign_loss)]
-    let count = count as usize;
-    let len = runtime.stack_values().len();
-    if count > len {
-        runtime.fault(&alloc::format!("reverse_n({count}): stack underflow"));
-        return;
-    }
-    if count > 1 {
-        runtime.stack_values_mut()[len - count..].reverse();
-    }
+    apply_stack_result(runtime, |stack| stack_rules::reverse_n(stack, count));
 }
 
 pub fn depth<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    let depth = runtime.stack_values().len() as i64;
+    let depth = stack_rules::depth(runtime.stack_values());
     runtime.push_value(StackValue::Integer(depth));
 }
 
 pub fn clear<R: RuntimeStack + ?Sized>(runtime: &mut R) {
-    runtime.stack_values_mut().clear();
+    stack_rules::clear(runtime.stack_values_mut());
+}
+
+fn apply_stack_result<R, F>(runtime: &mut R, apply: F)
+where
+    R: RuntimeStack + ?Sized,
+    F: FnOnce(&mut Vec<StackValue>) -> Result<(), String>,
+{
+    if let Err(message) = apply(runtime.stack_values_mut()) {
+        runtime.fault(&message);
+    }
 }

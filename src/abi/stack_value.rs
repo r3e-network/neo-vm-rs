@@ -259,6 +259,29 @@ pub fn stack_value_as_bytes(value: &StackValue) -> Option<Vec<u8>> {
     byte_sequence_bytes(value).map(<[u8]>::to_vec)
 }
 
+/// Return the bytes exposed by NeoVM `StackItem.GetSpan`.
+///
+/// Splice opcodes such as CAT, LEFT, RIGHT, SUBSTR, and MEMCPY use this path:
+/// primitive values expose their memory representation, buffers expose their
+/// mutable bytes, and non-span values such as Null or compound references fault.
+#[must_use]
+pub fn stack_value_span_bytes(value: &StackValue) -> Option<Vec<u8>> {
+    match value {
+        StackValue::Integer(value) => Some(encode_integer(*value)),
+        StackValue::BigInteger(bytes)
+        | StackValue::ByteString(bytes)
+        | StackValue::Buffer(bytes) => Some(bytes.clone()),
+        StackValue::Boolean(value) => Some(alloc::vec![u8::from(*value)]),
+        StackValue::Null
+        | StackValue::Array(_)
+        | StackValue::Struct(_)
+        | StackValue::Map(_)
+        | StackValue::Interop(_)
+        | StackValue::Iterator(_)
+        | StackValue::Pointer(_) => None,
+    }
+}
+
 /// Extract a fixed-width byte array from a NeoVM byte-sequence value.
 #[must_use]
 pub fn stack_value_as_fixed_bytes<const N: usize>(value: &StackValue) -> Option<[u8; N]> {
@@ -280,43 +303,22 @@ pub fn stack_value_into_items(value: StackValue) -> Option<Vec<StackValue>> {
     }
 }
 
-/// Concatenate two NeoVM byte sequence values.
-///
-/// NeoVM preserves the left operand's mutability class: `ByteString + Buffer`
-/// yields `ByteString`, while `Buffer + ByteString` yields `Buffer`.
+/// Concatenate two NeoVM GetSpan-compatible values as the CAT opcode does.
 #[must_use]
-pub fn concat_byte_sequences(left: StackValue, right: StackValue) -> Option<StackValue> {
-    let (left_is_buffer, mut left_bytes) = match left {
-        StackValue::ByteString(bytes) => (false, bytes),
-        StackValue::Buffer(bytes) => (true, bytes),
-        _ => return None,
-    };
-    let right_bytes = match right {
-        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => bytes,
-        _ => return None,
-    };
-
-    left_bytes.extend_from_slice(&right_bytes);
-    Some(if left_is_buffer {
-        StackValue::Buffer(left_bytes)
-    } else {
-        StackValue::ByteString(left_bytes)
-    })
+pub fn concat_splice_values(left: &StackValue, right: &StackValue) -> Option<StackValue> {
+    let mut bytes = stack_value_span_bytes(left)?;
+    bytes.extend_from_slice(&stack_value_span_bytes(right)?);
+    Some(StackValue::Buffer(bytes))
 }
 
-/// Slice a NeoVM byte sequence value while preserving its source type.
+/// Slice one NeoVM GetSpan-compatible value as LEFT/RIGHT/SUBSTR do.
 #[must_use]
-pub fn slice_byte_sequence(value: StackValue, index: usize, count: usize) -> Option<StackValue> {
+pub fn slice_splice_value(value: &StackValue, index: usize, count: usize) -> Option<StackValue> {
+    let bytes = stack_value_span_bytes(value)?;
     let end = index.checked_add(count)?;
-    match value {
-        StackValue::ByteString(bytes) => bytes
-            .get(index..end)
-            .map(|slice| StackValue::ByteString(slice.to_vec())),
-        StackValue::Buffer(bytes) => bytes
-            .get(index..end)
-            .map(|slice| StackValue::Buffer(slice.to_vec())),
-        _ => None,
-    }
+    bytes
+        .get(index..end)
+        .map(|slice| StackValue::Buffer(slice.to_vec()))
 }
 
 /// Encode an integer using NeoVM's minimal little-endian two's-complement form.
@@ -857,52 +859,42 @@ mod tests {
     }
 
     #[test]
-    fn concat_byte_sequences_preserves_left_sequence_type() {
+    fn concat_splice_values_uses_neovm_span_semantics() {
         assert_eq!(
-            super::concat_byte_sequences(
-                StackValue::ByteString(b"neo".to_vec()),
-                StackValue::Buffer(b"n4".to_vec())
-            ),
-            Some(StackValue::ByteString(b"neon4".to_vec()))
-        );
-        assert_eq!(
-            super::concat_byte_sequences(
-                StackValue::Buffer(b"neo".to_vec()),
-                StackValue::ByteString(b"n4".to_vec())
+            super::concat_splice_values(
+                &StackValue::ByteString(b"neo".to_vec()),
+                &StackValue::Buffer(b"n4".to_vec())
             ),
             Some(StackValue::Buffer(b"neon4".to_vec()))
         );
         assert_eq!(
-            super::concat_byte_sequences(StackValue::Integer(1), StackValue::Buffer(vec![2])),
-            None
+            super::concat_splice_values(&StackValue::Integer(128), &StackValue::Boolean(true)),
+            Some(StackValue::Buffer(vec![0x80, 0x00, 0x01]))
         );
         assert_eq!(
-            super::concat_byte_sequences(StackValue::Buffer(vec![1]), StackValue::Integer(2)),
+            super::concat_splice_values(&StackValue::Null, &StackValue::Buffer(vec![2])),
             None
         );
     }
 
     #[test]
-    fn slice_byte_sequence_preserves_source_type_and_checks_bounds() {
+    fn slice_splice_value_uses_neovm_span_semantics() {
         assert_eq!(
-            super::slice_byte_sequence(StackValue::ByteString(b"hello".to_vec()), 1, 3),
-            Some(StackValue::ByteString(b"ell".to_vec()))
+            super::slice_splice_value(&StackValue::ByteString(b"hello".to_vec()), 1, 3),
+            Some(StackValue::Buffer(b"ell".to_vec()))
         );
         assert_eq!(
-            super::slice_byte_sequence(StackValue::Buffer(b"hello".to_vec()), 2, 2),
-            Some(StackValue::Buffer(b"ll".to_vec()))
+            super::slice_splice_value(&StackValue::Integer(128), 0, 2),
+            Some(StackValue::Buffer(vec![0x80, 0x00]))
         );
         assert_eq!(
-            super::slice_byte_sequence(StackValue::Buffer(b"hello".to_vec()), 5, 0),
+            super::slice_splice_value(&StackValue::Buffer(b"hello".to_vec()), 5, 0),
             Some(StackValue::Buffer(Vec::new()))
         );
         assert_eq!(
-            super::slice_byte_sequence(StackValue::Buffer(b"hello".to_vec()), 4, 2),
+            super::slice_splice_value(&StackValue::Buffer(b"hello".to_vec()), 4, 2),
             None
         );
-        assert_eq!(
-            super::slice_byte_sequence(StackValue::Integer(7), 0, 1),
-            None
-        );
+        assert_eq!(super::slice_splice_value(&StackValue::Null, 0, 1), None);
     }
 }

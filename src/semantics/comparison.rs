@@ -190,21 +190,7 @@ fn integer_value_for_nz(value: &StackValue) -> Result<BigInt, String> {
 /// General NeoVM truthiness used by Boolean conversion and boolean opcodes.
 #[must_use]
 pub fn boolean_value(value: &StackValue) -> bool {
-    match value {
-        StackValue::Null => false,
-        StackValue::Boolean(value) => *value,
-        StackValue::Integer(value) => *value != 0,
-        StackValue::BigInteger(bytes) | StackValue::ByteString(bytes) => {
-            bytes.iter().any(|byte| *byte != 0)
-        }
-        StackValue::Buffer(_)
-        | StackValue::Pointer(_)
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
-        | StackValue::Interop(_)
-        | StackValue::Iterator(_) => true,
-    }
+    value.to_bool()
 }
 
 /// Boolean conversion through NeoVM's strict integer path for `NOT`.

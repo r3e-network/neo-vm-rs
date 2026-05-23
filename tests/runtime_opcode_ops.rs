@@ -70,7 +70,17 @@ fn shared_stack_and_byte_opcode_apis_do_not_require_context_methods() {
     ctx.push_value(StackValue::Buffer(b"n4".to_vec()));
     ops::bytes::cat(&mut ctx);
 
-    assert_eq!(ctx.pop_value(), StackValue::ByteString(b"neon4".to_vec()));
+    assert_eq!(ctx.pop_value(), StackValue::Buffer(b"neon4".to_vec()));
+}
+
+#[test]
+fn runtime_splice_ops_share_neovm_span_semantics() {
+    let mut ctx = VmContext::from_stack(vec![StackValue::Integer(128), StackValue::Boolean(true)]);
+
+    ops::bytes::cat(&mut ctx);
+
+    assert_eq!(ctx.pop_value(), StackValue::Buffer(vec![0x80, 0x00, 0x01]));
+    assert_eq!(ctx.fault_message, None);
 }
 
 #[test]
