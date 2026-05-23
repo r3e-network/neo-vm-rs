@@ -1,6 +1,9 @@
 //! Shared integer arithmetic semantics for ABI-level NeoVM runtimes.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use num_bigint::BigInt;
 use num_traits::{ToPrimitive, Zero};

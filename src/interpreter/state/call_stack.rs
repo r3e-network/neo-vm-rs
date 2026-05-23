@@ -3,7 +3,10 @@ use super::super::helpers::{
     decode_retained_prefix_into, encode_retained_prefix_to_slice, RETAINED_CALL_STACK_BUF,
 };
 use super::{call_frame::CallFrame, StackValue, MAX_CALL_DEPTH};
-use alloc::{string::ToString, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 pub(in crate::interpreter) type RestoredCallFrame = (usize, Vec<StackValue>, Vec<StackValue>, bool);
 

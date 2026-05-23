@@ -1,4 +1,5 @@
 use super::StackValue;
+use alloc::vec::Vec;
 
 pub(in crate::interpreter) struct CallFrame {
     pub(super) return_ip: usize,

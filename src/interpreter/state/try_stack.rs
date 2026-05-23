@@ -1,4 +1,5 @@
 use super::{TryFrame, MAX_TRY_NESTING};
+use alloc::string::{String, ToString};
 
 pub(in crate::interpreter) struct TryStack {
     frames: [core::mem::MaybeUninit<TryFrame>; MAX_TRY_NESTING],

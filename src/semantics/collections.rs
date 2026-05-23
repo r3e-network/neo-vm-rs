@@ -1,6 +1,10 @@
 //! Shared collection semantics for ABI-level NeoVM runtimes.
 
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 
 use crate::{new_array_default_value_for_type_tag, semantics::numeric, StackValue};
 

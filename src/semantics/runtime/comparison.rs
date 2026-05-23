@@ -1,5 +1,7 @@
 //! Runtime stack adapters for comparison and boolean opcodes.
 
+use alloc::string::String;
+
 use super::RuntimeStack;
 use crate::semantics::comparison as rules;
 
