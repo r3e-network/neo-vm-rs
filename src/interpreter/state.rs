@@ -13,6 +13,11 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 pub(super) type PendingException = crate::runtime::PendingException<StackValue>;
 
+/// Diagnostic-only globals for the most recent interpreter state. **Not
+/// thread-safe**: multiple concurrent interpreter instances will race on
+/// these atomics. These exist for single-threaded debugging and FFI
+/// introspection (C# P/Invoke queries them after a synchronous execution
+/// completes). Multi-threaded hosts should move to per-instance diagnostics.
 pub(super) static LAST_INTERPRETER_IP: AtomicU32 = AtomicU32::new(u32::MAX);
 pub(super) static LAST_RESULT_STAGE: AtomicU32 = AtomicU32::new(0);
 pub(super) static LAST_RESULT_STACK_LEN: AtomicU32 = AtomicU32::new(0);

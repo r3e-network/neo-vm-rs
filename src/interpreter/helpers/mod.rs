@@ -24,13 +24,13 @@ impl RetainedPrefixBuffer {
     }
 
     #[allow(clippy::mut_from_ref)]
-    pub(crate) unsafe fn as_mut_slice(&self) -> &mut [u8] {
+    pub(crate) unsafe fn as_mut_slice(&self) -> &mut [u8] { unsafe {
         &mut *self.0.get()
-    }
+    }}
 
-    pub(crate) unsafe fn as_slice(&self, len: usize) -> &[u8] {
+    pub(crate) unsafe fn as_slice(&self, len: usize) -> &[u8] { unsafe {
         &(&*self.0.get())[..len]
-    }
+    }}
 }
 
 static RETAINED_STACK_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();
