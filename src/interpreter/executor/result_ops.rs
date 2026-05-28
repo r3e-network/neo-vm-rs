@@ -75,16 +75,26 @@ pub(super) fn finish_halt_result(
     let abi_stack = to_abi_stack(&stack);
     LAST_RESULT_STAGE.store(3, Ordering::Relaxed);
 
-    // On the guest path these vectors live in a per-execution arena. Forgetting
-    // avoids recursive drops for deep historical compound values; the arena is
-    // reset before the next execution.
-    core::mem::forget(stack);
-    core::mem::forget(locals);
-    core::mem::forget(args);
-    core::mem::forget(static_fields);
-    core::mem::forget(method_initial_stack);
-    core::mem::forget(consumed_mutations);
-    core::mem::forget(pending_error);
+    #[cfg(target_arch = "riscv32")]
+    {
+        core::mem::forget(stack);
+        core::mem::forget(locals);
+        core::mem::forget(args);
+        core::mem::forget(static_fields);
+        core::mem::forget(method_initial_stack);
+        core::mem::forget(consumed_mutations);
+        core::mem::forget(pending_error);
+    }
+    #[cfg(not(target_arch = "riscv32"))]
+    {
+        drop(stack);
+        drop(locals);
+        drop(args);
+        drop(static_fields);
+        drop(method_initial_stack);
+        drop(consumed_mutations);
+        drop(pending_error);
+    }
     LAST_RESULT_STAGE.store(4, Ordering::Relaxed);
 
     ExecutionResult {
