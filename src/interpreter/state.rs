@@ -91,6 +91,10 @@ pub(super) fn reset_consumed_mutations(consumed_mutations: &mut Vec<StackValue>)
     if cfg!(target_arch = "riscv32") {
         // Avoid walking and dropping potentially large alias-tracking values on
         // the PolkaVM/riscv32 path. The guest allocator is reset per execution.
+        // SAFETY: On riscv32/PolkaVM the entire guest allocator arena is reset per
+        // execution; dropping the Vec here would recursively walk compound value
+        // aliases that have been preserved in the retained buffer. ptr::write
+        // replaces the Vec without running Drop, preserving the retained data.
         unsafe {
             core::ptr::write(consumed_mutations, Vec::new());
         }

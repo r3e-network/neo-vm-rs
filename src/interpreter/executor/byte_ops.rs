@@ -72,7 +72,7 @@ pub(super) fn execute(
             remember_consumed_mutation(consumed_mutations, &updated);
             propagate_update(&updated, stack, locals, args, static_fields, None);
         }
-        _ => unreachable!("opcode routed to byte_ops: 0x{opcode:02x}"),
+            return Err(format!("unexpected opcode in byte_ops: 0x{opcode:02x}"));
     }
     Ok(Dispatch::Fallthrough)
 }

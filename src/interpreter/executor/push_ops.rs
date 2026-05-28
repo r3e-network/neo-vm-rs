@@ -182,7 +182,7 @@ pub(super) fn execute(
             ip += 5;
             finish!(Dispatch::Continue);
         }
-        _ => unreachable!("opcode routed to push_ops: 0x{opcode:02x}"),
+            return Err(format!("unexpected opcode in push_ops: 0x{opcode:02x}"));
     }
     *ip_ref = ip;
     Ok(Dispatch::Fallthrough)

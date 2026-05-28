@@ -462,6 +462,10 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     // The frame has been encoded into RETAINED_CALL_STACK_BUF. Avoid
                     // moving or dropping active Vecs immediately after host calls on
                     // PolkaVM/riscv32; the VM allocator is reset per execution.
+                    // SAFETY: ptr::write replaces the Vec without running Drop.
+                    // The frame's locals/args have been retained into the static
+                    // buffer via the encode step. Dropping would double-free the
+                    // retained data within the guest arena.
                     unsafe {
                         core::ptr::write(&mut locals, Vec::new());
                         core::ptr::write(&mut args, Vec::new());

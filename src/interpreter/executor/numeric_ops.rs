@@ -80,7 +80,7 @@ pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatc
         MIN => stack_shape::binary_value(&mut value_stack, arithmetic_rules::min_values)?,
         MAX => stack_shape::binary_value(&mut value_stack, arithmetic_rules::max_values)?,
         WITHIN => stack_shape::ternary_bool(&mut value_stack, arithmetic_rules::within_values)?,
-        _ => unreachable!("opcode routed to numeric_ops: 0x{opcode:02x}"),
+            return Err(format!("unexpected opcode in numeric_ops: 0x{opcode:02x}"));
     }
     Ok(Dispatch::Fallthrough)
 }

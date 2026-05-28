@@ -16,6 +16,11 @@ const MAX_RETAINED_COLLECTION_LEN: usize = 4096;
 
 pub(crate) struct RetainedPrefixBuffer(UnsafeCell<[u8; RETAINED_PREFIX_BUF_SIZE]>);
 
+// SAFETY: RetainedPrefixBuffer is only accessed from within a single
+// interpreter invocation. The PolkaVM host + SP1 zkVM guest are both
+// single-threaded execution contexts. Multiple concurrent accesses to
+// the same static buffer would require explicit synchronization not
+// provided by this type.
 unsafe impl Sync for RetainedPrefixBuffer {}
 
 impl RetainedPrefixBuffer {
@@ -24,13 +29,19 @@ impl RetainedPrefixBuffer {
     }
 
     #[allow(clippy::mut_from_ref)]
-    pub(crate) unsafe fn as_mut_slice(&self) -> &mut [u8] { unsafe {
-        &mut *self.0.get()
-    }}
+    pub(crate) unsafe fn as_mut_slice(&self) -> &mut [u8] {
+        // SAFETY: Caller guarantees no other &mut references exist to the
+        // same static buffer for the duration of this borrow. The interpreter
+        // is single-threaded per invocation, so this holds as long as the
+        // buffer is not re-entrantly accessed within one call.
+        unsafe { &mut *self.0.get() }
+    }
 
-    pub(crate) unsafe fn as_slice(&self, len: usize) -> &[u8] { unsafe {
-        &(&*self.0.get())[..len]
-    }}
+    pub(crate) unsafe fn as_slice(&self, len: usize) -> &[u8] {
+        // SAFETY: Caller guarantees the first `len` bytes are initialized and
+        // no concurrent mutable access exists. Same single-threaded invariant.
+        unsafe { &(&*self.0.get())[..len] }
+    }
 }
 
 static RETAINED_STACK_BUF: RetainedPrefixBuffer = RetainedPrefixBuffer::new();

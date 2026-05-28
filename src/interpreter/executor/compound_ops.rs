@@ -709,7 +709,7 @@ pub(super) fn execute(
             let item = pop_item(stack)?;
             stack.push(StackValue::Boolean(is_null(&item)));
         }
-        _ => unreachable!("opcode routed to compound_ops: 0x{opcode:02x}"),
+            return Err(format!("unexpected opcode in compound_ops: 0x{opcode:02x}"));
     }
     *ip_ref = ip;
     Ok(Dispatch::Fallthrough)
