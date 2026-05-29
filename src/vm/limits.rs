@@ -40,8 +40,10 @@ impl ExecutionEngineLimits {
     pub const DEFAULT: Self = Self {
         max_shift: 256,
         max_stack_size: DEFAULT_MAX_STACK_DEPTH as u32,
-        max_item_size: u16::MAX as u32,
-        max_comparable_size: u16::MAX as u32,
+        // C# ExecutionEngineLimits.MaxItemSize = ushort.MaxValue * 2 = 131070.
+        max_item_size: (u16::MAX as u32) * 2,
+        // C# ExecutionEngineLimits.MaxComparableSize = 65536 (not ushort.MaxValue).
+        max_comparable_size: 65536,
         max_invocation_stack_size: DEFAULT_MAX_INVOCATION_DEPTH as u32,
         max_try_nesting_depth: 16,
         catch_engine_exceptions: true,

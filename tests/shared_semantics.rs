@@ -242,8 +242,10 @@ fn execution_engine_limits_match_neo_vm_defaults() {
         limits.max_stack_size,
         neo_vm_rs::DEFAULT_MAX_STACK_DEPTH as u32
     );
-    assert_eq!(limits.max_item_size, u16::MAX as u32);
-    assert_eq!(limits.max_comparable_size, u16::MAX as u32);
+    // C# ExecutionEngineLimits: MaxItemSize = ushort.MaxValue * 2 = 131070,
+    // MaxComparableSize = 65536.
+    assert_eq!(limits.max_item_size, (u16::MAX as u32) * 2);
+    assert_eq!(limits.max_comparable_size, 65536);
     assert_eq!(
         limits.max_invocation_stack_size,
         neo_vm_rs::DEFAULT_MAX_INVOCATION_DEPTH as u32
@@ -258,9 +260,11 @@ fn execution_engine_limits_match_neo_vm_defaults() {
         limits.assert_shift(257),
         Err("Invalid shift value: 257/256".to_string())
     );
+    // MaxItemSize is 131070; the boundary item (131070) is allowed, 131071 faults.
+    assert_eq!(limits.assert_max_item_size(131070), Ok(()));
     assert_eq!(
-        limits.assert_max_item_size(u16::MAX as usize + 1),
-        Err("MaxItemSize exceed: 65536/65535".to_string())
+        limits.assert_max_item_size(131071),
+        Err("MaxItemSize exceed: 131071/131070".to_string())
     );
 }
 
