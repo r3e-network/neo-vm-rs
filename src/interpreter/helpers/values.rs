@@ -94,6 +94,162 @@ pub(crate) fn vm_equal(left: &StackValue, right: &StackValue) -> bool {
     }
 }
 
+/// C# `ExecutionEngineLimits.MaxComparableSize` (Neo.VM/ExecutionEngineLimits.cs:47).
+const MAX_COMPARABLE_SIZE: usize = 65536;
+
+#[cfg(test)]
+mod equals_limits_tests {
+    use super::*;
+
+    #[test]
+    fn bytestring_over_max_comparable_size_faults() {
+        let big = StackValue::ByteString(vec![0u8; MAX_COMPARABLE_SIZE + 1]);
+        let other = StackValue::ByteString(vec![0u8; 1]);
+        assert!(
+            equals_with_limits(&big, &other).is_err(),
+            "comparing a >MaxComparableSize ByteString must FAULT like C#"
+        );
+    }
+
+    #[test]
+    fn bytestring_at_max_comparable_size_ok() {
+        let a = StackValue::ByteString(vec![0u8; MAX_COMPARABLE_SIZE]);
+        let b = StackValue::ByteString(vec![0u8; MAX_COMPARABLE_SIZE]);
+        assert!(equals_with_limits(&a, &b).unwrap());
+    }
+
+    #[test]
+    fn small_bytestrings_compare_by_value() {
+        let a = StackValue::ByteString(vec![1, 2, 3]);
+        let b = StackValue::ByteString(vec![1, 2, 3]);
+        let c = StackValue::ByteString(vec![1, 2, 4]);
+        assert!(equals_with_limits(&a, &b).unwrap());
+        assert!(!equals_with_limits(&a, &c).unwrap());
+    }
+}
+
+/// EQUAL/NOTEQUAL with the C# comparable-size limits enforced, mirroring
+/// `StackItem.Equals(StackItem, ExecutionEngineLimits)`. Dispatches on the LEFT
+/// operand exactly like C# `x1.Equals(x2, limits)`: only a ByteString left
+/// operand is size-checked, and Struct comparison is bounded by both the item
+/// count (`MaxStackSize`) and the cumulative comparable size (`MaxComparableSize`).
+/// Returns `Err` (engine FAULT) when a limit is exceeded.
+pub(crate) fn equals_with_limits(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    match left {
+        StackValue::ByteString(l) => {
+            let mut budget = MAX_COMPARABLE_SIZE;
+            byte_string_size_eq_with_budget(l, right, &mut budget)
+        }
+        StackValue::Struct(lid, _) => match right {
+            StackValue::Struct(rid, _) => {
+                if lid == rid {
+                    Ok(true)
+                } else {
+                    struct_equals_with_limits(left, right)
+                }
+            }
+            _ => Ok(false),
+        },
+        // Arrays/Maps/Buffers compare by reference, primitives by value — no size
+        // budget applies (C# only ByteString/Struct enforce MaxComparableSize).
+        _ => Ok(vm_equal(left, right)),
+    }
+}
+
+/// Port of C# `ByteString.Equals(other, limits)` (Neo.VM/Types/ByteString.cs:60-72):
+/// faults if either operand size exceeds the remaining comparable-size budget,
+/// and decrements that budget by the compared size.
+fn byte_string_size_eq_with_budget(
+    a: &[u8],
+    other: &StackValue,
+    limits: &mut usize,
+) -> Result<bool, String> {
+    let a_size = a.len();
+    if a_size > *limits || *limits == 0 {
+        return Err(format!(
+            "The operand exceeds the maximum comparable size, {a_size}/{limits}.",
+            limits = *limits
+        ));
+    }
+    let mut compared_size = 1usize;
+    let result = match other {
+        StackValue::ByteString(b) => {
+            compared_size = compared_size.max(a_size).max(b.len());
+            if b.len() > *limits {
+                return Err(format!(
+                    "The operand exceeds the maximum comparable size, {}/{}.",
+                    b.len(),
+                    *limits
+                ));
+            }
+            Ok(a == b.as_slice())
+        }
+        _ => Ok(false),
+    };
+    *limits = limits.saturating_sub(compared_size);
+    result
+}
+
+/// Port of C# `Struct.Equals(other, limits)` (Neo.VM/Types/Struct.cs:91-132): an
+/// iterative two-stack walk bounded by `MaxStackSize` (item count) and
+/// `MaxComparableSize` (cumulative comparable size). Both `left` and `right` are
+/// `Struct`.
+fn struct_equals_with_limits(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    let mut stack1: Vec<StackValue> = vec![left.clone()];
+    let mut stack2: Vec<StackValue> = vec![right.clone()];
+    let mut count = crate::interpreter::state::MAX_STACK_SIZE;
+    let mut max_comparable_size = MAX_COMPARABLE_SIZE;
+
+    while let Some(a) = stack1.pop() {
+        if count == 0 {
+            return Err("Too many struct items to compare in struct comparison.".to_string());
+        }
+        count -= 1;
+
+        let b = stack2
+            .pop()
+            .ok_or_else(|| "Struct comparison stack underflow".to_string())?;
+
+        if let StackValue::ByteString(bytes) = &a {
+            if !byte_string_size_eq_with_budget(bytes, &b, &mut max_comparable_size)? {
+                return Ok(false);
+            }
+        } else {
+            if max_comparable_size == 0 {
+                return Err(
+                    "The operand exceeds the maximum comparable size in struct comparison."
+                        .to_string(),
+                );
+            }
+            max_comparable_size -= 1;
+
+            if let StackValue::Struct(a_id, a_items) = &a {
+                match &b {
+                    StackValue::Struct(b_id, b_items) => {
+                        if a_id == b_id {
+                            continue;
+                        }
+                        if a_items.len() != b_items.len() {
+                            return Ok(false);
+                        }
+                        for item in a_items.iter() {
+                            stack1.push(item.clone());
+                        }
+                        for item in b_items.iter() {
+                            stack2.push(item.clone());
+                        }
+                    }
+                    _ => return Ok(false),
+                }
+            } else if !vm_equal(&a, &b) {
+                return Ok(false);
+            }
+        }
+    }
+
+    Ok(true)
+}
+
 pub(crate) fn convert_value(
     kind: u8,
     value: StackValue,
