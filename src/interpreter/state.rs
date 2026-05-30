@@ -107,4 +107,16 @@ pub(super) fn reset_consumed_mutations(consumed_mutations: &mut Vec<StackValue>)
 /// PolkaVM bump allocator corruption during host_call round-trips.
 pub(super) const MAX_STACK_SIZE: usize = 2048;
 pub(super) const MAX_TRY_NESTING: usize = 16;
+
+/// Maximum invocation (call) stack depth.
+///
+/// On native targets this matches C# `ExecutionEngineLimits.MaxInvocationStackSize
+/// = 1024`, so a script that performs up to 1024 nested CALLs HALTs exactly as the
+/// reference node does (it previously FAULTed at 64, a consensus divergence on the
+/// external-VM fast path). The riscv32 (PolkaVM) profile keeps the smaller fixed
+/// bound: its call frames live in a fixed on-chip buffer with no heap, so the
+/// `[MaybeUninit<CallFrame>; MAX_CALL_DEPTH]` array must stay small there.
+#[cfg(not(target_arch = "riscv32"))]
+pub(super) const MAX_CALL_DEPTH: usize = 1024;
+#[cfg(target_arch = "riscv32")]
 pub(super) const MAX_CALL_DEPTH: usize = 64;
