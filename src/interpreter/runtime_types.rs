@@ -232,6 +232,119 @@ pub(crate) fn structurally_equal(left: &StackValue, right: &StackValue) -> bool 
     }
 }
 
+/// Computes the C# Neo.VM `ReferenceCounter` count for the current VM roots:
+/// one reference per eval-stack entry and per slot (locals / arguments / static
+/// fields), plus one per compound-to-child edge (Array/Struct items; Map keys
+/// AND values, i.e. `Count * 2`). This mirrors `_referencesCount`
+/// (`AddStackReference` + `AddReference`) in
+/// `neo_csharp_vm/src/Neo.VM/ReferenceCounter.cs`. Each compound's child edges
+/// are counted once (dedup by id), which both matches C# (a compound's children
+/// are linked once when built) and makes the walk terminate on shared/cyclic
+/// compounds. The interpreter faults when this exceeds `MaxStackSize` (2048),
+/// matching C# `CheckZeroReferred() > Limits.MaxStackSize` — unlike the old
+/// check, which only counted top-level eval-stack entries.
+pub(crate) fn count_references(
+    stack: &[StackValue],
+    locals: &[StackValue],
+    args: &[StackValue],
+    static_fields: &[StackValue],
+) -> usize {
+    // Root references: AddStackReference is called once per stack entry and slot.
+    let mut total = stack.len() + locals.len() + args.len() + static_fields.len();
+    let mut visited: alloc::collections::BTreeSet<u64> = alloc::collections::BTreeSet::new();
+    for roots in [stack, locals, args, static_fields] {
+        for value in roots {
+            total += count_child_edges(value, &mut visited);
+        }
+    }
+    total
+}
+
+fn count_child_edges(value: &StackValue, visited: &mut alloc::collections::BTreeSet<u64>) -> usize {
+    match value {
+        StackValue::Array(id, items) | StackValue::Struct(id, items) => {
+            if !visited.insert(*id) {
+                return 0;
+            }
+            // C# Array/Struct SubItemsCount == items.len(): one AddReference per child.
+            let mut edges = items.len();
+            for child in items {
+                edges += count_child_edges(child, visited);
+            }
+            edges
+        }
+        StackValue::Map(id, entries) => {
+            if !visited.insert(*id) {
+                return 0;
+            }
+            // C# Map.SubItemsCount == Count * 2 (each key and each value is a reference).
+            let mut edges = entries.len() * 2;
+            for (key, val) in entries {
+                edges += count_child_edges(key, visited);
+                edges += count_child_edges(val, visited);
+            }
+            edges
+        }
+        // Buffer is reference-tracked but has no StackItem children.
+        _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod reference_count_tests {
+    use super::*;
+    use alloc::vec;
+
+    #[test]
+    fn nested_array_counts_each_child_edge() {
+        // One array of 5 ints on the stack: 1 stack ref + 5 child edges = 6.
+        let arr = StackValue::Array(1, vec![StackValue::Integer(0); 5]);
+        assert_eq!(count_references(&[arr], &[], &[], &[]), 6);
+    }
+
+    #[test]
+    fn map_counts_keys_and_values() {
+        // One map of 2 entries: 1 stack ref + 2*2 (key+value) = 5.
+        let map = StackValue::Map(
+            1,
+            vec![
+                (StackValue::Integer(1), StackValue::Integer(10)),
+                (StackValue::Integer(2), StackValue::Integer(20)),
+            ],
+        );
+        assert_eq!(count_references(&[map], &[], &[], &[]), 5);
+    }
+
+    #[test]
+    fn slots_are_counted_as_references() {
+        let stack = vec![StackValue::Integer(0)];
+        let locals = vec![StackValue::Integer(1), StackValue::Integer(2)];
+        let statics = vec![StackValue::Integer(3)];
+        // 1 stack + 2 locals + 1 static = 4.
+        assert_eq!(count_references(&stack, &locals, &[], &statics), 4);
+    }
+
+    #[test]
+    fn shared_compound_children_counted_once() {
+        // inner (id 9) is a child of both A (id 1) and B (id 2), and both A and B
+        // are on the stack. C# counts: 2 stack (A,B) + 1 (A->inner) + 1 (B->inner)
+        // + inner's children (2) = 6. The inner's children must NOT be double-counted.
+        let inner = || StackValue::Array(9, vec![StackValue::Integer(0); 2]);
+        let a = StackValue::Array(1, vec![inner()]);
+        let b = StackValue::Array(2, vec![inner()]);
+        assert_eq!(count_references(&[a, b], &[], &[], &[]), 6);
+    }
+
+    #[test]
+    fn deeply_nested_array_exceeds_limit() {
+        // A single root array whose total child edges exceed MaxStackSize must be
+        // counted as over-limit even though the eval stack holds just one item.
+        let items: vec::Vec<StackValue> = (0..3000).map(StackValue::Integer).collect();
+        let arr = StackValue::Array(1, items);
+        assert!(count_references(&[arr], &[], &[], &[]) > 2048);
+    }
+}
+
 #[inline]
 fn clone_bytes(bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bytes.len());

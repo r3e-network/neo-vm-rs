@@ -141,8 +141,18 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             }
         }
 
-        // Stack overflow check: NeoVM faults when stack exceeds 2048 items.
-        if stack.len() > MAX_STACK_SIZE {
+        // Reference-count limit: NeoVM faults when the total reference count —
+        // eval-stack entries + slot entries + nested compound child edges —
+        // exceeds MaxStackSize, matching C# `ReferenceCounter.CheckZeroReferred()
+        // > Limits.MaxStackSize`. The old check counted only top-level eval-stack
+        // entries, undercounting nested compounds and slot contents.
+        if crate::interpreter::runtime_types::count_references(
+            &stack,
+            &locals,
+            &args,
+            &static_fields,
+        ) > MAX_STACK_SIZE
+        {
             return Err("stack overflow".to_string());
         }
 
