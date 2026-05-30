@@ -35,7 +35,7 @@ pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatc
             stack_rules::xdrop(stack, index)?;
         }
         CLEAR => stack_rules::clear(stack),
-            return Err(format!("unexpected opcode in stack_ops: 0x{opcode:02x}"));
+            _ => return Err(format!("unexpected opcode in stack_ops: 0x{opcode:02x}")),
     }
     Ok(Dispatch::Fallthrough)
 }

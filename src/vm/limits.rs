@@ -12,7 +12,11 @@ pub const DEFAULT_MAX_STACK_DEPTH: usize = 2048;
 pub const DEFAULT_MAX_INVOCATION_DEPTH: usize = 1024;
 
 /// Maximum size for buffers and compound values used by bounded execution.
-pub const MAX_ITEM_SIZE: usize = 1024 * 1024;
+///
+/// Matches C# `ExecutionEngineLimits.MaxItemSize = ushort.MaxValue * 2 = 131070`
+/// (Neo.VM/ExecutionEngineLimits.cs). Distinct from [`MAX_SCRIPT_SIZE`] (1 MiB):
+/// NEWBUFFER/CAT results are capped at the item size, not the script size.
+pub const MAX_ITEM_SIZE: usize = (u16::MAX as usize) * 2;
 
 /// Restrictions applied by the NeoVM execution engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

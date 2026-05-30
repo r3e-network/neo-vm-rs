@@ -305,7 +305,7 @@ pub(super) fn execute(
             ip += 2;
             finish!(Dispatch::Continue);
         }
-            return Err(format!("unexpected opcode in slot_ops: 0x{opcode:02x}"));
+            _ => return Err(format!("unexpected opcode in slot_ops: 0x{opcode:02x}")),
     }
     *ip_ref = ip;
     Ok(Dispatch::Fallthrough)

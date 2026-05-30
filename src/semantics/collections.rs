@@ -96,7 +96,7 @@ pub fn new_struct(count: i64) -> Result<StackValue, String> {
 pub fn new_buffer(size: i64) -> Result<StackValue, String> {
     let size = non_negative_count(size, "NEWBUFFER: negative size")?;
     if size > MAX_ITEM_SIZE {
-        return Err("buffer size exceeds MaxItemSize (1MB)".into());
+        return Err("NEWBUFFER: size exceeds MaxItemSize".into());
     }
     Ok(StackValue::Buffer(vec![0u8; size]))
 }
