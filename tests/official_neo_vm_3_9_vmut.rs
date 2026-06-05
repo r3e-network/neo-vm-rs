@@ -1,5 +1,5 @@
 use neo_vm_rs::{
-    encode_integer, interpret_with_stack_and_syscalls, OpCode, StackValue, SyscallProvider, VmState,
+    OpCode, StackValue, SyscallProvider, VmState, encode_integer, interpret_with_stack_and_syscalls,
 };
 use num_bigint::BigInt;
 use serde_json::Value;

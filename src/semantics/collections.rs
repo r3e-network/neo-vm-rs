@@ -7,7 +7,7 @@ use alloc::{
 };
 
 use crate::{
-    new_array_default_value_for_neovm_type_tag, semantics::numeric, StackValue, MAX_ITEM_SIZE,
+    MAX_ITEM_SIZE, StackValue, new_array_default_value_for_neovm_type_tag, semantics::numeric,
 };
 
 /// Convert a primitive NeoVM value into an index used by collection opcodes.

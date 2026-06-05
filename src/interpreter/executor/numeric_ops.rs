@@ -3,13 +3,14 @@ use super::super::opcodes::*;
 use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
 use crate::{
+    StackValue as AbiStackValue,
     semantics::{
         arithmetic as arithmetic_rules, comparison as comparison_rules,
         stack_shape::{self, ValueStack},
     },
-    StackValue as AbiStackValue,
 };
 use alloc::{
+    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -80,7 +81,7 @@ pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatc
         MIN => stack_shape::binary_value(&mut value_stack, arithmetic_rules::min_values)?,
         MAX => stack_shape::binary_value(&mut value_stack, arithmetic_rules::max_values)?,
         WITHIN => stack_shape::ternary_bool(&mut value_stack, arithmetic_rules::within_values)?,
-            return Err(format!("unexpected opcode in numeric_ops: 0x{opcode:02x}"));
+        _ => Err(format!("unexpected opcode in numeric_ops: 0x{opcode:02x}"))?,
     }
     Ok(Dispatch::Fallthrough)
 }
@@ -150,7 +151,7 @@ impl ValueStack for InterpreterValueStack<'_> {
             | AbiStackValue::Map(_)
             | AbiStackValue::Interop(_)
             | AbiStackValue::Iterator(_) => {
-                return Err("semantic numeric opcode produced a compound result".to_string())
+                return Err("semantic numeric opcode produced a compound result".to_string());
             }
         });
         Ok(())

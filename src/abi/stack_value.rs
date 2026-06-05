@@ -388,7 +388,7 @@ pub fn encode_integer(value: i64) -> Vec<u8> {
 }
 
 /// NeoVM stack value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StackValue {
     /// 64-bit signed integer for compact ABI paths.
     Integer(i64),

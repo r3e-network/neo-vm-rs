@@ -1,6 +1,6 @@
 use super::super::helpers::{pop_integer, pop_item};
 use super::super::opcodes::*;
-use super::super::runtime_types::{propagate_update, to_abi_value, CompoundIds, StackValue};
+use super::super::runtime_types::{CompoundIds, StackValue, propagate_update, to_abi_value};
 use super::super::state::remember_consumed_mutation;
 use super::control::Dispatch;
 use crate::semantics::{collections as collection_rules, splice as splice_rules};
@@ -64,7 +64,7 @@ pub(super) fn execute(
                     return Err(format!(
                         "MEMCPY expects buffer as destination, got {:?}",
                         other
-                    ))
+                    ));
                 }
             };
             splice_rules::memcpy_bytes(&mut dst_bytes, di, &to_abi_value(&src_item), si, count)?;
@@ -72,7 +72,7 @@ pub(super) fn execute(
             remember_consumed_mutation(consumed_mutations, &updated);
             propagate_update(&updated, stack, locals, args, static_fields, None);
         }
-            return Err(format!("unexpected opcode in byte_ops: 0x{opcode:02x}"));
+        _ => Err(format!("unexpected opcode in byte_ops: 0x{opcode:02x}"))?,
     }
     Ok(Dispatch::Fallthrough)
 }

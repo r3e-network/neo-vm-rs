@@ -7,7 +7,7 @@ use alloc::{
 };
 
 use super::cursor::Cursor;
-use crate::{fast_codec, ExecutionResult, VmState};
+use crate::{ExecutionResult, VmState, fast_codec};
 
 #[inline]
 pub fn encode_execution_result(result: &Result<ExecutionResult, String>) -> Vec<u8> {

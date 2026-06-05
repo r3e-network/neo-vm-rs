@@ -8,7 +8,7 @@ use alloc::{
 use num_bigint::BigInt;
 use num_traits::{ToPrimitive, Zero};
 
-use crate::{encode_integer, semantics::numeric, StackValue};
+use crate::{StackValue, encode_integer, semantics::numeric};
 
 /// Return the canonical NeoVM integer result representation.
 pub(crate) fn numeric_stack_value(

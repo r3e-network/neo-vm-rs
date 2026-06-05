@@ -1,6 +1,6 @@
 //! Runtime stack adapters for arithmetic and bitwise opcodes.
 
-use crate::runtime::{push_value_result, RuntimeStack};
+use crate::runtime::{RuntimeStack, push_value_result};
 use crate::semantics::arithmetic as rules;
 
 runtime_binary_value_op!(add, rules::add_values);

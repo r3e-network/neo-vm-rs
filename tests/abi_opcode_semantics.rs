@@ -1,7 +1,7 @@
 use neo_vm_rs::semantics::{arithmetic, collections, comparison, conversion};
 use neo_vm_rs::{
-    stack_value_span_bytes, StackValue, NEOVM_STACK_ITEM_TYPE_ARRAY,
-    NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER, NEOVM_STACK_ITEM_TYPE_STRUCT,
+    NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
+    NEOVM_STACK_ITEM_TYPE_STRUCT, StackValue, stack_value_span_bytes,
 };
 
 #[test]

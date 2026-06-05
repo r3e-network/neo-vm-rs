@@ -3,7 +3,7 @@ mod call_stack;
 mod try_frame;
 mod try_stack;
 
-use super::runtime_types::{compound_id, propagate_aliases_from_sources, StackValue};
+use super::runtime_types::{StackValue, compound_id, propagate_aliases_from_sources};
 pub(super) use call_stack::CallStack;
 pub(super) use try_frame::TryFrame;
 pub(super) use try_stack::TryStack;

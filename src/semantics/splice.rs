@@ -3,17 +3,17 @@
 use alloc::string::{String, ToString};
 
 use crate::{
-    concat_splice_values, slice_splice_value, stack_value_span_bytes, StackValue, MAX_ITEM_SIZE,
+    MAX_ITEM_SIZE, StackValue, concat_splice_values, slice_splice_value, stack_value_span_bytes,
 };
 
 pub fn cat_values(left: &StackValue, right: &StackValue) -> Result<StackValue, String> {
     let result = concat_splice_values(left, right)
         .ok_or_else(|| "CAT: operands must expose byte memory".to_string())?;
 
-    if let StackValue::Buffer(bytes) = &result {
-        if bytes.len() > MAX_ITEM_SIZE {
-            return Err("CAT: result exceeds max item size".to_string());
-        }
+    if let StackValue::Buffer(bytes) = &result
+        && bytes.len() > MAX_ITEM_SIZE
+    {
+        return Err("CAT: result exceeds max item size".to_string());
     }
 
     Ok(result)

@@ -1,4 +1,4 @@
-use neo_vm_rs::{callback_codec, result_codec, ExecutionResult, StackValue, VmState};
+use neo_vm_rs::{ExecutionResult, StackValue, VmState, callback_codec, result_codec};
 
 #[test]
 fn callback_stack_result_codec_is_shared_at_vm_boundary() {

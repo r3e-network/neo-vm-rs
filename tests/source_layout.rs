@@ -793,7 +793,9 @@ fn interpreter_numeric_helpers_call_canonical_rules_directly() {
         "interpreter value helpers should call canonical numeric and ABI integer rules directly"
     );
     assert_eq!(
-        values.matches("numeric::decode_signed_le_bytes_i64").count(),
+        values
+            .matches("numeric::decode_signed_le_bytes_i64")
+            .count(),
         1,
         "interpreter value helpers should keep one primitive i64 decoder table shared by integer and shift-count pops"
     );

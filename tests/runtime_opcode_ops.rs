@@ -1,6 +1,6 @@
 use neo_vm_rs::{
-    runtime::{ops, RuntimeStack},
     StackValue, VmContext, VmState,
+    runtime::{RuntimeStack, ops},
 };
 
 #[derive(Default)]

@@ -2,10 +2,10 @@
 
 use crate::semantics::collections as rules;
 use crate::{
-    runtime::{
-        push_bool_result, push_i64_result, push_value_result, push_values_result, RuntimeStack,
-    },
     StackValue,
+    runtime::{
+        RuntimeStack, push_bool_result, push_i64_result, push_value_result, push_values_result,
+    },
 };
 use alloc::{string::String, vec::Vec};
 

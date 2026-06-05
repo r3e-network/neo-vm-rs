@@ -1,7 +1,7 @@
 //! Runtime-level byte string and buffer opcode adapters.
 
-use crate::runtime::{push_value_result, RuntimeStack};
-use crate::{semantics::splice as splice_rules, StackValue};
+use crate::runtime::{RuntimeStack, push_value_result};
+use crate::{StackValue, semantics::splice as splice_rules};
 
 pub fn cat<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let right = runtime.pop_value();

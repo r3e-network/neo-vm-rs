@@ -3,6 +3,7 @@ use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
 use crate::semantics::numeric;
 use alloc::{
+    format,
     string::{String, ToString},
     vec::Vec,
 };
@@ -182,7 +183,7 @@ pub(super) fn execute(
             ip += 5;
             finish!(Dispatch::Continue);
         }
-            return Err(format!("unexpected opcode in push_ops: 0x{opcode:02x}"));
+        _ => Err(format!("unexpected opcode in push_ops: 0x{opcode:02x}"))?,
     }
     *ip_ref = ip;
     Ok(Dispatch::Fallthrough)

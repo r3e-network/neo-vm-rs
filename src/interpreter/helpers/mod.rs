@@ -1,5 +1,5 @@
 pub(crate) use super::runtime_types::{
-    into_abi_value, structurally_equal, to_abi_stack, to_abi_value, CompoundIds, StackValue,
+    CompoundIds, StackValue, into_abi_value, structurally_equal, to_abi_stack, to_abi_value,
 };
 use crate::{
     STACK_VALUE_CODEC_TAG_ARRAY, STACK_VALUE_CODEC_TAG_BIG_INTEGER, STACK_VALUE_CODEC_TAG_BOOLEAN,
@@ -16,11 +16,21 @@ const MAX_RETAINED_COLLECTION_LEN: usize = 4096;
 
 pub(crate) struct RetainedPrefixBuffer(UnsafeCell<[u8; RETAINED_PREFIX_BUF_SIZE]>);
 
-// SAFETY: RetainedPrefixBuffer is only accessed from within a single
-// interpreter invocation. The PolkaVM host + SP1 zkVM guest are both
-// single-threaded execution contexts. Multiple concurrent accesses to
-// the same static buffer would require explicit synchronization not
-// provided by this type.
+// SAFETY:
+// These buffers are accessed only from within a single interpreter
+// invocation. The interpreter is not re-entrant and each invocation
+// runs to completion before the next begins on the same thread.
+//
+// Supported targets and their concurrency guarantees:
+//   riscv32 (SP1/PolkaVM)  — hardware single-threaded, no preemption
+//   wasm32                  — single-threaded by default
+//   aarch64 / x86_64 (std) — tests serialize via Mutex<()> per suite;
+//                             library callers are responsible for not
+//                             sharing a buffer across threads.
+//
+// The Sync impl is required for `static` placement. If the crate is
+// ported to a target with preemptive multi-threading, the buffers
+// must be moved to thread_local! or wrapped in a Mutex.
 unsafe impl Sync for RetainedPrefixBuffer {}
 
 impl RetainedPrefixBuffer {

@@ -1,8 +1,8 @@
 use neo_vm_rs::{
+    ExceptionHandlingContext, ExceptionHandlingState, ExecutionEngineLimits, ExecutionResult,
+    Instruction, OpCode, StackItemType, StackValue, VmOrderedDictionary, VmState,
     instruction_jump_target, instruction_try_targets, interop_hash, parse_script_instructions,
-    syscall_arg_count, validate_script, validate_strict_script, ExceptionHandlingContext,
-    ExceptionHandlingState, ExecutionEngineLimits, ExecutionResult, Instruction, OpCode,
-    StackItemType, StackValue, VmOrderedDictionary, VmState,
+    syscall_arg_count, validate_script, validate_strict_script,
 };
 
 #[test]
@@ -128,12 +128,14 @@ fn script_validation_uses_shared_instruction_parser() {
     assert!(validate_strict_script(&[0xff]).is_err());
     assert!(validate_strict_script(&[OpCode::PUSHDATA1.byte(), 2, 1]).is_err());
     assert!(validate_strict_script(&[OpCode::JMP.byte(), 10, OpCode::RET.byte()]).is_err());
-    assert!(validate_strict_script(&[
-        OpCode::CONVERT.byte(),
-        StackItemType::Any.to_byte(),
-        OpCode::RET.byte(),
-    ])
-    .is_err());
+    assert!(
+        validate_strict_script(&[
+            OpCode::CONVERT.byte(),
+            StackItemType::Any.to_byte(),
+            OpCode::RET.byte(),
+        ])
+        .is_err()
+    );
 
     let relaxed = validate_script(&[OpCode::JMP.byte(), 10, OpCode::RET.byte()], false)
         .expect("relaxed validation should only parse instruction offsets");
