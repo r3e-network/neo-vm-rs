@@ -37,7 +37,10 @@ pub fn convert_value(value: StackValue, target_type: u8) -> Result<StackValue, S
 
     match normalize_stack_item_type_tag(target_type) {
         COMPACT_TAG_INTEGER => convert_to_integer(&value),
-        COMPACT_TAG_BOOLEAN => Ok(StackValue::Boolean(comparison::boolean_value(&value))),
+        // Canonical CONVERT(Boolean) is `GetBoolean()`, which faults for a
+        // ByteString/Integer wider than Integer.MaxSize (32 bytes). The strict
+        // path enforces that; Buffer/compound stay unconditionally true.
+        COMPACT_TAG_BOOLEAN => Ok(StackValue::Boolean(comparison::strict_boolean_value(&value)?)),
         COMPACT_TAG_BYTESTRING => value
             .convert_to_byte_string_value()
             .ok_or_else(|| "CONVERT: cannot convert to ByteString".into()),
