@@ -494,6 +494,68 @@ fn pushdata4_over_max_item_size_faults() {
     assert_eq!(ok.state, VmState::Halt);
 }
 
+#[test]
+fn try_with_both_offsets_zero_faults() {
+    // Canonical ExecuteTry faults (uncatchable) when catchOffset==0 AND
+    // finallyOffset==0 (pre-fix neo-vm-rs pushed a degenerate frame and
+    // continued). D-3.   TRY 00 00 ; RET
+    let result = interpret(&[OpCode::TRY.byte(), 0x00, 0x00, OpCode::RET.byte()]);
+    match result {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "TRY with both offsets 0 must fault, got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn jmp_to_script_end_faults() {
+    // Canonical ExecuteJump faults when position >= Script.Length (strict >=),
+    // unlike CALL which allows ==Length. A JMP landing exactly at the end of the
+    // script must FAULT, not fall through and HALT (pre-fix). D-4.
+    //   [JMP, 0x02] (len 2): target = 0 + 2 = 2 == Script.Length -> fault
+    let result = interpret(&[OpCode::JMP.byte(), 0x02]);
+    match result {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "JMP to target == Script.Length must fault, got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn endtry_in_finally_block_faults() {
+    // Canonical ExecuteEndTry faults (uncatchable) when the frame is already in
+    // its FINALLY block. A second ENDTRY reached inside the finally body must
+    // FAULT (pre-fix neo-vm-rs popped + jumped). D-7.
+    //   ip0 TRY catch=0 finally=5   (finally_ip = 5)
+    //   ip3 ENDTRY +4               (first ENDTRY -> enter finally, jump to ip5)
+    //   ip5 ENDTRY +2               (second ENDTRY, now in finally -> FAULT)
+    //   ip7 RET
+    let result = interpret(&[
+        OpCode::TRY.byte(),
+        0x00,
+        0x05,
+        OpCode::ENDTRY.byte(),
+        0x04,
+        OpCode::ENDTRY.byte(),
+        0x02,
+        OpCode::RET.byte(),
+    ]);
+    match result {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "a second ENDTRY inside the FINALLY block must fault, got {r:?}"
+        ),
+    }
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
 
 /// A faulting script may surface either as `Ok` with `VmState::Fault` or as an

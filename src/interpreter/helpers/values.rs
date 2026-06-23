@@ -392,7 +392,9 @@ pub(crate) fn read_offset(
     }
 }
 
-/// Compute jump/call target from ip + offset with bounds checking.
+/// Compute a CALL/CALLA target from ip + offset. Canonical CALL assigns the
+/// target through the InstructionPointer setter, which faults only on
+/// `value > Script.Length` — so a target == `script_len` is allowed.
 pub(crate) fn compute_jump_target_offset(
     ip: usize,
     offset: isize,
@@ -401,6 +403,25 @@ pub(crate) fn compute_jump_target_offset(
 ) -> Result<usize, String> {
     let target = ip as isize + offset;
     if target < 0 || target as usize > script_len {
+        return Err(format!("{name} target out of bounds"));
+    }
+    Ok(target as usize)
+}
+
+/// Compute a JMP-family target from ip + offset, rejecting `target == script_len`.
+///
+/// Canonical `ExecuteJump` faults when `position >= Script.Length` (strict `>=`),
+/// unlike CALL which uses the IP setter's `> Script.Length`. So the JMP* opcodes
+/// must reject a target landing exactly at the end of the script (which would
+/// otherwise fall through and HALT cleanly instead of FAULTing).
+pub(crate) fn compute_jump_target_strict(
+    ip: usize,
+    offset: isize,
+    script_len: usize,
+    name: &str,
+) -> Result<usize, String> {
+    let target = ip as isize + offset;
+    if target < 0 || target as usize >= script_len {
         return Err(format!("{name} target out of bounds"));
     }
     Ok(target as usize)

@@ -193,7 +193,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMP",
                 )?;
-                ip = compute_jump_target_offset(ip, offset, script.len(), "JMP")?;
+                ip = compute_jump_target_strict(ip, offset, script.len(), "JMP")?;
                 continue;
             }
             JMPIF | JMPIF_L => {
@@ -210,7 +210,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 )?;
                 let condition = pop_boolean(&mut stack)?;
                 if condition {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPIF")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPIF")?;
                     continue;
                 }
                 ip += advance;
@@ -231,7 +231,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 // Canonical JMPEQ compares via GetInteger (integer comparison),
                 // not structural equality — faults uncatchably on a null/non-integer.
                 if pop_jump_comparison(&mut stack, comparison_rules::num_equal_values)? {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPEQ")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPEQ")?;
                     continue;
                 }
                 ip += advance;
@@ -551,7 +551,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 )?;
                 let condition = pop_boolean(&mut stack)?;
                 if !condition {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPIFNOT")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPIFNOT")?;
                     continue;
                 }
                 ip += advance;
@@ -571,7 +571,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 )?;
                 // Canonical JMPNE compares via GetInteger, not structural equality.
                 if pop_jump_comparison(&mut stack, comparison_rules::num_not_equal_values)? {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPNE")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPNE")?;
                     continue;
                 }
                 ip += advance;
@@ -590,7 +590,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     "JMPGT",
                 )?;
                 if pop_jump_comparison(&mut stack, comparison_rules::strict_greater_than_values)? {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGT")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPGT")?;
                     continue;
                 }
                 ip += advance;
@@ -609,7 +609,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     "JMPGE",
                 )?;
                 if pop_jump_comparison(&mut stack, comparison_rules::strict_greater_or_equal_values)? {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGE")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPGE")?;
                     continue;
                 }
                 ip += advance;
@@ -628,7 +628,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     "JMPLT",
                 )?;
                 if pop_jump_comparison(&mut stack, comparison_rules::strict_less_than_values)? {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLT")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPLT")?;
                     continue;
                 }
                 ip += advance;
@@ -647,7 +647,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     "JMPLE",
                 )?;
                 if pop_jump_comparison(&mut stack, comparison_rules::strict_less_or_equal_values)? {
-                    ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLE")?;
+                    ip = compute_jump_target_strict(ip, offset, script.len(), "JMPLE")?;
                     continue;
                 }
                 ip += advance;

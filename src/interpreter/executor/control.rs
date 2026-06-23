@@ -21,6 +21,10 @@ pub(super) fn enter_try_short(
     }
     let catch_offset = script[ip + 1] as i8;
     let finally_offset = script[ip + 2] as i8;
+    // Canonical ExecuteTry faults (uncatchable) when BOTH offsets are 0.
+    if catch_offset == 0 && finally_offset == 0 {
+        return Err("catchOffset and finallyOffset can't be 0 in a TRY block".to_string());
+    }
     let catch_ip = if catch_offset != 0 {
         (ip as isize + catch_offset as isize) as usize
     } else {
@@ -73,6 +77,10 @@ pub(super) fn enter_try_long(
         script[ip + 7],
         script[ip + 8],
     ]);
+    // Canonical ExecuteTry faults (uncatchable) when BOTH offsets are 0.
+    if catch_offset == 0 && finally_offset == 0 {
+        return Err("catchOffset and finallyOffset can't be 0 in a TRY block".to_string());
+    }
     let catch_ip = if catch_offset != 0 {
         (ip as isize + catch_offset as isize) as usize
     } else {
@@ -174,7 +182,12 @@ fn end_try_at(target_ip: usize, try_frames: &mut TryStack) -> Result<usize, Stri
     let Some(frame) = try_frames.last_mut() else {
         return Err("The corresponding TRY block cannot be found.".to_string());
     };
-    if frame.finally_ip != 0 && !frame.in_finally {
+    // Canonical ExecuteEndTry faults (uncatchable) if the frame is already in
+    // its FINALLY block (a second ENDTRY inside the finally body).
+    if frame.in_finally {
+        return Err("The opcode ENDTRY can't be executed in a FINALLY block.".to_string());
+    }
+    if frame.finally_ip != 0 {
         frame.end_ip = target_ip;
         frame.in_finally = true;
         return Ok(frame.finally_ip);
