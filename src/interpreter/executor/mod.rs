@@ -717,7 +717,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             ENDTRY => {
-                ip = control::end_try_short(script, ip, &mut try_frames, &mut pending_error);
+                ip = control::end_try_short(script, ip, &mut try_frames, &mut pending_error)?;
                 continue;
             }
             TRY_L => {
@@ -731,7 +731,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             ENDTRY_L => {
-                ip = control::end_try_long(script, ip, &mut try_frames, &mut pending_error);
+                ip = control::end_try_long(script, ip, &mut try_frames, &mut pending_error)?;
                 continue;
             }
             ENDFINALLY => {

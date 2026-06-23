@@ -105,12 +105,12 @@ pub(super) fn end_try_short(
     ip: usize,
     try_frames: &mut TryStack,
     pending_error: &mut Option<PendingException>,
-) -> usize {
+) -> Result<usize, String> {
     if ip + 2 > script.len() {
         *pending_error = Some(PendingException::message(
             "truncated ENDTRY operand".to_string(),
         ));
-        return ip;
+        return Ok(ip);
     }
     let offset = script[ip + 1] as i8;
     let target_ip = if offset != 0 {
@@ -126,12 +126,12 @@ pub(super) fn end_try_long(
     ip: usize,
     try_frames: &mut TryStack,
     pending_error: &mut Option<PendingException>,
-) -> usize {
+) -> Result<usize, String> {
     if ip + 5 > script.len() {
         *pending_error = Some(PendingException::message(
             "truncated ENDTRY_L operand".to_string(),
         ));
-        return ip;
+        return Ok(ip);
     }
     let offset = i32::from_le_bytes([
         script[ip + 1],
@@ -167,14 +167,18 @@ pub(super) fn end_finally(
     Ok(None)
 }
 
-fn end_try_at(target_ip: usize, try_frames: &mut TryStack) -> usize {
-    if let Some(frame) = try_frames.last_mut() {
-        if frame.finally_ip != 0 && !frame.in_finally {
-            frame.end_ip = target_ip;
-            frame.in_finally = true;
-            return frame.finally_ip;
-        }
+fn end_try_at(target_ip: usize, try_frames: &mut TryStack) -> Result<usize, String> {
+    // C# ExecuteEndTry throws "The corresponding TRY block cannot be found."
+    // when the current context has no try frame; mirror that as a FAULT
+    // instead of silently treating ENDTRY/ENDTRY_L as a no-op jump.
+    let Some(frame) = try_frames.last_mut() else {
+        return Err("The corresponding TRY block cannot be found.".to_string());
+    };
+    if frame.finally_ip != 0 && !frame.in_finally {
+        frame.end_ip = target_ip;
+        frame.in_finally = true;
+        return Ok(frame.finally_ip);
     }
     try_frames.pop();
-    target_ip
+    Ok(target_ip)
 }

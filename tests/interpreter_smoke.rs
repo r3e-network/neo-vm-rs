@@ -335,3 +335,54 @@ fn setitem_out_of_range_is_catchable() {
 }
 
 fn _assert_result_is_public(_: ExecutionResult) {}
+
+/// A faulting script may surface either as `Ok` with `VmState::Fault` or as an
+/// `Err` at the executor boundary; both are a FAULT for our purposes.
+fn assert_faults(script: &[u8], context: &str) {
+    if let Ok(result) = interpret(script) {
+        assert_eq!(
+            result.state,
+            VmState::Fault,
+            "{context}: expected FAULT, got {:?}",
+            result.state
+        );
+    }
+}
+
+// Regression: Neo v3.10.0 consistency residuals (verified against C# Neo.VM).
+
+#[test]
+fn endtry_without_matching_try_faults() {
+    // ENDTRY (0x3d) offset 0 with no preceding TRY. C# ExecuteEndTry throws
+    // "The corresponding TRY block cannot be found." => FAULT (not HALT).
+    assert_faults(&[0x3d, 0x00], "ENDTRY without TRY");
+}
+
+#[test]
+fn endtry_l_without_matching_try_faults() {
+    // ENDTRY_L (0x3e) offset 0 with no preceding TRY => FAULT.
+    assert_faults(&[0x3e, 0x00, 0x00, 0x00, 0x00], "ENDTRY_L without TRY");
+}
+
+#[test]
+fn newarray_t_invalid_type_operand_faults() {
+    // PUSH1; NEWARRAY_T type=0x02. 0x02 is not a defined StackItemType, so C#
+    // NewArray_T's `Enum.IsDefined` check throws => FAULT (not HALT).
+    assert_faults(&[0x11, 0xc4, 0x02], "NEWARRAY_T invalid type");
+}
+
+#[test]
+fn newarray_t_boolean_elements_default_to_false() {
+    // PUSH2; NEWARRAY_T type=Boolean(0x20); DUP; PUSH0; PICKITEM.
+    // C# fills Boolean arrays with StackItem.False, so the picked element is
+    // Boolean(false), not Null.
+    let result = interpret(&[0x12, 0xc4, 0x20, 0x4a, 0x10, 0xce])
+        .expect("NEWARRAY_T Boolean script should execute");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(
+        result.stack.last(),
+        Some(&StackValue::Boolean(false)),
+        "picked Boolean array element must default to false, got {:?}",
+        result.stack.last()
+    );
+}
