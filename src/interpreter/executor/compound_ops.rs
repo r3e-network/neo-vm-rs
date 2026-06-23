@@ -539,25 +539,28 @@ pub(super) fn execute(
                     );
                 }
                 StackValue::Map(id, mut items) => {
-                    let index = collection_rules::map_entry_index_by(
+                    // Canonical REMOVE on a map is `map.Remove(key)` — a NO-OP when
+                    // the key is absent, NOT a fault. (A non-primitive key still
+                    // faults via validate_map_key.)
+                    if let Some(index) = collection_rules::map_entry_index_by(
                         &items,
                         &key,
                         primitive_key_equals,
                         validate_map_key,
-                    )?
-                    .ok_or_else(|| "key not found for REMOVE".to_string())?;
-                    items.remove(index);
-                    let updated = StackValue::Map(id, items);
-                    let affected = find_affected_indices(id, stack);
-                    commit_collection_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        consumed_mutations,
-                        Some(&affected),
-                    );
+                    )? {
+                        items.remove(index);
+                        let updated = StackValue::Map(id, items);
+                        let affected = find_affected_indices(id, stack);
+                        commit_collection_update(
+                            &updated,
+                            stack,
+                            locals,
+                            args,
+                            static_fields,
+                            consumed_mutations,
+                            Some(&affected),
+                        );
+                    }
                 }
                 _ => return Err("REMOVE expects an array, struct, or map".to_string()),
             }

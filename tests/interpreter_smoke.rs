@@ -239,4 +239,18 @@ fn remove_faults_on_null_index() {
     }
 }
 
+#[test]
+fn remove_missing_map_key_is_noop() {
+    // Canonical REMOVE on a map is `map.Remove(key)` — a no-op when the key is
+    // absent, not a fault (pre-fix neo-vm-rs faulted "key not found").
+    let result = interpret(&[
+        OpCode::NEWMAP.byte(),
+        OpCode::PUSH9.byte(),
+        OpCode::REMOVE.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("REMOVE of an absent map key should not fault");
+    assert_eq!(result.state, VmState::Halt);
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
