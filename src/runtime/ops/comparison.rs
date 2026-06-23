@@ -19,9 +19,11 @@ runtime_binary_bool_op!(num_equal, rules::num_equal_values);
 
 runtime_binary_bool_op!(num_not_equal, rules::num_not_equal_values);
 
-runtime_bool_binary_op!(bool_and, rules::bool_and, rules::boolean_value);
+// Strict GetBoolean coercion (faults on a >32-byte ByteString operand), matching
+// canonical NeoVM and the interpreter path; the prior lax boolean_value diverged.
+runtime_binary_bool_op!(bool_and, rules::bool_and_values);
 
-runtime_bool_binary_op!(bool_or, rules::bool_or, rules::boolean_value);
+runtime_binary_bool_op!(bool_or, rules::bool_or_values);
 
 runtime_unary_bool_op!(not, rules::not_value);
 

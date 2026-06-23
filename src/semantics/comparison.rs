@@ -157,7 +157,12 @@ pub fn boolean_value(value: &StackValue) -> bool {
     value.to_bool()
 }
 
-/// Boolean conversion through NeoVM's strict integer path for `NOT`.
+/// NeoVM `GetBoolean()` — the strict boolean coercion shared by NOT, JMPIF/
+/// JMPIFNOT/ASSERT (via `pop_boolean`) and BOOLAND/BOOLOR. Only a ByteString
+/// (or the BigInteger integer representation) wider than `Integer.MaxSize`
+/// (32 bytes) faults (uncatchable `InvalidCastException`); Buffer/Pointer/
+/// Array/Struct/Map/InteropInterface are unconditionally truthy, matching
+/// canonical (`CompoundType`'s sealed `GetBoolean` returns `true`).
 pub fn strict_boolean_value(value: &StackValue) -> Result<bool, String> {
     match value {
         StackValue::Boolean(value) => Ok(*value),
@@ -182,6 +187,28 @@ pub fn strict_boolean_value(value: &StackValue) -> Result<bool, String> {
 /// Boolean NOT using NeoVM's strict integer path.
 pub fn not_value(value: &StackValue) -> Result<bool, String> {
     Ok(!strict_boolean_value(value)?)
+}
+
+/// NeoVM `BOOLAND`: both operands coerced via the strict `GetBoolean` path.
+///
+/// Canonical NeoVM pops and `GetBoolean()`s BOTH operands eagerly (top/right
+/// first, then left) BEFORE combining — it does not short-circuit. So a
+/// ByteString wider than `Integer.MaxSize` (32 bytes) in EITHER position faults
+/// (uncatchably) regardless of the other operand's truthiness. Evaluating both
+/// before the `&&` reproduces that exactly (a lax `left? && right?` would skip
+/// the right operand's fault when `left` is false).
+pub fn bool_and_values(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    let right = strict_boolean_value(right)?;
+    let left = strict_boolean_value(left)?;
+    Ok(left && right)
+}
+
+/// NeoVM `BOOLOR`: both operands coerced via the strict `GetBoolean` path,
+/// evaluated eagerly with no short-circuit (see [`bool_and_values`]).
+pub fn bool_or_values(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    let right = strict_boolean_value(right)?;
+    let left = strict_boolean_value(left)?;
+    Ok(left || right)
 }
 
 /// Null predicate.

@@ -79,15 +79,3 @@ where
     stack.push_value(StackValue::Boolean(op(first, second, third)?))
 }
 
-pub(crate) fn bool_binary<S>(
-    stack: &mut S,
-    op: fn(bool, bool) -> bool,
-    truthy: fn(&StackValue) -> bool,
-) -> Result<(), String>
-where
-    S: ValueStack + ?Sized,
-{
-    let right = stack.pop_value()?;
-    let left = stack.pop_value()?;
-    stack.push_value(StackValue::Boolean(op(truthy(&left), truthy(&right))))
-}

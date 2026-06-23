@@ -334,6 +334,86 @@ fn setitem_out_of_range_is_catchable() {
     }
 }
 
+#[test]
+fn booland_faults_on_oversized_bytestring_right_operand() {
+    // BOOLAND coerces BOTH operands via canonical GetBoolean, which faults
+    // (uncatchably) on a ByteString wider than Integer.MaxSize (32 bytes).
+    // Critically EAGER (no short-circuit): a FALSY left must NOT mask the
+    // oversized right's fault (a lax `false && right` would wrongly HALT).
+    // Pre-fix BOOLAND used to_bool, which never faulted -> consensus divergence.
+    //   PUSH0                       (left = 0, falsy)
+    //   PUSHDATA1 0x21 <33 bytes>   (right = 33-byte ByteString)
+    //   BOOLAND; RET
+    let mut script = vec![OpCode::PUSH0.byte(), OpCode::PUSHDATA1.byte(), 0x21];
+    script.extend_from_slice(&[0u8; 33]);
+    script.extend_from_slice(&[OpCode::BOOLAND.byte(), OpCode::RET.byte()]);
+    match interpret(&script) {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "BOOLAND with a >32-byte ByteString operand must fault even when the \
+             other operand is falsy (eager GetBoolean), got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn booland_faults_on_oversized_bytestring_left_operand() {
+    // Symmetric guard: oversized LEFT operand, falsy right — must still fault
+    // (protects against a future left-first short-circuit refactor).
+    //   PUSHDATA1 0x21 <33 bytes>   (left = 33-byte ByteString)
+    //   PUSH0                       (right = 0, falsy)
+    //   BOOLAND; RET
+    let mut script = vec![OpCode::PUSHDATA1.byte(), 0x21];
+    script.extend_from_slice(&[0u8; 33]);
+    script.extend_from_slice(&[OpCode::PUSH0.byte(), OpCode::BOOLAND.byte(), OpCode::RET.byte()]);
+    match interpret(&script) {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "BOOLAND with a >32-byte ByteString left operand must fault, got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn boolor_faults_on_oversized_bytestring_operand() {
+    // BOOLOR likewise evaluates both operands' GetBoolean eagerly: a TRUTHY left
+    // must NOT mask the oversized right's fault (a lax `true || right` HALTs).
+    //   PUSH1                       (left = 1, truthy)
+    //   PUSHDATA1 0x21 <33 bytes>   (right = 33-byte ByteString)
+    //   BOOLOR; RET
+    let mut script = vec![OpCode::PUSH1.byte(), OpCode::PUSHDATA1.byte(), 0x21];
+    script.extend_from_slice(&[0u8; 33]);
+    script.extend_from_slice(&[OpCode::BOOLOR.byte(), OpCode::RET.byte()]);
+    match interpret(&script) {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "BOOLOR with a >32-byte ByteString operand must fault even when the \
+             other operand is truthy (eager GetBoolean), got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn booland_allows_32_byte_bytestring_operand() {
+    // Boundary is strictly `>`: a 32-byte ByteString is a valid GetBoolean operand
+    // (all-zero -> false), so BOOLAND(true, false) HALTs with false (no fault).
+    //   PUSH1                            (left = 1, truthy)
+    //   PUSHDATA1 0x20 <32 zero bytes>   (right = 32-byte ByteString, GetBoolean=false)
+    //   BOOLAND; RET
+    let mut script = vec![OpCode::PUSH1.byte(), OpCode::PUSHDATA1.byte(), 0x20];
+    script.extend_from_slice(&[0u8; 32]);
+    script.extend_from_slice(&[OpCode::BOOLAND.byte(), OpCode::RET.byte()]);
+    let result = interpret(&script).expect("BOOLAND with a 32-byte operand must not fault");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.stack, vec![StackValue::Boolean(false)]);
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
 
 /// A faulting script may surface either as `Ok` with `VmState::Fault` or as an

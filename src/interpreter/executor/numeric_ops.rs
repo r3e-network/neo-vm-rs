@@ -64,16 +64,11 @@ pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatc
         DIV => stack_shape::binary_value(&mut value_stack, arithmetic_rules::div_values)?,
         MOD => stack_shape::binary_value(&mut value_stack, arithmetic_rules::modulo_values)?,
         DEC => stack_shape::unary_value(&mut value_stack, arithmetic_rules::dec_value)?,
-        BOOLAND => stack_shape::bool_binary(
-            &mut value_stack,
-            comparison_rules::bool_and,
-            comparison_rules::boolean_value,
-        )?,
-        BOOLOR => stack_shape::bool_binary(
-            &mut value_stack,
-            comparison_rules::bool_or,
-            comparison_rules::boolean_value,
-        )?,
+        // BOOLAND/BOOLOR coerce both operands via the strict GetBoolean path
+        // (faults on a >32-byte ByteString), matching canonical NeoVM; the prior
+        // lax `boolean_value` (to_bool) never faulted -> a consensus divergence.
+        BOOLAND => stack_shape::binary_bool(&mut value_stack, comparison_rules::bool_and_values)?,
+        BOOLOR => stack_shape::binary_bool(&mut value_stack, comparison_rules::bool_or_values)?,
         NZ => stack_shape::unary_bool(&mut value_stack, comparison_rules::nz_value)?,
         MIN => stack_shape::binary_value(&mut value_stack, arithmetic_rules::min_values)?,
         MAX => stack_shape::binary_value(&mut value_stack, arithmetic_rules::max_values)?,

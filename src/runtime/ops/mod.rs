@@ -81,16 +81,6 @@ macro_rules! runtime_ternary_bool_op {
     };
 }
 
-macro_rules! runtime_bool_binary_op {
-    ($name:ident, $rule:path, $truthy:path) => {
-        pub fn $name<R: $crate::runtime::RuntimeStack + ?Sized>(runtime: &mut R) {
-            super::apply_or_fault(runtime, |stack| {
-                $crate::semantics::stack_shape::bool_binary(stack, $rule, $truthy)
-            });
-        }
-    };
-}
-
 pub mod arithmetic;
 pub mod bytes;
 pub mod collections;

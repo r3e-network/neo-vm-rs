@@ -213,7 +213,6 @@ fn runtime_numeric_stack_shape_adapters_are_generated() {
         "macro_rules! runtime_binary_bool_op",
         "macro_rules! runtime_binary_bool_value_op",
         "macro_rules! runtime_ternary_bool_op",
-        "macro_rules! runtime_bool_binary_op",
     ] {
         assert!(
             runtime_ops_mod.contains(macro_name),
@@ -228,7 +227,6 @@ fn runtime_numeric_stack_shape_adapters_are_generated() {
         "stack_shape::unary_bool(stack",
         "stack_shape::binary_bool(stack",
         "stack_shape::ternary_bool(stack",
-        "stack_shape::bool_binary(stack",
     ] {
         assert!(
             !runtime_arithmetic.contains(duplicate) && !runtime_comparison.contains(duplicate),
