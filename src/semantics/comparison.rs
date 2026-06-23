@@ -49,6 +49,41 @@ pub fn greater_or_equal_values(left: &StackValue, right: &StackValue) -> Result<
     compare_ordered_values(left, right, |left, right| left >= right)
 }
 
+// Strict ordered comparisons for the JMP* family. Canonical NeoVM jump
+// comparisons (JmpGt/JmpGe/JmpLt/JmpLe — and JmpEq/JmpNe) call `Pop().GetInteger()`
+// on BOTH operands with NO null guard, so a null/non-integer operand FAULTS
+// (uncatchable InvalidCastException). This differs from the numeric LT/LE/GT/GE
+// opcodes above, which deliberately treat null as false.
+fn compare_ordered_strict<F>(left: &StackValue, right: &StackValue, compare: F) -> Result<bool, String>
+where
+    F: Fn(&BigInt, &BigInt) -> bool,
+{
+    Ok(compare(
+        &integer_value_for_ordering(left)?,
+        &integer_value_for_ordering(right)?,
+    ))
+}
+
+/// Strict numeric greater-than for JMPGT (faults on null/non-integer).
+pub fn strict_greater_than_values(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    compare_ordered_strict(left, right, |left, right| left > right)
+}
+
+/// Strict numeric greater-or-equal for JMPGE (faults on null/non-integer).
+pub fn strict_greater_or_equal_values(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    compare_ordered_strict(left, right, |left, right| left >= right)
+}
+
+/// Strict numeric less-than for JMPLT (faults on null/non-integer).
+pub fn strict_less_than_values(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    compare_ordered_strict(left, right, |left, right| left < right)
+}
+
+/// Strict numeric less-or-equal for JMPLE (faults on null/non-integer).
+pub fn strict_less_or_equal_values(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    compare_ordered_strict(left, right, |left, right| left <= right)
+}
+
 fn compare_ordered_values<F>(
     left: &StackValue,
     right: &StackValue,

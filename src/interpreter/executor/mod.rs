@@ -228,9 +228,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPEQ",
                 )?;
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                if equals_with_limits(&left, &right)? {
+                // Canonical JMPEQ compares via GetInteger (integer comparison),
+                // not structural equality — faults uncatchably on a null/non-integer.
+                if pop_jump_comparison(&mut stack, comparison_rules::num_equal_values)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPEQ")?;
                     continue;
                 }
@@ -569,9 +569,8 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPNE",
                 )?;
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                if !equals_with_limits(&left, &right)? {
+                // Canonical JMPNE compares via GetInteger, not structural equality.
+                if pop_jump_comparison(&mut stack, comparison_rules::num_not_equal_values)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPNE")?;
                     continue;
                 }
@@ -590,7 +589,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPGT",
                 )?;
-                if pop_jump_comparison(&mut stack, comparison_rules::greater_than_values)? {
+                if pop_jump_comparison(&mut stack, comparison_rules::strict_greater_than_values)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGT")?;
                     continue;
                 }
@@ -609,7 +608,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPGE",
                 )?;
-                if pop_jump_comparison(&mut stack, comparison_rules::greater_or_equal_values)? {
+                if pop_jump_comparison(&mut stack, comparison_rules::strict_greater_or_equal_values)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPGE")?;
                     continue;
                 }
@@ -628,7 +627,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPLT",
                 )?;
-                if pop_jump_comparison(&mut stack, comparison_rules::less_than_values)? {
+                if pop_jump_comparison(&mut stack, comparison_rules::strict_less_than_values)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLT")?;
                     continue;
                 }
@@ -647,7 +646,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPLE",
                 )?;
-                if pop_jump_comparison(&mut stack, comparison_rules::less_or_equal_values)? {
+                if pop_jump_comparison(&mut stack, comparison_rules::strict_less_or_equal_values)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPLE")?;
                     continue;
                 }

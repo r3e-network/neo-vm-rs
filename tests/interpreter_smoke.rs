@@ -139,4 +139,58 @@ fn catches_syscall_faults_with_try() {
     assert_eq!(result.stack.len(), 3);
 }
 
+#[test]
+fn jump_comparison_faults_on_null_operand() {
+    // Canonical JMP* comparisons (JmpEq/Ne/Gt/Ge/Lt/Le) call GetInteger on BOTH
+    // operands with no null guard, so a null operand faults uncatchably rather
+    // than being treated as no-jump (the pre-fix behavior for JMPGT/etc.).
+    let result = interpret(&[
+        OpCode::PUSH5.byte(),
+        OpCode::PUSHNULL.byte(),
+        OpCode::JMPGT.byte(),
+        0x03,
+        OpCode::RET.byte(),
+    ]);
+    match result {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "JMPGT with a null operand must fault, got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn jmpeq_compares_by_integer_value_not_bytes() {
+    // ByteString [0x01,0x00] (=1) and PUSH1 (=1) are integer-equal; canonical
+    // JMPEQ uses GetInteger, so it jumps even though the byte representations
+    // differ. The pre-fix structural vm_equal did NOT jump (bytes unequal).
+    //   ip0 PUSHDATA1 02 01 00   (ByteString {01,00} = 1)
+    //   ip4 PUSH1
+    //   ip5 JMPEQ +4             -> ip9 on integer-equal
+    //   ip7 PUSH3; ip8 RET       (not-equal path)
+    //   ip9 PUSH7; ip10 RET      (equal path)
+    let result = interpret(&[
+        OpCode::PUSHDATA1.byte(),
+        0x02,
+        0x01,
+        0x00,
+        OpCode::PUSH1.byte(),
+        OpCode::JMPEQ.byte(),
+        0x04,
+        OpCode::PUSH3.byte(),
+        OpCode::RET.byte(),
+        OpCode::PUSH7.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("JMPEQ script should execute");
+    assert_eq!(result.state, VmState::Halt);
+    assert!(
+        result.stack.contains(&StackValue::Integer(7)),
+        "JMPEQ must compare by integer value (jump taken -> 7); stack={:?}",
+        result.stack
+    );
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
