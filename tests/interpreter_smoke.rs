@@ -253,4 +253,50 @@ fn remove_missing_map_key_is_noop() {
     assert_eq!(result.state, VmState::Halt);
 }
 
+#[test]
+fn equal_compares_nested_compounds_in_struct_by_reference() {
+    // Canonical Struct.Equals compares nested Array/Map/Buffer by REFERENCE, not
+    // content. Two structs each holding a DISTINCT (fresh) empty array are NOT
+    // equal, even though the arrays have identical content (pre-fix
+    // structurally_equal compared them by content -> wrongly equal). D14.
+    //   NEWARRAY0; PUSH1; PACKSTRUCT  -> struct{ [] }   (array A)
+    //   NEWARRAY0; PUSH1; PACKSTRUCT  -> struct{ [] }   (array B, distinct id)
+    //   EQUAL
+    let result = interpret(&[
+        OpCode::NEWARRAY0.byte(),
+        OpCode::PUSH1.byte(),
+        OpCode::PACKSTRUCT.byte(),
+        OpCode::NEWARRAY0.byte(),
+        OpCode::PUSH1.byte(),
+        OpCode::PACKSTRUCT.byte(),
+        OpCode::EQUAL.byte(),
+        OpCode::RET.byte(),
+    ])
+    .expect("EQUAL of two structs should execute");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(
+        result.stack,
+        vec![StackValue::Boolean(false)],
+        "structs with distinct nested arrays must compare unequal (reference equality)"
+    );
+}
+
+#[test]
+fn map_accepts_large_integer_key() {
+    // A BigInteger (large-integer representation, e.g. from PUSHINT128) is a
+    // valid PrimitiveType integer map key in canonical NeoVM; SETITEM must not
+    // reject it (pre-fix validate_map_key faulted "map key must be primitive"). D15.
+    //   NEWMAP; PUSHINT128 1; PUSH5; SETITEM
+    let mut script = vec![OpCode::NEWMAP.byte(), OpCode::PUSHINT128.byte(), 0x01];
+    script.extend_from_slice(&[0u8; 15]); // 16-byte little-endian 1
+    script.extend_from_slice(&[
+        OpCode::PUSH5.byte(),
+        OpCode::SETITEM.byte(),
+        OpCode::RET.byte(),
+    ]);
+    let result =
+        interpret(&script).expect("SETITEM with a large-integer map key should not fault");
+    assert_eq!(result.state, VmState::Halt);
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}

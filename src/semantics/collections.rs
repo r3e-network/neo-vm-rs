@@ -53,7 +53,13 @@ pub fn collection_index_value_strict(value: &StackValue) -> Result<i64, String> 
 /// Validate a NeoVM primitive map key.
 pub fn validate_map_key_value(key: &StackValue) -> Result<(), String> {
     match key {
-        StackValue::Integer(_) | StackValue::Boolean(_) | StackValue::Null => Ok(()),
+        // A large integer (the dual-representation BigInteger arm, e.g. from
+        // PUSHINT128/256 or arithmetic) is still a valid PrimitiveType integer
+        // map key in canonical NeoVM — it must not be rejected.
+        StackValue::Integer(_)
+        | StackValue::BigInteger(_)
+        | StackValue::Boolean(_)
+        | StackValue::Null => Ok(()),
         StackValue::ByteString(value) => {
             if value.len() > 64 {
                 Err("map key exceeds maximum size".into())
@@ -70,6 +76,13 @@ pub fn validate_map_key_value(key: &StackValue) -> Result<(), String> {
 pub fn primitive_key_equal(left: &StackValue, right: &StackValue) -> bool {
     match (left, right) {
         (StackValue::Integer(left), StackValue::Integer(right)) => left == right,
+        // Integer and BigInteger are two representations of the same VM Integer
+        // type, so a key equal in value must match regardless of representation.
+        (StackValue::Integer(small), StackValue::BigInteger(big))
+        | (StackValue::BigInteger(big), StackValue::Integer(small)) => {
+            crate::abi::encode_integer(*small) == *big
+        }
+        (StackValue::BigInteger(left), StackValue::BigInteger(right)) => left == right,
         (StackValue::Boolean(left), StackValue::Boolean(right)) => left == right,
         (StackValue::Null, StackValue::Null) => true,
         (StackValue::ByteString(left), StackValue::ByteString(right)) => left == right,
