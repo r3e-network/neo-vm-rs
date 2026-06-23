@@ -413,7 +413,16 @@ pub(super) fn execute(
                 StackValue::Buffer(id, mut bytes) => {
                     let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= bytes.len() {
-                        return Err("index out of range for SETITEM".to_string());
+                        // Canonical SETITEM (array/buffer) out-of-range is a
+                        // CatchableException (script-interceptable), unlike the
+                        // null/non-integer/overflow index which faults uncatchably
+                        // (handled by the strict decoder above).
+                        let msg = "index out of range for SETITEM".to_string();
+                        if try_frames.is_empty() {
+                            return Err(msg);
+                        }
+                        *pending_error = Some(PendingException::message(msg));
+                        finish!(Dispatch::Continue);
                     }
                     let byte = match value {
                         StackValue::Integer(value) if (-128..=255).contains(&value) => value as u8,
@@ -436,7 +445,16 @@ pub(super) fn execute(
                 StackValue::Array(id, mut items) => {
                     let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= items.len() {
-                        return Err("index out of range for SETITEM".to_string());
+                        // Canonical SETITEM (array/buffer) out-of-range is a
+                        // CatchableException (script-interceptable), unlike the
+                        // null/non-integer/overflow index which faults uncatchably
+                        // (handled by the strict decoder above).
+                        let msg = "index out of range for SETITEM".to_string();
+                        if try_frames.is_empty() {
+                            return Err(msg);
+                        }
+                        *pending_error = Some(PendingException::message(msg));
+                        finish!(Dispatch::Continue);
                     }
                     items[index as usize] = ids.clone_struct_for_storage(&value);
                     let updated = StackValue::Array(id, items);
@@ -454,7 +472,16 @@ pub(super) fn execute(
                 StackValue::Struct(id, mut items) => {
                     let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= items.len() {
-                        return Err("index out of range for SETITEM".to_string());
+                        // Canonical SETITEM (array/buffer) out-of-range is a
+                        // CatchableException (script-interceptable), unlike the
+                        // null/non-integer/overflow index which faults uncatchably
+                        // (handled by the strict decoder above).
+                        let msg = "index out of range for SETITEM".to_string();
+                        if try_frames.is_empty() {
+                            return Err(msg);
+                        }
+                        *pending_error = Some(PendingException::message(msg));
+                        finish!(Dispatch::Continue);
                     }
                     items[index as usize] = ids.clone_struct_for_storage(&value);
                     let updated = StackValue::Struct(id, items);

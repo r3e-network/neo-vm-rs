@@ -299,4 +299,39 @@ fn map_accepts_large_integer_key() {
     assert_eq!(result.state, VmState::Halt);
 }
 
+#[test]
+fn setitem_out_of_range_is_catchable() {
+    // Canonical SETITEM array/buffer out-of-range is a CatchableException, so a
+    // surrounding TRY/CATCH handles it and the script HALTs (pre-fix it was an
+    // uncatchable fault).
+    //   IP0  TRY catch=+9 finally=0
+    //   IP3  NEWARRAY0; IP4 PUSH5; IP5 PUSH9; IP6 SETITEM  (index 5 vs len 0 -> OOR)
+    //   IP7  ENDTRY +5 -> IP12
+    //   IP9  PUSH1 (catch body); IP10 ENDTRY +2 -> IP12
+    //   IP12 RET
+    let result = interpret(&[
+        OpCode::TRY.byte(),
+        0x09,
+        0x00,
+        OpCode::NEWARRAY0.byte(),
+        OpCode::PUSH5.byte(),
+        OpCode::PUSH9.byte(),
+        OpCode::SETITEM.byte(),
+        OpCode::ENDTRY.byte(),
+        0x05,
+        OpCode::PUSH1.byte(),
+        OpCode::ENDTRY.byte(),
+        0x02,
+        OpCode::RET.byte(),
+    ]);
+    match result {
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Halt,
+            "SETITEM out-of-range inside a TRY must be caught (HALT), got {r:?}"
+        ),
+        Err(e) => panic!("SETITEM out-of-range should be catchable, but faulted uncatchably: {e}"),
+    }
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
