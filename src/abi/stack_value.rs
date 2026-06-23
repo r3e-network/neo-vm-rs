@@ -217,10 +217,32 @@ pub fn new_array_default_value_for_type_tag(type_tag: u8) -> StackValue {
 #[must_use]
 pub fn new_array_default_value_for_neovm_type_tag(type_tag: u8) -> StackValue {
     match type_tag {
+        // Canonical NEWARRAY_T default per element type: Boolean=>false,
+        // Integer=>0, ByteString=>empty, everything else (Any/Pointer/Buffer/
+        // Array/Struct/Map/InteropInterface)=>Null.
+        NEOVM_STACK_ITEM_TYPE_BOOLEAN => StackValue::Boolean(false),
         NEOVM_STACK_ITEM_TYPE_INTEGER => StackValue::Integer(0),
         NEOVM_STACK_ITEM_TYPE_BYTESTRING => StackValue::ByteString(Vec::new()),
         _ => StackValue::Null,
     }
+}
+
+/// Whether `type_tag` is a defined NeoVM `StackItemType` (canonical
+/// `Enum.IsDefined`). NEWARRAY_T faults (uncatchably) on an undefined tag.
+pub fn is_defined_neovm_type_tag(type_tag: u8) -> bool {
+    matches!(
+        type_tag,
+        NEOVM_STACK_ITEM_TYPE_ANY
+            | NEOVM_STACK_ITEM_TYPE_POINTER
+            | NEOVM_STACK_ITEM_TYPE_BOOLEAN
+            | NEOVM_STACK_ITEM_TYPE_INTEGER
+            | NEOVM_STACK_ITEM_TYPE_BYTESTRING
+            | NEOVM_STACK_ITEM_TYPE_BUFFER
+            | NEOVM_STACK_ITEM_TYPE_ARRAY
+            | NEOVM_STACK_ITEM_TYPE_STRUCT
+            | NEOVM_STACK_ITEM_TYPE_MAP
+            | NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE
+    )
 }
 
 /// Pop a syscall-style byte argument from the top of a stack.

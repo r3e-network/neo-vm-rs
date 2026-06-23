@@ -136,6 +136,13 @@ pub fn pow_values(base: StackValue, exponent: StackValue) -> Result<StackValue, 
     if exponent < BigInt::from(0) {
         return Err("negative exponent for POW".into());
     }
+    // Canonical NeoVM `Pow` calls `Limits.AssertShift((int)exponent)` first, which
+    // also faults when the exponent exceeds MaxShift (256) — before the base is even
+    // examined. Without this bound, exponents in 257..=u32::MAX were silently
+    // accepted (diverging for bases -1/0/1, which don't overflow).
+    if exponent > BigInt::from(256) {
+        return Err("exponent exceeds maximum for POW (max 256)".into());
+    }
     let exponent = exponent
         .to_u32()
         .ok_or_else(|| "exponent too large for POW".to_string())?;

@@ -212,6 +212,11 @@ pub(super) fn execute(
                 return Err("NEWARRAY_T count exceeds maximum stack size".to_string());
             }
             let kind = script[ip + 1];
+            // Canonical NEWARRAY_T validates the type tag (`Enum.IsDefined`) and
+            // faults (uncatchably) on an undefined value, before building the array.
+            if !crate::is_defined_neovm_type_tag(kind) {
+                return Err(format!("invalid type for NEWARRAY_T: 0x{kind:02x}"));
+            }
             let default_value = new_array_default_value_for_neovm_type_tag(kind);
             stack.push(ids.array(vec![default_value; count]));
             ip += 2;
