@@ -1,6 +1,6 @@
 use neo_vm_rs::{
-    runtime::{ops, RuntimeStack},
     StackValue, VmContext, VmState,
+    runtime::{RuntimeStack, ops},
 };
 
 #[derive(Default)]
@@ -67,10 +67,17 @@ fn shared_stack_and_byte_opcode_apis_do_not_require_context_methods() {
     assert_eq!(ctx.pop_value(), StackValue::Integer(1));
 
     ctx.push_value(StackValue::ByteString(b"neo".to_vec()));
-    ctx.push_value(StackValue::Buffer(b"n4".to_vec()));
+    ctx.push_value(StackValue::Buffer(0, b"n4".to_vec()));
     ops::bytes::cat(&mut ctx);
 
-    assert_eq!(ctx.pop_value(), StackValue::Buffer(b"neon4".to_vec()));
+    {
+        let actual = ctx.pop_value();
+        let expected = StackValue::Buffer(0, b"neon4".to_vec());
+        assert!(
+            actual.structural_eq(&expected),
+            "Buffer mismatch: actual={actual:?} expected={expected:?}"
+        );
+    }
 }
 
 #[test]
@@ -79,7 +86,14 @@ fn runtime_splice_ops_share_neovm_span_semantics() {
 
     ops::bytes::cat(&mut ctx);
 
-    assert_eq!(ctx.pop_value(), StackValue::Buffer(vec![0x80, 0x00, 0x01]));
+    {
+        let actual = ctx.pop_value();
+        let expected = StackValue::Buffer(0, vec![0x80, 0x00, 0x01]);
+        assert!(
+            actual.structural_eq(&expected),
+            "Buffer mismatch: actual={actual:?} expected={expected:?}"
+        );
+    }
     assert_eq!(ctx.fault_message, None);
 }
 
@@ -99,7 +113,7 @@ fn runtime_arithmetic_ops_own_stack_pop_push_shape() {
 #[test]
 fn runtime_collection_ops_preserve_in_place_mutation_shape() {
     let mut rt = TestRuntime {
-        stack: vec![StackValue::Array(vec![]), StackValue::Integer(1)],
+        stack: vec![StackValue::Array(0, vec![]), StackValue::Integer(1)],
         fault: None,
     };
 

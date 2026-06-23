@@ -1,5 +1,5 @@
+use super::super::helpers::StackValue;
 use super::super::opcodes::*;
-use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
 use crate::semantics::numeric;
 use alloc::{
@@ -178,11 +178,11 @@ pub(super) fn execute(
             if target < 0 || target as usize > script.len() {
                 return Err("PUSHA target out of bounds".to_string());
             }
-            stack.push(StackValue::Pointer(target as usize));
+            stack.push(StackValue::Pointer(target as i64));
             ip += 5;
             finish!(Dispatch::Continue);
         }
-            _ => return Err(format!("unexpected opcode in push_ops: 0x{opcode:02x}")),
+        _ => return Err(format!("unexpected opcode in push_ops: 0x{opcode:02x}")),
     }
     *ip_ref = ip;
     Ok(Dispatch::Fallthrough)

@@ -1,13 +1,9 @@
 use super::super::helpers::*;
 use super::super::opcodes::*;
-use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
-use crate::{
-    semantics::{
-        arithmetic as arithmetic_rules, comparison as comparison_rules,
-        stack_shape::{self, ValueStack},
-    },
-    StackValue as AbiStackValue,
+use crate::semantics::{
+    arithmetic as arithmetic_rules, comparison as comparison_rules,
+    stack_shape::{self, ValueStack},
 };
 use alloc::{
     string::{String, ToString},
@@ -33,12 +29,14 @@ pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatc
         EQUAL => {
             let right = value_stack.pop_interpreter_value()?;
             let left = value_stack.pop_interpreter_value()?;
-            value_stack.push_interpreter_value(StackValue::Boolean(equals_with_limits(&left, &right)?));
+            value_stack
+                .push_interpreter_value(StackValue::Boolean(equals_with_limits(&left, &right)?));
         }
         NOTEQUAL => {
             let right = value_stack.pop_interpreter_value()?;
             let left = value_stack.pop_interpreter_value()?;
-            value_stack.push_interpreter_value(StackValue::Boolean(!equals_with_limits(&left, &right)?));
+            value_stack
+                .push_interpreter_value(StackValue::Boolean(!equals_with_limits(&left, &right)?));
         }
         LT => stack_shape::binary_bool(&mut value_stack, comparison_rules::less_than_values)?,
         LE => stack_shape::binary_bool(&mut value_stack, comparison_rules::less_or_equal_values)?,
@@ -80,14 +78,14 @@ pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatc
         MIN => stack_shape::binary_value(&mut value_stack, arithmetic_rules::min_values)?,
         MAX => stack_shape::binary_value(&mut value_stack, arithmetic_rules::max_values)?,
         WITHIN => stack_shape::ternary_bool(&mut value_stack, arithmetic_rules::within_values)?,
-            _ => return Err(format!("unexpected opcode in numeric_ops: 0x{opcode:02x}")),
+        _ => return Err(format!("unexpected opcode in numeric_ops: 0x{opcode:02x}")),
     }
     Ok(Dispatch::Fallthrough)
 }
 
 fn shift_value(
     stack: &mut InterpreterValueStack<'_>,
-    op: fn(AbiStackValue, i64) -> Result<AbiStackValue, String>,
+    op: fn(StackValue, i64) -> Result<StackValue, String>,
 ) -> Result<(), String> {
     let shift = stack.pop_shift_count()?;
     let value = stack.pop_interpreter_value()?;
@@ -95,7 +93,7 @@ fn shift_value(
         stack.push_interpreter_value(value);
         return Ok(());
     }
-    stack.push_abi_value(op(into_abi_value(value), shift)?)
+    stack.push_abi_value(op(value, shift)?)
 }
 
 struct InterpreterValueStack<'a> {
@@ -119,40 +117,20 @@ impl<'a> InterpreterValueStack<'a> {
         pop_shift_count(self.stack)
     }
 
-    fn push_abi_value(&mut self, value: AbiStackValue) -> Result<(), String> {
+    fn push_abi_value(&mut self, value: StackValue) -> Result<(), String> {
         <Self as ValueStack>::push_value(self, value)
     }
 }
 
 impl ValueStack for InterpreterValueStack<'_> {
-    fn pop_value(&mut self) -> Result<AbiStackValue, String> {
+    fn pop_value(&mut self) -> Result<StackValue, String> {
         self.stack
             .pop()
-            .map(into_abi_value)
             .ok_or_else(|| "stack underflow".to_string())
     }
 
-    fn push_value(&mut self, value: AbiStackValue) -> Result<(), String> {
-        self.stack.push(match value {
-            AbiStackValue::Integer(value) => StackValue::Integer(value),
-            AbiStackValue::BigInteger(value) => StackValue::BigInteger(value),
-            AbiStackValue::ByteString(value) => StackValue::ByteString(value),
-            AbiStackValue::Boolean(value) => StackValue::Boolean(value),
-            AbiStackValue::Null => StackValue::Null,
-            AbiStackValue::Pointer(value) => {
-                StackValue::Pointer(usize::try_from(value).map_err(|_| {
-                    "semantic opcode produced a pointer outside the interpreter range".to_string()
-                })?)
-            }
-            AbiStackValue::Buffer(_)
-            | AbiStackValue::Array(_)
-            | AbiStackValue::Struct(_)
-            | AbiStackValue::Map(_)
-            | AbiStackValue::Interop(_)
-            | AbiStackValue::Iterator(_) => {
-                return Err("semantic numeric opcode produced a compound result".to_string())
-            }
-        });
+    fn push_value(&mut self, value: StackValue) -> Result<(), String> {
+        self.stack.push(value);
         Ok(())
     }
 }

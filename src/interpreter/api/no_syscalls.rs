@@ -1,4 +1,4 @@
-use super::{AbiStackValue, SyscallProvider};
+use super::{StackValue, SyscallProvider};
 use alloc::{format, string::String, vec::Vec};
 
 pub(super) struct NoSyscalls;
@@ -8,7 +8,7 @@ impl SyscallProvider for NoSyscalls {
         &mut self,
         api: u32,
         _ip: usize,
-        _stack: &mut Vec<AbiStackValue>,
+        _stack: &mut Vec<StackValue>,
     ) -> Result<(), String> {
         Err(format!("unsupported syscall 0x{api:08x}"))
     }

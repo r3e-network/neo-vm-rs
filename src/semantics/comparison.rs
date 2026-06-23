@@ -5,7 +5,7 @@ use alloc::string::{String, ToString};
 use num_bigint::BigInt;
 use num_traits::Zero;
 
-use crate::{semantics::numeric, StackValue};
+use crate::{StackValue, semantics::numeric};
 
 /// Return NeoVM equality for public ABI values.
 #[must_use]
@@ -106,11 +106,11 @@ fn integer_value(value: &StackValue, type_error: &'static str) -> Result<BigInt,
         }
         StackValue::Boolean(value) => Ok(BigInt::from(if *value { 1 } else { 0 })),
         StackValue::Null
-        | StackValue::Buffer(_)
+        | StackValue::Buffer(_, _)
         | StackValue::Pointer(_)
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
+        | StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
         | StackValue::Interop(_)
         | StackValue::Iterator(_) => Err(type_error.to_string()),
     }
@@ -134,11 +134,11 @@ pub fn strict_boolean_value(value: &StackValue) -> Result<bool, String> {
             Ok(bytes.iter().any(|byte| *byte != 0))
         }
         StackValue::Null => Ok(false),
-        StackValue::Buffer(_)
+        StackValue::Buffer(_, _)
         | StackValue::Pointer(_)
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
+        | StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
         | StackValue::Interop(_)
         | StackValue::Iterator(_) => Ok(true),
     }

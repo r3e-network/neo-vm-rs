@@ -1,6 +1,5 @@
-pub(crate) use super::runtime_types::{
-    into_abi_value, structurally_equal, to_abi_stack, to_abi_value, CompoundIds, StackValue,
-};
+pub(crate) use super::runtime_types::{CompoundIds, structurally_equal};
+pub(crate) use crate::StackValue;
 use crate::{
     STACK_VALUE_CODEC_TAG_ARRAY, STACK_VALUE_CODEC_TAG_BIG_INTEGER, STACK_VALUE_CODEC_TAG_BOOLEAN,
     STACK_VALUE_CODEC_TAG_BUFFER, STACK_VALUE_CODEC_TAG_BYTESTRING, STACK_VALUE_CODEC_TAG_INTEGER,

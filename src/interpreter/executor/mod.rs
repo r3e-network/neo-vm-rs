@@ -7,13 +7,12 @@ mod push_ops;
 mod result_ops;
 mod slot_ops;
 mod stack_ops;
+use super::helpers::StackValue;
 use super::helpers::*;
 use super::opcodes::*;
-use super::runtime_types::{to_abi_value, CompoundIds, StackValue};
+use super::runtime_types::CompoundIds;
 use super::state::*;
-use crate::{
-    semantics::comparison as comparison_rules, ExecutionResult, StackValue as AbiStackValue,
-};
+use crate::{ExecutionResult, semantics::comparison as comparison_rules};
 use alloc::{
     format,
     string::{String, ToString},
@@ -23,7 +22,7 @@ use core::sync::atomic::Ordering;
 
 pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     script: &[u8],
-    initial_stack: Vec<AbiStackValue>,
+    initial_stack: Vec<StackValue>,
     initial_ip: usize,
     initializer_ip: Option<usize>,
     result_stack_limit: Option<usize>,
@@ -41,10 +40,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
         return Err("initializer instruction pointer out of bounds".to_string());
     }
     let mut ids = CompoundIds::default();
-    let mut method_initial_stack = initial_stack
-        .into_iter()
-        .map(|item| ids.import_abi(item))
-        .collect::<Vec<_>>();
+    let mut method_initial_stack = initial_stack;
     let mut running_initializer = initializer_ip.is_some();
     let retained_initializer_method_stack_len = if running_initializer {
         retain_initializer_method_stack(&method_initial_stack)?
@@ -494,7 +490,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             CALLA => {
                 let item = pop_item(&mut stack)?;
                 let offset = match item {
-                    StackValue::Pointer(p) => p,
+                    StackValue::Pointer(p) => p as usize,
                     _ => return Err("CALLA expects a pointer".to_string()),
                 };
                 let return_ip = ip + 1;
@@ -766,9 +762,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
 
 fn pop_jump_comparison(
     stack: &mut Vec<StackValue>,
-    compare: fn(&AbiStackValue, &AbiStackValue) -> Result<bool, String>,
+    compare: fn(&StackValue, &StackValue) -> Result<bool, String>,
 ) -> Result<bool, String> {
     let right = pop_item(stack)?;
     let left = pop_item(stack)?;
-    compare(&to_abi_value(&left), &to_abi_value(&right))
+    compare(&left, &right)
 }

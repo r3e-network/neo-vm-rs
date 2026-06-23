@@ -1,6 +1,6 @@
-use super::super::runtime_types::{to_abi_stack, StackValue};
+use super::super::helpers::StackValue;
 use super::super::state::{
-    PendingException, LAST_RESULT_LIMIT, LAST_RESULT_STACK_LEN, LAST_RESULT_STAGE,
+    LAST_RESULT_LIMIT, LAST_RESULT_STACK_LEN, LAST_RESULT_STAGE, PendingException,
 };
 use crate::{ExecutionResult, VmState};
 use alloc::{string::String, vec::Vec};
@@ -15,10 +15,10 @@ pub(super) fn fault_result(
     ExecutionResult {
         fee_consumed_pico: 0,
         state: VmState::Fault,
-        stack: to_abi_stack(stack),
+        stack: stack.to_vec(),
         fault_message: Some(fault_message),
         fault_ip: Some(ip as u32),
-        fault_locals: Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(locals))),
+        fault_locals: Some(crate::abi::fast_codec::encode_stack(&locals)),
     }
 }
 
@@ -72,7 +72,7 @@ pub(super) fn finish_halt_result(
     trim_halt_stack_for_result_limit(&mut stack, result_stack_limit);
     LAST_RESULT_STAGE.store(2, Ordering::Relaxed);
     LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
-    let abi_stack = to_abi_stack(&stack);
+    let abi_stack = stack.clone();
     LAST_RESULT_STAGE.store(3, Ordering::Relaxed);
 
     #[cfg(target_arch = "riscv32")]

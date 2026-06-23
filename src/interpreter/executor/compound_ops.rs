@@ -1,9 +1,7 @@
 use super::super::helpers::*;
 use super::super::opcodes::*;
-use super::super::runtime_types::{
-    find_affected_indices, propagate_update, CompoundIds, StackValue,
-};
-use super::super::state::{remember_consumed_mutation, PendingException, TryStack, MAX_STACK_SIZE};
+use super::super::runtime_types::{CompoundIds, find_affected_indices, propagate_update};
+use super::super::state::{MAX_STACK_SIZE, PendingException, TryStack, remember_consumed_mutation};
 use super::control::Dispatch;
 use crate::{
     new_array_default_value_for_neovm_type_tag, semantics::collections as collection_rules,
@@ -164,7 +162,7 @@ pub(super) fn execute(
                 return Err("NEWARRAY_T count exceeds maximum stack size".to_string());
             }
             let kind = script[ip + 1];
-            let default_value = ids.import_abi(new_array_default_value_for_neovm_type_tag(kind));
+            let default_value = new_array_default_value_for_neovm_type_tag(kind);
             stack.push(ids.array(vec![default_value; count]));
             ip += 2;
             finish!(Dispatch::Continue);
@@ -187,14 +185,14 @@ pub(super) fn execute(
         }
         SIZE => {
             let item = pop_item(stack)?;
-            let size = collection_rules::size(&to_abi_value(&item))
+            let size = collection_rules::size(&item)
                 .map_err(|_| "SIZE expects a collection".to_string())?;
             stack.push(StackValue::Integer(size));
         }
         HASKEY => {
             let key = pop_item(stack)?;
             let item = pop_item(stack)?;
-            let has_key = collection_rules::has_key(&to_abi_value(&item), &to_abi_value(&key))
+            let has_key = collection_rules::has_key(&item, &key)
                 .map_err(|_| "HASKEY expects an array, buffer, or map".to_string())?;
             stack.push(StackValue::Boolean(has_key));
         }
@@ -288,12 +286,9 @@ pub(super) fn execute(
                     | StackValue::Integer(_)
                     | StackValue::BigInteger(_)
                     | StackValue::Boolean(_) => {
-                        let value = collection_rules::pick_item(
-                            &to_abi_value(&item),
-                            &to_abi_value(&key_or_index),
-                        )
-                        .map_err(|_| "index out of range for PICKITEM".to_string())?;
-                        stack.push(ids.import_abi(value));
+                        let value = collection_rules::pick_item(&item, &key_or_index)
+                            .map_err(|_| "index out of range for PICKITEM".to_string())?;
+                        stack.push(value);
                     }
                     _ => {
                         // Array and Struct preserve interpreter object identity when
@@ -311,7 +306,7 @@ pub(super) fn execute(
                             _ => {
                                 return Err(
                                     "PICKITEM index must be a non-negative integer".to_string()
-                                )
+                                );
                             }
                         };
                         match item {
@@ -329,7 +324,7 @@ pub(super) fn execute(
                                 return Err(
                                     "PICKITEM expects an array, map, byte string, or integer"
                                         .to_string(),
-                                )
+                                );
                             }
                         }
                     }
@@ -352,7 +347,7 @@ pub(super) fn execute(
                 StackValue::ByteString(_) => {
                     return Err(
                         "SETITEM expects a mutable buffer, array, struct, or map".to_string()
-                    )
+                    );
                 }
                 StackValue::Buffer(id, mut bytes) => {
                     let index = integer_value_for_collection_index(&key)?;
@@ -709,7 +704,7 @@ pub(super) fn execute(
             let item = pop_item(stack)?;
             stack.push(StackValue::Boolean(is_null(&item)));
         }
-            _ => return Err(format!("unexpected opcode in compound_ops: 0x{opcode:02x}")),
+        _ => return Err(format!("unexpected opcode in compound_ops: 0x{opcode:02x}")),
     }
     *ip_ref = ip;
     Ok(Dispatch::Fallthrough)

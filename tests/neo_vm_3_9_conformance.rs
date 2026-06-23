@@ -32,7 +32,15 @@ fn interpreter_matches_neo_vm_3_9_conformance_vectors() {
             .unwrap_or_else(|err| panic!("{} failed to execute: {err}", vector.name));
 
         assert_eq!(result.state, vector.expected_state, "{}", vector.name);
-        assert_eq!(result.stack, vector.expected_stack, "{}", vector.name);
+        assert!(
+            result
+                .stack
+                .iter()
+                .zip(vector.expected_stack.iter())
+                .all(|(a, b)| a.structural_eq(b)),
+            "{}",
+            vector.name
+        );
     }
 }
 

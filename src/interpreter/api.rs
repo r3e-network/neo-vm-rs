@@ -1,5 +1,5 @@
 use super::executor::interpret_with_stack_and_syscalls_at_internal;
-use crate::{ExecutionResult, StackValue as AbiStackValue};
+use crate::{ExecutionResult, StackValue};
 use alloc::{string::String, vec::Vec};
 
 mod no_syscalls;
@@ -16,12 +16,7 @@ pub trait SyscallProvider {
         Ok(())
     }
 
-    fn syscall(
-        &mut self,
-        api: u32,
-        ip: usize,
-        stack: &mut Vec<AbiStackValue>,
-    ) -> Result<(), String>;
+    fn syscall(&mut self, api: u32, ip: usize, stack: &mut Vec<StackValue>) -> Result<(), String>;
 
     fn initializer_complete(&mut self, _ip: usize) -> Result<(), String> {
         Ok(())
@@ -29,12 +24,7 @@ pub trait SyscallProvider {
 
     /// Handle CALLT opcode. The default encodes the token with a distinctive
     /// marker so the host can distinguish CALLT from regular SYSCALL.
-    fn callt(
-        &mut self,
-        token: u16,
-        ip: usize,
-        stack: &mut Vec<AbiStackValue>,
-    ) -> Result<(), String> {
+    fn callt(&mut self, token: u16, ip: usize, stack: &mut Vec<StackValue>) -> Result<(), String> {
         // Encode: CALLT_MARKER_HI in upper 16 bits + token in low 16 bits.
         // Host checks (api >> 16) == CALLT_MARKER_HI to detect CALLT calls.
         self.syscall(CALLT_MARKER | token as u32, ip, stack)
@@ -57,7 +47,7 @@ pub fn interpret_with_syscalls<H: SyscallProvider>(
 
 pub fn interpret_with_stack_and_syscalls<H: SyscallProvider>(
     script: &[u8],
-    initial_stack: Vec<AbiStackValue>,
+    initial_stack: Vec<StackValue>,
     host: &mut H,
 ) -> Result<ExecutionResult, String> {
     interpret_with_stack_and_syscalls_at(script, initial_stack, 0, host)
@@ -65,7 +55,7 @@ pub fn interpret_with_stack_and_syscalls<H: SyscallProvider>(
 
 pub fn interpret_with_stack_and_syscalls_at<H: SyscallProvider>(
     script: &[u8],
-    initial_stack: Vec<AbiStackValue>,
+    initial_stack: Vec<StackValue>,
     initial_ip: usize,
     host: &mut H,
 ) -> Result<ExecutionResult, String> {
@@ -81,7 +71,7 @@ pub fn interpret_with_stack_and_syscalls_at<H: SyscallProvider>(
 
 pub fn interpret_with_stack_and_syscalls_at_with_result_limit<H: SyscallProvider>(
     script: &[u8],
-    initial_stack: Vec<AbiStackValue>,
+    initial_stack: Vec<StackValue>,
     initial_ip: usize,
     result_stack_limit: usize,
     host: &mut H,
@@ -98,7 +88,7 @@ pub fn interpret_with_stack_and_syscalls_at_with_result_limit<H: SyscallProvider
 
 pub fn interpret_with_stack_and_syscalls_at_with_initializer<H: SyscallProvider>(
     script: &[u8],
-    initial_stack: Vec<AbiStackValue>,
+    initial_stack: Vec<StackValue>,
     initial_ip: usize,
     initializer_ip: usize,
     host: &mut H,
@@ -117,7 +107,7 @@ pub fn interpret_with_stack_and_syscalls_at_with_initializer_and_result_limit<
     H: SyscallProvider,
 >(
     script: &[u8],
-    initial_stack: Vec<AbiStackValue>,
+    initial_stack: Vec<StackValue>,
     initial_ip: usize,
     initializer_ip: usize,
     result_stack_limit: usize,

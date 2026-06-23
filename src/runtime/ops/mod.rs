@@ -7,7 +7,7 @@
 
 use alloc::string::String;
 
-use crate::{runtime::RuntimeStack, semantics::stack_shape::ValueStack, StackValue};
+use crate::{StackValue, runtime::RuntimeStack, semantics::stack_shape::ValueStack};
 
 macro_rules! runtime_unary_value_op {
     ($name:ident, $rule:path) => {

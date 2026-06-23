@@ -2,18 +2,24 @@ use neo_vm_rs::{ExecutionResult, StackValue, VmState};
 
 #[test]
 fn stack_values_round_trip_through_serde() {
-    let value = StackValue::Array(vec![
-        StackValue::Integer(42),
-        StackValue::ByteString(vec![0xde, 0xad, 0xbe, 0xef]),
-        StackValue::Map(vec![(
-            StackValue::ByteString(vec![1]),
-            StackValue::Boolean(true),
-        )]),
-    ]);
+    let value = StackValue::Array(
+        0,
+        vec![
+            StackValue::Integer(42),
+            StackValue::ByteString(vec![0xde, 0xad, 0xbe, 0xef]),
+            StackValue::Map(
+                0,
+                vec![(StackValue::ByteString(vec![1]), StackValue::Boolean(true))],
+            ),
+        ],
+    );
 
     let json = serde_json::to_string(&value).expect("stack value should serialize");
     let decoded: StackValue = serde_json::from_str(&json).expect("stack value should deserialize");
-    assert_eq!(decoded, value);
+    assert!(
+        decoded.structural_eq(&value),
+        "decoded={decoded:?} expected={value:?}"
+    );
 }
 
 #[test]

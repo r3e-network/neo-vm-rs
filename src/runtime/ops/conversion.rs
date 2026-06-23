@@ -1,6 +1,6 @@
 //! Runtime stack adapters for type conversion opcodes.
 
-use crate::runtime::{push_value_result, RuntimeStack};
+use crate::runtime::{RuntimeStack, push_value_result};
 use crate::semantics::conversion as rules;
 
 pub fn is_type<R: RuntimeStack + ?Sized>(runtime: &mut R, type_byte: u8) {

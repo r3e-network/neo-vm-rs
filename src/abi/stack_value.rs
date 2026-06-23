@@ -2,6 +2,7 @@
 
 use alloc::{format, string::String, vec::Vec};
 use core::convert::TryInto;
+use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
 use crate::semantics::numeric;
@@ -188,10 +189,10 @@ pub fn default_value_for_type_tag(type_tag: u8) -> StackValue {
         COMPACT_TAG_BOOLEAN => StackValue::Boolean(false),
         COMPACT_TAG_INTEGER | COMPACT_TAG_BIG_INTEGER => StackValue::Integer(0),
         COMPACT_TAG_BYTESTRING => StackValue::ByteString(Vec::new()),
-        COMPACT_TAG_BUFFER => StackValue::Buffer(Vec::new()),
-        COMPACT_TAG_ARRAY => StackValue::Array(Vec::new()),
-        COMPACT_TAG_STRUCT => StackValue::Struct(Vec::new()),
-        COMPACT_TAG_MAP => StackValue::Map(Vec::new()),
+        COMPACT_TAG_BUFFER => StackValue::Buffer(crate::next_stack_item_id() as u64, Vec::new()),
+        COMPACT_TAG_ARRAY => StackValue::Array(crate::next_stack_item_id() as u64, Vec::new()),
+        COMPACT_TAG_STRUCT => StackValue::Struct(crate::next_stack_item_id() as u64, Vec::new()),
+        COMPACT_TAG_MAP => StackValue::Map(crate::next_stack_item_id() as u64, Vec::new()),
         COMPACT_TAG_NULL => StackValue::Null,
         _ => StackValue::Null,
     }
@@ -229,7 +230,7 @@ pub fn new_array_default_value_for_neovm_type_tag(type_tag: u8) -> StackValue {
 /// representation, because syscall argument validation is type based.
 pub fn pop_byte_arg(stack: &mut Vec<StackValue>, context: &str) -> Result<Vec<u8>, String> {
     match stack.pop() {
-        Some(StackValue::ByteString(bytes)) | Some(StackValue::Buffer(bytes)) => Ok(bytes),
+        Some(StackValue::ByteString(bytes)) | Some(StackValue::Buffer(_, bytes)) => Ok(bytes),
         Some(other) => Err(format!(
             "{context} expects ByteString or Buffer, got {other:?}"
         )),
@@ -245,7 +246,7 @@ pub fn pop_byte_arg(stack: &mut Vec<StackValue>, context: &str) -> Result<Vec<u8
 #[must_use]
 pub fn byte_sequence_bytes(value: &StackValue) -> Option<&[u8]> {
     match value {
-        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => Some(bytes),
+        StackValue::ByteString(bytes) | StackValue::Buffer(_, bytes) => Some(bytes),
         _ => None,
     }
 }
@@ -280,6 +281,27 @@ pub fn stack_value_as_i64(value: &StackValue) -> Option<i64> {
     }
 }
 
+/// Convert an integer-compatible stack value to an arbitrary-precision integer.
+///
+/// This follows NeoVM's little-endian two's-complement integer conversion rules
+/// and accepts Buffer values for `StackItem.ConvertTo(Integer)` parity.
+pub fn stack_value_as_bigint(value: &StackValue) -> Result<BigInt, String> {
+    match value {
+        StackValue::Integer(value) => Ok(BigInt::from(*value)),
+        StackValue::BigInteger(bytes)
+        | StackValue::ByteString(bytes)
+        | StackValue::Buffer(_, bytes) => numeric::decode_signed_le_bytes_bigint(bytes),
+        StackValue::Boolean(value) => Ok(BigInt::from(if *value { 1 } else { 0 })),
+        StackValue::Null
+        | StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
+        | StackValue::Interop(_)
+        | StackValue::Iterator(_)
+        | StackValue::Pointer(_) => Err("expected integer-compatible value".to_string()),
+    }
+}
+
 /// Extract a strict 32-bit unsigned integer result.
 #[must_use]
 pub fn stack_value_as_u32(value: &StackValue) -> Option<u32> {
@@ -309,12 +331,12 @@ pub fn stack_value_span_bytes(value: &StackValue) -> Option<Vec<u8>> {
         StackValue::Integer(value) => Some(encode_integer(*value)),
         StackValue::BigInteger(bytes)
         | StackValue::ByteString(bytes)
-        | StackValue::Buffer(bytes) => Some(bytes.clone()),
+        | StackValue::Buffer(_, bytes) => Some(bytes.clone()),
         StackValue::Boolean(value) => Some(alloc::vec![u8::from(*value)]),
         StackValue::Null
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
+        | StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
         | StackValue::Interop(_)
         | StackValue::Iterator(_)
         | StackValue::Pointer(_) => None,
@@ -337,7 +359,7 @@ pub fn stack_value_as_string(value: &StackValue) -> Option<String> {
 #[must_use]
 pub fn stack_value_into_items(value: StackValue) -> Option<Vec<StackValue>> {
     match value {
-        StackValue::Array(items) | StackValue::Struct(items) => Some(items),
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => Some(items),
         _ => None,
     }
 }
@@ -347,7 +369,10 @@ pub fn stack_value_into_items(value: StackValue) -> Option<Vec<StackValue>> {
 pub fn concat_splice_values(left: &StackValue, right: &StackValue) -> Option<StackValue> {
     let mut bytes = stack_value_span_bytes(left)?;
     bytes.extend_from_slice(&stack_value_span_bytes(right)?);
-    Some(StackValue::Buffer(bytes))
+    Some(StackValue::Buffer(
+        crate::next_stack_item_id() as u64,
+        bytes,
+    ))
 }
 
 /// Slice one NeoVM GetSpan-compatible value as LEFT/RIGHT/SUBSTR do.
@@ -357,7 +382,7 @@ pub fn slice_splice_value(value: &StackValue, index: usize, count: usize) -> Opt
     let end = index.checked_add(count)?;
     bytes
         .get(index..end)
-        .map(|slice| StackValue::Buffer(slice.to_vec()))
+        .map(|slice| StackValue::Buffer(crate::next_stack_item_id() as u64, slice.to_vec()))
 }
 
 /// Encode an integer using NeoVM's minimal little-endian two's-complement form.
@@ -387,8 +412,23 @@ pub fn encode_integer(value: i64) -> Vec<u8> {
     bytes
 }
 
+/// Decode NeoVM little-endian two's-complement integer bytes.
+pub fn decode_integer_bytes(bytes: &[u8]) -> Result<BigInt, String> {
+    numeric::decode_signed_le_bytes_bigint(bytes)
+}
+
 /// NeoVM stack value.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Compound variants (Array, Struct, Map, Buffer) carry a unique `u64` ID
+/// that enables reference-equality semantics matching C# `StackItem`.
+/// Use [`crate::next_stack_item_id`] to generate fresh IDs.
+///
+/// Serialization skips the runtime IDs for wire-format compatibility
+/// with the original ID-less layout.
+///
+/// `PartialEq` compares compound types by ID (reference equality),
+/// matching C# `ReferenceEquals` semantics for Array/Struct/Map/Buffer.
+#[derive(Debug, Clone, Eq)]
 pub enum StackValue {
     /// 64-bit signed integer for compact ABI paths.
     Integer(i64),
@@ -397,15 +437,15 @@ pub enum StackValue {
     /// Immutable byte string.
     ByteString(Vec<u8>),
     /// Mutable byte buffer.
-    Buffer(Vec<u8>),
+    Buffer(u64, Vec<u8>),
     /// Boolean value.
     Boolean(bool),
     /// Ordered array.
-    Array(Vec<StackValue>),
+    Array(u64, Vec<StackValue>),
     /// Ordered struct.
-    Struct(Vec<StackValue>),
+    Struct(u64, Vec<StackValue>),
     /// Key-value map.
-    Map(Vec<(StackValue, StackValue)>),
+    Map(u64, Vec<(StackValue, StackValue)>),
     /// Host interop handle.
     Interop(u64),
     /// Iterator handle.
@@ -416,7 +456,167 @@ pub enum StackValue {
     Pointer(i64),
 }
 
+// ── Custom serialization: skip runtime IDs for wire-format compatibility ──
+
+impl Serialize for StackValue {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Integer(v) => s.serialize_newtype_variant("StackValue", 0, "Integer", v),
+            Self::BigInteger(v) => s.serialize_newtype_variant("StackValue", 1, "BigInteger", v),
+            Self::ByteString(v) => s.serialize_newtype_variant("StackValue", 2, "ByteString", v),
+            Self::Buffer(_, v) => s.serialize_newtype_variant("StackValue", 3, "Buffer", v),
+            Self::Boolean(v) => s.serialize_newtype_variant("StackValue", 4, "Boolean", v),
+            Self::Array(_, items) => s.serialize_newtype_variant("StackValue", 5, "Array", items),
+            Self::Struct(_, items) => s.serialize_newtype_variant("StackValue", 6, "Struct", items),
+            Self::Map(_, entries) => s.serialize_newtype_variant("StackValue", 7, "Map", entries),
+            Self::Interop(v) => s.serialize_newtype_variant("StackValue", 8, "Interop", v),
+            Self::Iterator(v) => s.serialize_newtype_variant("StackValue", 9, "Iterator", v),
+            Self::Null => s.serialize_unit_variant("StackValue", 10, "Null"),
+            Self::Pointer(v) => s.serialize_newtype_variant("StackValue", 11, "Pointer", v),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StackValue {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use core::fmt;
+        use serde::de::{self, MapAccess, SeqAccess, Visitor};
+
+        struct SvVisitor;
+
+        impl<'de> Visitor<'de> for SvVisitor {
+            type Value = StackValue;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a NeoVM StackValue")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<StackValue, E> {
+                match v {
+                    "Null" => Ok(StackValue::Null),
+                    _ => Err(de::Error::unknown_variant(v, &["Null"])),
+                }
+            }
+
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<StackValue, M::Error> {
+                let key: Option<String> = map.next_key()?;
+                let key = match key {
+                    Some(k) => k,
+                    None => return Err(de::Error::custom("expected StackValue variant key")),
+                };
+                match key.as_str() {
+                    "Integer" => Ok(StackValue::Integer(map.next_value()?)),
+                    "BigInteger" => Ok(StackValue::BigInteger(map.next_value()?)),
+                    "ByteString" => Ok(StackValue::ByteString(map.next_value()?)),
+                    "Buffer" => Ok(StackValue::Buffer(
+                        crate::next_stack_item_id() as u64,
+                        map.next_value()?,
+                    )),
+                    "Boolean" => Ok(StackValue::Boolean(map.next_value()?)),
+                    "Array" => Ok(StackValue::Array(
+                        crate::next_stack_item_id() as u64,
+                        map.next_value()?,
+                    )),
+                    "Struct" => Ok(StackValue::Struct(
+                        crate::next_stack_item_id() as u64,
+                        map.next_value()?,
+                    )),
+                    "Map" => Ok(StackValue::Map(
+                        crate::next_stack_item_id() as u64,
+                        map.next_value()?,
+                    )),
+                    "Interop" => Ok(StackValue::Interop(map.next_value()?)),
+                    "Iterator" => Ok(StackValue::Iterator(map.next_value()?)),
+                    "Null" => Ok(StackValue::Null),
+                    "Pointer" => Ok(StackValue::Pointer(map.next_value()?)),
+                    _ => Err(de::Error::unknown_variant(
+                        &key,
+                        &[
+                            "Integer",
+                            "BigInteger",
+                            "ByteString",
+                            "Buffer",
+                            "Boolean",
+                            "Array",
+                            "Struct",
+                            "Map",
+                            "Interop",
+                            "Iterator",
+                            "Null",
+                            "Pointer",
+                        ],
+                    )),
+                }
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, _seq: A) -> Result<StackValue, A::Error> {
+                Err(de::Error::custom(
+                    "StackValue is not a JSON array; use {\"Variant\": value} format",
+                ))
+            }
+        }
+
+        d.deserialize_any(SvVisitor)
+    }
+}
+
+/// Reference equality for compound types (Array, Struct, Map, Buffer):
+/// compounds compare by ID only (matching C# `ReferenceEquals`).
+/// Primitives compare by value.
+impl PartialEq for StackValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Integer(a), Self::Integer(b)) => a == b,
+            (Self::BigInteger(a), Self::BigInteger(b)) => a == b,
+            (Self::ByteString(a), Self::ByteString(b)) => a == b,
+            (Self::Boolean(a), Self::Boolean(b)) => a == b,
+            (Self::Null, Self::Null) => true,
+            (Self::Pointer(a), Self::Pointer(b)) => a == b,
+            (Self::Interop(a), Self::Interop(b)) => a == b,
+            (Self::Iterator(a), Self::Iterator(b)) => a == b,
+            // Compound types: reference equality by ID
+            (Self::Buffer(id_a, _), Self::Buffer(id_b, _)) => id_a == id_b,
+            (Self::Array(id_a, _), Self::Array(id_b, _)) => id_a == id_b,
+            (Self::Struct(id_a, _), Self::Struct(id_b, _)) => id_a == id_b,
+            (Self::Map(id_a, _), Self::Map(id_b, _)) => id_a == id_b,
+            _ => false,
+        }
+    }
+}
+
 impl StackValue {
+    /// Deep structural equality that compares by value, ignoring compound IDs.
+    ///
+    /// This is used for test assertions and conformance checking where
+    /// two independently constructed values should be considered equal
+    /// if they have the same structure and data.
+    #[must_use]
+    pub fn structural_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Integer(a), Self::Integer(b)) => a == b,
+            (Self::BigInteger(a), Self::BigInteger(b)) => a == b,
+            (Self::ByteString(a), Self::ByteString(b)) => a == b,
+            (Self::Boolean(a), Self::Boolean(b)) => a == b,
+            (Self::Null, Self::Null) => true,
+            (Self::Pointer(a), Self::Pointer(b)) => a == b,
+            (Self::Interop(a), Self::Interop(b)) => a == b,
+            (Self::Iterator(a), Self::Iterator(b)) => a == b,
+            (Self::Buffer(_, a), Self::Buffer(_, b)) => a == b,
+            (Self::Array(_, a), Self::Array(_, b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.structural_eq(y))
+            }
+            (Self::Struct(_, a), Self::Struct(_, b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.structural_eq(y))
+            }
+            (Self::Map(_, a), Self::Map(_, b)) => {
+                a.len() == b.len()
+                    && a.iter()
+                        .zip(b)
+                        .all(|(x, y)| x.0.structural_eq(&y.0) && x.1.structural_eq(&y.1))
+            }
+            _ => false,
+        }
+    }
+
     /// Return the compact runtime tag for this stack value.
     #[must_use]
     pub fn compact_type_tag(&self) -> u8 {
@@ -425,13 +625,13 @@ impl StackValue {
             Self::Boolean(_) => COMPACT_TAG_BOOLEAN,
             Self::ByteString(_) => COMPACT_TAG_BYTESTRING,
             Self::BigInteger(_) => COMPACT_TAG_BIG_INTEGER,
-            Self::Array(_) => COMPACT_TAG_ARRAY,
-            Self::Struct(_) => COMPACT_TAG_STRUCT,
-            Self::Map(_) => COMPACT_TAG_MAP,
+            Self::Array(_, _) => COMPACT_TAG_ARRAY,
+            Self::Struct(_, _) => COMPACT_TAG_STRUCT,
+            Self::Map(_, _) => COMPACT_TAG_MAP,
             Self::Null => COMPACT_TAG_NULL,
             Self::Interop(_) => COMPACT_TAG_INTEROP,
             Self::Iterator(_) => COMPACT_TAG_ITERATOR,
-            Self::Buffer(_) => COMPACT_TAG_BUFFER,
+            Self::Buffer(_, _) => COMPACT_TAG_BUFFER,
             Self::Pointer(_) => COMPACT_TAG_POINTER,
         }
     }
@@ -446,10 +646,10 @@ impl StackValue {
             Self::BigInteger(bytes) | Self::ByteString(bytes) => {
                 bytes.iter().any(|byte| *byte != 0)
             }
-            Self::Buffer(_)
-            | Self::Array(_)
-            | Self::Struct(_)
-            | Self::Map(_)
+            Self::Buffer(_, _)
+            | Self::Array(_, _)
+            | Self::Struct(_, _)
+            | Self::Map(_, _)
             | Self::Interop(_)
             | Self::Iterator(_)
             | Self::Pointer(_) => true,
@@ -464,7 +664,7 @@ impl StackValue {
         match self {
             Self::Integer(value) => Some(i128::from(*value)),
             Self::Boolean(value) => Some(i128::from(*value as i8)),
-            Self::BigInteger(bytes) | Self::ByteString(bytes) | Self::Buffer(bytes) => {
+            Self::BigInteger(bytes) | Self::ByteString(bytes) | Self::Buffer(_, bytes) => {
                 numeric::decode_signed_le_bytes_i128(bytes).ok()
             }
             _ => None,
@@ -475,7 +675,9 @@ impl StackValue {
     #[must_use]
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
-            Self::BigInteger(bytes) | Self::ByteString(bytes) | Self::Buffer(bytes) => Some(bytes),
+            Self::BigInteger(bytes) | Self::ByteString(bytes) | Self::Buffer(_, bytes) => {
+                Some(bytes)
+            }
             _ => None,
         }
     }
@@ -487,15 +689,15 @@ impl StackValue {
     #[must_use]
     pub fn to_byte_string_bytes(&self) -> Option<Vec<u8>> {
         match self {
-            Self::ByteString(bytes) | Self::Buffer(bytes) | Self::BigInteger(bytes) => {
+            Self::ByteString(bytes) | Self::Buffer(_, bytes) | Self::BigInteger(bytes) => {
                 Some(bytes.clone())
             }
             Self::Integer(value) => Some(encode_integer(*value)),
             Self::Boolean(value) => Some(alloc::vec![u8::from(*value)]),
             Self::Null => Some(Vec::new()),
-            Self::Array(_)
-            | Self::Struct(_)
-            | Self::Map(_)
+            Self::Array(_, _)
+            | Self::Struct(_, _)
+            | Self::Map(_, _)
             | Self::Interop(_)
             | Self::Iterator(_)
             | Self::Pointer(_) => None,
@@ -517,7 +719,8 @@ impl StackValue {
         if matches!(self, Self::Null) {
             return Some(Self::Null);
         }
-        self.to_byte_string_bytes().map(Self::Buffer)
+        self.to_byte_string_bytes()
+            .map(|b| Self::Buffer(crate::next_stack_item_id() as u64, b))
     }
 }
 
@@ -569,15 +772,15 @@ mod tests {
             super::COMPACT_TAG_BIG_INTEGER
         );
         assert_eq!(
-            StackValue::Array(vec![]).compact_type_tag(),
+            StackValue::Array(0, vec![]).compact_type_tag(),
             super::COMPACT_TAG_ARRAY
         );
         assert_eq!(
-            StackValue::Struct(vec![]).compact_type_tag(),
+            StackValue::Struct(0, vec![]).compact_type_tag(),
             super::COMPACT_TAG_STRUCT
         );
         assert_eq!(
-            StackValue::Map(vec![]).compact_type_tag(),
+            StackValue::Map(0, vec![]).compact_type_tag(),
             super::COMPACT_TAG_MAP
         );
         assert_eq!(StackValue::Null.compact_type_tag(), super::COMPACT_TAG_NULL);
@@ -590,7 +793,7 @@ mod tests {
             super::COMPACT_TAG_ITERATOR
         );
         assert_eq!(
-            StackValue::Buffer(vec![]).compact_type_tag(),
+            StackValue::Buffer(0, vec![]).compact_type_tag(),
             super::COMPACT_TAG_BUFFER
         );
         assert_eq!(
@@ -606,7 +809,7 @@ mod tests {
             Some(b"neo".to_vec())
         );
         assert_eq!(
-            StackValue::Buffer(b"n4".to_vec()).to_byte_string_bytes(),
+            StackValue::Buffer(0, b"n4".to_vec()).to_byte_string_bytes(),
             Some(b"n4".to_vec())
         );
         assert_eq!(
@@ -622,7 +825,35 @@ mod tests {
             Some(vec![0xff, 0x00])
         );
         assert_eq!(StackValue::Null.to_byte_string_bytes(), Some(vec![]));
-        assert_eq!(StackValue::Array(vec![]).to_byte_string_bytes(), None);
+        assert_eq!(StackValue::Array(0, vec![]).to_byte_string_bytes(), None);
+    }
+
+    #[test]
+    fn stack_value_as_bigint_follows_shared_integer_rules() {
+        use num_bigint::BigInt;
+
+        assert_eq!(
+            super::stack_value_as_bigint(&StackValue::Integer(i64::MIN)).unwrap(),
+            BigInt::from(i64::MIN)
+        );
+        assert_eq!(
+            super::stack_value_as_bigint(&StackValue::Boolean(true)).unwrap(),
+            BigInt::from(1)
+        );
+        assert_eq!(
+            super::stack_value_as_bigint(&StackValue::ByteString(vec![0xff])).unwrap(),
+            BigInt::from(-1)
+        );
+        assert_eq!(
+            super::stack_value_as_bigint(&StackValue::Buffer(0, vec![0x00, 0x80])).unwrap(),
+            BigInt::from(-32768)
+        );
+        assert_eq!(
+            super::decode_integer_bytes(&[0xff, 0xff]).unwrap(),
+            BigInt::from(-1)
+        );
+        assert!(super::stack_value_as_bigint(&StackValue::ByteString(vec![0; 33])).is_err());
+        assert!(super::stack_value_as_bigint(&StackValue::Null).is_err());
     }
 
     #[test]
@@ -631,14 +862,30 @@ mod tests {
             StackValue::Integer(128).convert_to_byte_string_value(),
             Some(StackValue::ByteString(vec![0x80, 0x00]))
         );
-        assert_eq!(
-            StackValue::Boolean(false).convert_to_buffer_value(),
-            Some(StackValue::Buffer(vec![0]))
-        );
-        assert_eq!(
-            StackValue::BigInteger(vec![0xff, 0x00]).convert_to_buffer_value(),
-            Some(StackValue::Buffer(vec![0xff, 0x00]))
-        );
+        {
+            let result = StackValue::Boolean(false)
+                .convert_to_buffer_value()
+                .unwrap();
+            let expected = StackValue::Buffer(0, vec![0]);
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
+        {
+            let result = StackValue::BigInteger(vec![0xff, 0x00])
+                .convert_to_buffer_value()
+                .unwrap();
+            let expected = StackValue::Buffer(0, vec![0xff, 0x00]);
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
         assert_eq!(
             StackValue::Null.convert_to_byte_string_value(),
             Some(StackValue::Null)
@@ -647,7 +894,7 @@ mod tests {
             StackValue::Null.convert_to_buffer_value(),
             Some(StackValue::Null)
         );
-        assert_eq!(StackValue::Array(vec![]).convert_to_buffer_value(), None);
+        assert_eq!(StackValue::Array(0, vec![]).convert_to_buffer_value(), None);
     }
 
     #[test]
@@ -721,22 +968,46 @@ mod tests {
             super::default_value_for_type_tag(0x28),
             StackValue::ByteString(Vec::new())
         );
-        assert_eq!(
-            super::default_value_for_type_tag(0x30),
-            StackValue::Buffer(Vec::new())
-        );
-        assert_eq!(
-            super::default_value_for_type_tag(0x40),
-            StackValue::Array(Vec::new())
-        );
-        assert_eq!(
-            super::default_value_for_type_tag(0x41),
-            StackValue::Struct(Vec::new())
-        );
-        assert_eq!(
-            super::default_value_for_type_tag(0x48),
-            StackValue::Map(Vec::new())
-        );
+        {
+            let result = super::default_value_for_type_tag(0x30);
+            let expected = StackValue::Buffer(0, Vec::new());
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
+        {
+            let result = super::default_value_for_type_tag(0x40);
+            let expected = StackValue::Array(0, Vec::new());
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
+        {
+            let result = super::default_value_for_type_tag(0x41);
+            let expected = StackValue::Struct(0, Vec::new());
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
+        {
+            let result = super::default_value_for_type_tag(0x48);
+            let expected = StackValue::Map(0, Vec::new());
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
         assert_eq!(
             super::default_value_for_type_tag(super::COMPACT_TAG_NULL),
             StackValue::Null
@@ -798,7 +1069,7 @@ mod tests {
         );
         assert_eq!(byte_string_stack, vec![StackValue::Integer(7)]);
 
-        let mut buffer_stack = vec![StackValue::Buffer(b"n4".to_vec())];
+        let mut buffer_stack = vec![StackValue::Buffer(0, b"n4".to_vec())];
         assert_eq!(
             super::pop_byte_arg(&mut buffer_stack, "System.Crypto.SHA256"),
             Ok(b"n4".to_vec())
@@ -818,7 +1089,7 @@ mod tests {
     #[test]
     fn byte_sequence_helpers_accept_only_bytestring_and_buffer() {
         let byte_string = StackValue::ByteString(b"neo".to_vec());
-        let buffer = StackValue::Buffer(b"n4".to_vec());
+        let buffer = StackValue::Buffer(0, b"n4".to_vec());
 
         assert_eq!(super::byte_sequence_bytes(&byte_string), Some(&b"neo"[..]));
         assert_eq!(super::byte_sequence_bytes(&buffer), Some(&b"n4"[..]));
@@ -881,7 +1152,7 @@ mod tests {
         assert_eq!(super::stack_value_as_u8(&StackValue::Integer(256)), None);
 
         assert_eq!(
-            super::stack_value_as_bytes(&StackValue::Buffer(vec![1, 2, 3])),
+            super::stack_value_as_bytes(&StackValue::Buffer(0, vec![1, 2, 3])),
             Some(vec![1, 2, 3])
         );
         assert_eq!(
@@ -902,7 +1173,7 @@ mod tests {
         );
 
         assert_eq!(
-            super::stack_value_into_items(StackValue::Array(vec![StackValue::Integer(1)])),
+            super::stack_value_into_items(StackValue::Array(0, vec![StackValue::Integer(1)])),
             Some(vec![StackValue::Integer(1)])
         );
         assert_eq!(super::stack_value_into_items(StackValue::Integer(1)), None);
@@ -910,39 +1181,75 @@ mod tests {
 
     #[test]
     fn concat_splice_values_uses_neovm_span_semantics() {
-        assert_eq!(
-            super::concat_splice_values(
+        {
+            let result = super::concat_splice_values(
                 &StackValue::ByteString(b"neo".to_vec()),
-                &StackValue::Buffer(b"n4".to_vec())
-            ),
-            Some(StackValue::Buffer(b"neon4".to_vec()))
-        );
+                &StackValue::Buffer(0, b"n4".to_vec()),
+            )
+            .unwrap();
+            let expected = StackValue::Buffer(0, b"neon4".to_vec());
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
+        {
+            let result =
+                super::concat_splice_values(&StackValue::Integer(128), &StackValue::Boolean(true))
+                    .unwrap();
+            let expected = StackValue::Buffer(0, vec![0x80, 0x00, 0x01]);
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
         assert_eq!(
-            super::concat_splice_values(&StackValue::Integer(128), &StackValue::Boolean(true)),
-            Some(StackValue::Buffer(vec![0x80, 0x00, 0x01]))
-        );
-        assert_eq!(
-            super::concat_splice_values(&StackValue::Null, &StackValue::Buffer(vec![2])),
+            super::concat_splice_values(&StackValue::Null, &StackValue::Buffer(0, vec![2])),
             None
         );
     }
 
     #[test]
     fn slice_splice_value_uses_neovm_span_semantics() {
+        {
+            let result =
+                super::slice_splice_value(&StackValue::ByteString(b"hello".to_vec()), 1, 3)
+                    .unwrap();
+            let expected = StackValue::Buffer(0, b"ell".to_vec());
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
+        {
+            let result = super::slice_splice_value(&StackValue::Integer(128), 0, 2).unwrap();
+            let expected = StackValue::Buffer(0, vec![0x80, 0x00]);
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
+        {
+            let result =
+                super::slice_splice_value(&StackValue::Buffer(0, b"hello".to_vec()), 5, 0).unwrap();
+            let expected = StackValue::Buffer(0, Vec::new());
+            assert!(
+                result.structural_eq(&expected),
+                "expected {:?} but got {:?}",
+                expected,
+                result
+            );
+        }
         assert_eq!(
-            super::slice_splice_value(&StackValue::ByteString(b"hello".to_vec()), 1, 3),
-            Some(StackValue::Buffer(b"ell".to_vec()))
-        );
-        assert_eq!(
-            super::slice_splice_value(&StackValue::Integer(128), 0, 2),
-            Some(StackValue::Buffer(vec![0x80, 0x00]))
-        );
-        assert_eq!(
-            super::slice_splice_value(&StackValue::Buffer(b"hello".to_vec()), 5, 0),
-            Some(StackValue::Buffer(Vec::new()))
-        );
-        assert_eq!(
-            super::slice_splice_value(&StackValue::Buffer(b"hello".to_vec()), 4, 2),
+            super::slice_splice_value(&StackValue::Buffer(0, b"hello".to_vec()), 4, 2),
             None
         );
         assert_eq!(super::slice_splice_value(&StackValue::Null, 0, 1), None);

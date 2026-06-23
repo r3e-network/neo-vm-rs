@@ -1,7 +1,7 @@
 //! Runtime-level byte string and buffer opcode adapters.
 
-use crate::runtime::{push_value_result, RuntimeStack};
-use crate::{semantics::splice as splice_rules, StackValue};
+use crate::runtime::{RuntimeStack, push_value_result};
+use crate::{StackValue, semantics::splice as splice_rules};
 
 pub fn cat<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let right = runtime.pop_value();
@@ -34,7 +34,7 @@ pub fn memcpy<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     let source = runtime.pop_value();
     let destination_index = runtime.pop_i64();
     let result = match runtime.top_value_mut() {
-        Some(StackValue::Buffer(buffer)) => {
+        Some(StackValue::Buffer(_, buffer)) => {
             splice_rules::memcpy_bytes(buffer, destination_index, &source, source_index, count)
         }
         _ => Err("MEMCPY: destination is not a Buffer".into()),

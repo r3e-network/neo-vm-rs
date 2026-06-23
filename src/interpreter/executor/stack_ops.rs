@@ -1,6 +1,6 @@
+use super::super::helpers::StackValue;
 use super::super::helpers::pop_integer;
 use super::super::opcodes::*;
-use super::super::runtime_types::StackValue;
 use super::control::Dispatch;
 use crate::semantics::stack as stack_rules;
 use alloc::{string::String, vec::Vec};
@@ -35,7 +35,7 @@ pub(super) fn execute(opcode: u8, stack: &mut Vec<StackValue>) -> Result<Dispatc
             stack_rules::xdrop(stack, index)?;
         }
         CLEAR => stack_rules::clear(stack),
-            _ => return Err(format!("unexpected opcode in stack_ops: 0x{opcode:02x}")),
+        _ => return Err(format!("unexpected opcode in stack_ops: 0x{opcode:02x}")),
     }
     Ok(Dispatch::Fallthrough)
 }

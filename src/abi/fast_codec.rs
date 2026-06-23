@@ -5,11 +5,11 @@
 
 extern crate alloc;
 use super::stack_value::{
-    StackValue, STACK_VALUE_CODEC_TAG_ARRAY, STACK_VALUE_CODEC_TAG_BIG_INTEGER,
-    STACK_VALUE_CODEC_TAG_BOOLEAN, STACK_VALUE_CODEC_TAG_BUFFER, STACK_VALUE_CODEC_TAG_BYTESTRING,
-    STACK_VALUE_CODEC_TAG_INTEGER, STACK_VALUE_CODEC_TAG_INTEROP, STACK_VALUE_CODEC_TAG_ITERATOR,
-    STACK_VALUE_CODEC_TAG_MAP, STACK_VALUE_CODEC_TAG_NULL, STACK_VALUE_CODEC_TAG_POINTER,
-    STACK_VALUE_CODEC_TAG_STRUCT,
+    STACK_VALUE_CODEC_TAG_ARRAY, STACK_VALUE_CODEC_TAG_BIG_INTEGER, STACK_VALUE_CODEC_TAG_BOOLEAN,
+    STACK_VALUE_CODEC_TAG_BUFFER, STACK_VALUE_CODEC_TAG_BYTESTRING, STACK_VALUE_CODEC_TAG_INTEGER,
+    STACK_VALUE_CODEC_TAG_INTEROP, STACK_VALUE_CODEC_TAG_ITERATOR, STACK_VALUE_CODEC_TAG_MAP,
+    STACK_VALUE_CODEC_TAG_NULL, STACK_VALUE_CODEC_TAG_POINTER, STACK_VALUE_CODEC_TAG_STRUCT,
+    StackValue,
 };
 use alloc::vec::Vec;
 
@@ -160,7 +160,7 @@ fn encode_value_into<S: FastEncodeSink>(
             sink.write_u8(STACK_VALUE_CODEC_TAG_BYTESTRING, "buffer too small")?;
             write_len_prefixed_bytes(sink, b)
         }
-        StackValue::Buffer(b) => {
+        StackValue::Buffer(_, b) => {
             sink.write_u8(STACK_VALUE_CODEC_TAG_BUFFER, "buffer too small")?;
             write_len_prefixed_bytes(sink, b)
         }
@@ -168,7 +168,7 @@ fn encode_value_into<S: FastEncodeSink>(
             sink.write_u8(STACK_VALUE_CODEC_TAG_BOOLEAN, "buffer too small")?;
             sink.write_u8(u8::from(*b), "buffer too small")
         }
-        StackValue::Array(items) => {
+        StackValue::Array(_, items) => {
             sink.write_u8(STACK_VALUE_CODEC_TAG_ARRAY, "buffer too small")?;
             write_u32(sink, items.len() as u32, "buffer too small")?;
             for item in items {
@@ -176,7 +176,7 @@ fn encode_value_into<S: FastEncodeSink>(
             }
             Ok(())
         }
-        StackValue::Struct(items) => {
+        StackValue::Struct(_, items) => {
             sink.write_u8(STACK_VALUE_CODEC_TAG_STRUCT, "buffer too small")?;
             write_u32(sink, items.len() as u32, "buffer too small")?;
             for item in items {
@@ -184,7 +184,7 @@ fn encode_value_into<S: FastEncodeSink>(
             }
             Ok(())
         }
-        StackValue::Map(pairs) => {
+        StackValue::Map(_, pairs) => {
             sink.write_u8(STACK_VALUE_CODEC_TAG_MAP, "buffer too small")?;
             write_u32(sink, pairs.len() as u32, "buffer too small")?;
             for (k, v) in pairs {
@@ -292,7 +292,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 "truncated buffer length",
                 "truncated buffer data",
             )?;
-            StackValue::Buffer(data)
+            StackValue::Buffer(crate::next_stack_item_id() as u64, data)
         }
         STACK_VALUE_CODEC_TAG_BOOLEAN => {
             let val = read_exact(bytes, &mut pos, 1, "truncated boolean")?[0] != 0;
@@ -309,7 +309,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 items.push(item);
                 pos += consumed;
             }
-            StackValue::Array(items)
+            StackValue::Array(crate::next_stack_item_id() as u64, items)
         }
         STACK_VALUE_CODEC_TAG_STRUCT => {
             let len = read_u32(bytes, &mut pos, "truncated struct length")? as usize;
@@ -322,7 +322,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 items.push(item);
                 pos += consumed;
             }
-            StackValue::Struct(items)
+            StackValue::Struct(crate::next_stack_item_id() as u64, items)
         }
         STACK_VALUE_CODEC_TAG_MAP => {
             let len = read_u32(bytes, &mut pos, "truncated map length")? as usize;
@@ -337,7 +337,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 pos += v_consumed;
                 pairs.push((k, v));
             }
-            StackValue::Map(pairs)
+            StackValue::Map(crate::next_stack_item_id() as u64, pairs)
         }
         STACK_VALUE_CODEC_TAG_INTEROP => {
             let val = read_u64(bytes, &mut pos, "truncated interop")?;
@@ -381,41 +381,89 @@ mod tests {
 
     #[test]
     fn roundtrip_buffer() {
-        let stack = vec![StackValue::Buffer(vec![0, 0, 0, 0])];
+        let stack = vec![StackValue::Buffer(
+            crate::next_stack_item_id() as u64,
+            vec![0, 0, 0, 0],
+        )];
         let encoded = encode_stack(&stack);
         let decoded = decode_stack(&encoded).unwrap();
-        assert_eq!(stack, decoded);
+        assert_eq!(stack.len(), decoded.len());
+        assert!(
+            stack
+                .iter()
+                .zip(decoded.iter())
+                .all(|(a, b)| a.structural_eq(b)),
+            "expected {:?} but got {:?}",
+            stack,
+            decoded
+        );
     }
 
     #[test]
     fn roundtrip_buffer_empty() {
-        let stack = vec![StackValue::Buffer(vec![])];
+        let stack = vec![StackValue::Buffer(
+            crate::next_stack_item_id() as u64,
+            vec![],
+        )];
         let encoded = encode_stack(&stack);
         let decoded = decode_stack(&encoded).unwrap();
-        assert_eq!(stack, decoded);
+        assert_eq!(stack.len(), decoded.len());
+        assert!(
+            stack
+                .iter()
+                .zip(decoded.iter())
+                .all(|(a, b)| a.structural_eq(b)),
+            "expected {:?} but got {:?}",
+            stack,
+            decoded
+        );
     }
 
     #[test]
     fn roundtrip_array() {
-        let stack = vec![StackValue::Array(vec![
-            StackValue::Integer(1),
-            StackValue::Boolean(true),
-            StackValue::Null,
-        ])];
+        let stack = vec![StackValue::Array(
+            crate::next_stack_item_id() as u64,
+            vec![
+                StackValue::Integer(1),
+                StackValue::Boolean(true),
+                StackValue::Null,
+            ],
+        )];
         let encoded = encode_stack(&stack);
         let decoded = decode_stack(&encoded).unwrap();
-        assert_eq!(stack, decoded);
+        assert_eq!(stack.len(), decoded.len());
+        assert!(
+            stack
+                .iter()
+                .zip(decoded.iter())
+                .all(|(a, b)| a.structural_eq(b)),
+            "expected {:?} but got {:?}",
+            stack,
+            decoded
+        );
     }
 
     #[test]
     fn roundtrip_map() {
-        let stack = vec![StackValue::Map(vec![
-            (StackValue::Integer(1), StackValue::ByteString(vec![0xAA])),
-            (StackValue::Boolean(false), StackValue::Null),
-        ])];
+        let stack = vec![StackValue::Map(
+            crate::next_stack_item_id() as u64,
+            vec![
+                (StackValue::Integer(1), StackValue::ByteString(vec![0xAA])),
+                (StackValue::Boolean(false), StackValue::Null),
+            ],
+        )];
         let encoded = encode_stack(&stack);
         let decoded = decode_stack(&encoded).unwrap();
-        assert_eq!(stack, decoded);
+        assert_eq!(stack.len(), decoded.len());
+        assert!(
+            stack
+                .iter()
+                .zip(decoded.iter())
+                .all(|(a, b)| a.structural_eq(b)),
+            "expected {:?} but got {:?}",
+            stack,
+            decoded
+        );
     }
 
     #[test]

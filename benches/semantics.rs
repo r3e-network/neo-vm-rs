@@ -1,6 +1,6 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use neo_vm_rs::{
-    fast_codec, interop_hash, interpret, syscall_arg_count, OpCode, StackValue, VmState,
+    OpCode, StackValue, VmState, fast_codec, interop_hash, interpret, syscall_arg_count,
 };
 use std::hint::black_box;
 

@@ -1,8 +1,8 @@
 use neo_vm_rs::{
-    instruction_jump_target, instruction_try_targets, interop_hash, parse_script_instructions,
-    syscall_arg_count, validate_script, validate_strict_script, ExceptionHandlingContext,
-    ExceptionHandlingState, ExecutionEngineLimits, ExecutionResult, Instruction, OpCode,
-    StackItemType, StackValue, VmOrderedDictionary, VmState,
+    ExceptionHandlingContext, ExceptionHandlingState, ExecutionEngineLimits, ExecutionResult,
+    Instruction, OpCode, StackItemType, StackValue, VmOrderedDictionary, VmState,
+    instruction_jump_target, instruction_try_targets, interop_hash, interpret,
+    parse_script_instructions, syscall_arg_count, validate_script, validate_strict_script,
 };
 
 #[test]
@@ -128,12 +128,43 @@ fn script_validation_uses_shared_instruction_parser() {
     assert!(validate_strict_script(&[0xff]).is_err());
     assert!(validate_strict_script(&[OpCode::PUSHDATA1.byte(), 2, 1]).is_err());
     assert!(validate_strict_script(&[OpCode::JMP.byte(), 10, OpCode::RET.byte()]).is_err());
-    assert!(validate_strict_script(&[
-        OpCode::CONVERT.byte(),
-        StackItemType::Any.to_byte(),
-        OpCode::RET.byte(),
-    ])
-    .is_err());
+    assert!(
+        validate_strict_script(&[
+            OpCode::JMP.byte(),
+            2,
+            OpCode::PUSH0.byte(),
+            OpCode::RET.byte(),
+        ])
+        .is_ok()
+    );
+    assert!(
+        validate_strict_script(&[
+            OpCode::JMP.byte(),
+            1,
+            OpCode::PUSH0.byte(),
+            OpCode::RET.byte(),
+        ])
+        .is_err()
+    );
+    assert!(
+        validate_strict_script(&[
+            OpCode::TRY.byte(),
+            3,
+            4,
+            OpCode::PUSH0.byte(),
+            OpCode::PUSH1.byte(),
+            OpCode::RET.byte(),
+        ])
+        .is_ok()
+    );
+    assert!(
+        validate_strict_script(&[
+            OpCode::CONVERT.byte(),
+            StackItemType::Any.to_byte(),
+            OpCode::RET.byte(),
+        ])
+        .is_err()
+    );
 
     let relaxed = validate_script(&[OpCode::JMP.byte(), 10, OpCode::RET.byte()], false)
         .expect("relaxed validation should only parse instruction offsets");
@@ -164,11 +195,39 @@ fn script_validation_uses_shared_instruction_parser() {
 
     let jump = Instruction::parse(&[OpCode::JMP.byte(), 0, OpCode::RET.byte()], 0)
         .expect("jump should parse");
-    assert_eq!(instruction_jump_target(&jump), Ok(2));
+    assert_eq!(instruction_jump_target(&jump), Ok(0));
 
     let try_instruction = Instruction::parse(&[OpCode::TRY.byte(), 0, 0, OpCode::RET.byte()], 0)
         .expect("TRY should parse");
-    assert_eq!(instruction_try_targets(&try_instruction), Ok((3, 3)));
+    assert_eq!(instruction_try_targets(&try_instruction), Ok((0, 0)));
+}
+
+#[test]
+fn interpreter_faults_when_invocation_stack_would_exceed_neo_vm_limit() {
+    let script = [
+        OpCode::INITSSLOT.byte(),
+        0x01,
+        OpCode::PUSHDATA1.byte(),
+        0x02,
+        0x00,
+        0x04,
+        OpCode::INC.byte(),
+        OpCode::STSFLD0.byte(),
+        OpCode::LDSFLD0.byte(),
+        OpCode::DEC.byte(),
+        OpCode::DUP.byte(),
+        OpCode::STSFLD0.byte(),
+        OpCode::JMPIFNOT.byte(),
+        0x04,
+        OpCode::CALL.byte(),
+        0xfa,
+        OpCode::RET.byte(),
+    ];
+
+    match interpret(&script) {
+        Ok(result) => assert_eq!(result.state, VmState::Fault),
+        Err(error) => assert!(error.contains("call depth"), "{error}"),
+    }
 }
 
 #[test]

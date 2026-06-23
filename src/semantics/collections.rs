@@ -7,7 +7,7 @@ use alloc::{
 };
 
 use crate::{
-    new_array_default_value_for_neovm_type_tag, semantics::numeric, StackValue, MAX_ITEM_SIZE,
+    MAX_ITEM_SIZE, StackValue, new_array_default_value_for_neovm_type_tag, semantics::numeric,
 };
 
 /// Convert a primitive NeoVM value into an index used by collection opcodes.
@@ -74,22 +74,28 @@ pub fn map_entry_index_by<T>(
 /// Create a null-filled array.
 pub fn new_array(count: i64) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWARRAY: negative count")?;
-    Ok(StackValue::Array(vec![StackValue::Null; count]))
+    Ok(StackValue::Array(
+        crate::next_stack_item_id() as u64,
+        vec![StackValue::Null; count],
+    ))
 }
 
 /// Create a type-filled array using NeoVM `NEWARRAY_T` defaults.
 pub fn new_array_t(count: i64, type_tag: u8) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWARRAY_T: negative count")?;
-    Ok(StackValue::Array(vec![
-        new_array_default_value_for_neovm_type_tag(type_tag);
-        count
-    ]))
+    Ok(StackValue::Array(
+        crate::next_stack_item_id() as u64,
+        vec![new_array_default_value_for_neovm_type_tag(type_tag); count],
+    ))
 }
 
 /// Create a null-filled struct.
 pub fn new_struct(count: i64) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWSTRUCT: negative count")?;
-    Ok(StackValue::Struct(vec![StackValue::Null; count]))
+    Ok(StackValue::Struct(
+        crate::next_stack_item_id() as u64,
+        vec![StackValue::Null; count],
+    ))
 }
 
 /// Create a zero-filled buffer.
@@ -98,19 +104,22 @@ pub fn new_buffer(size: i64) -> Result<StackValue, String> {
     if size > MAX_ITEM_SIZE {
         return Err("NEWBUFFER: size exceeds MaxItemSize".into());
     }
-    Ok(StackValue::Buffer(vec![0u8; size]))
+    Ok(StackValue::Buffer(
+        crate::next_stack_item_id() as u64,
+        vec![0u8; size],
+    ))
 }
 
 /// Create an empty ordered map.
 #[must_use]
 pub fn new_map() -> StackValue {
-    StackValue::Map(Vec::new())
+    StackValue::Map(crate::next_stack_item_id() as u64, Vec::new())
 }
 
 /// Append a value to an array or struct.
 pub fn append(collection: &mut StackValue, value: StackValue) -> Result<(), String> {
     match collection {
-        StackValue::Array(items) | StackValue::Struct(items) => {
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
             items.push(value);
             Ok(())
         }
@@ -125,7 +134,7 @@ pub fn set_item(
     value: StackValue,
 ) -> Result<(), String> {
     match collection {
-        StackValue::Array(items) | StackValue::Struct(items) => {
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
             let idx = array_index(
                 &key,
                 "SETITEM: non-integer index for array/struct",
@@ -137,7 +146,7 @@ pub fn set_item(
             items[idx] = value;
             Ok(())
         }
-        StackValue::Map(pairs) => {
+        StackValue::Map(_, pairs) => {
             if let Some(index) = map_entry_index(pairs, &key)? {
                 pairs[index].1 = value;
                 return Ok(());
@@ -145,7 +154,7 @@ pub fn set_item(
             pairs.push((key, value));
             Ok(())
         }
-        StackValue::Buffer(bytes) => {
+        StackValue::Buffer(_, bytes) => {
             let idx = buffer_index(&key, "SETITEM: buffer requires integer key and value")?;
             let value = match value {
                 StackValue::Integer(value) => value,
@@ -167,7 +176,7 @@ pub fn set_item(
 /// Pick an item from a collection-like value.
 pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue, String> {
     match collection {
-        StackValue::Array(items) | StackValue::Struct(items) => {
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
             let Some(index) = non_negative_index(collection_index_value(key)?) else {
                 return Err("PICKITEM: index out of range".into());
             };
@@ -176,14 +185,16 @@ pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue
                 .cloned()
                 .ok_or_else(|| "PICKITEM: index out of range".into())
         }
-        StackValue::Map(pairs) => {
+        StackValue::Map(_, pairs) => {
             let Some(index) = map_entry_index(pairs, key)? else {
                 return Err("PICKITEM: key not found in map".into());
             };
             Ok(pairs[index].1.clone())
         }
         StackValue::ByteString(bytes) => pick_byte(bytes, key, "PICKITEM: byte index out of range"),
-        StackValue::Buffer(bytes) => pick_byte(bytes, key, "PICKITEM: buffer index out of range"),
+        StackValue::Buffer(_, bytes) => {
+            pick_byte(bytes, key, "PICKITEM: buffer index out of range")
+        }
         StackValue::Integer(_) | StackValue::BigInteger(_) | StackValue::Boolean(_) => {
             let bytes = primitive_memory(collection)?;
             pick_byte(&bytes, key, "PICKITEM: byte index out of range")
@@ -195,7 +206,7 @@ pub fn pick_item(collection: &StackValue, key: &StackValue) -> Result<StackValue
 /// Remove a key from a mutable collection.
 pub fn remove(collection: &mut StackValue, key: &StackValue) -> Result<(), String> {
     match collection {
-        StackValue::Array(items) | StackValue::Struct(items) => {
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
             let idx = array_index(
                 key,
                 "REMOVE: non-integer index for array/struct",
@@ -207,7 +218,7 @@ pub fn remove(collection: &mut StackValue, key: &StackValue) -> Result<(), Strin
             items.remove(idx);
             Ok(())
         }
-        StackValue::Map(pairs) => {
+        StackValue::Map(_, pairs) => {
             if let Some(index) = map_entry_index(pairs, key)? {
                 pairs.remove(index);
             }
@@ -220,9 +231,9 @@ pub fn remove(collection: &mut StackValue, key: &StackValue) -> Result<(), Strin
 /// Return collection/string/buffer size.
 pub fn size(value: &StackValue) -> Result<i64, String> {
     match value {
-        StackValue::Array(items) | StackValue::Struct(items) => Ok(items.len() as i64),
-        StackValue::Map(pairs) => Ok(pairs.len() as i64),
-        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => Ok(bytes.len() as i64),
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => Ok(items.len() as i64),
+        StackValue::Map(_, pairs) => Ok(pairs.len() as i64),
+        StackValue::ByteString(bytes) | StackValue::Buffer(_, bytes) => Ok(bytes.len() as i64),
         StackValue::Integer(_) | StackValue::BigInteger(_) | StackValue::Boolean(_) => {
             Ok(primitive_memory(value)?.len() as i64)
         }
@@ -233,12 +244,12 @@ pub fn size(value: &StackValue) -> Result<i64, String> {
 /// Return whether a key exists in a collection-like value.
 pub fn has_key(collection: &StackValue, key: &StackValue) -> Result<bool, String> {
     match collection {
-        StackValue::Array(items) | StackValue::Struct(items) => {
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
             Ok(non_negative_index(collection_index_value(key)?)
                 .is_some_and(|index| index < items.len()))
         }
-        StackValue::Map(pairs) => Ok(map_entry_index(pairs, key)?.is_some()),
-        StackValue::ByteString(bytes) | StackValue::Buffer(bytes) => {
+        StackValue::Map(_, pairs) => Ok(map_entry_index(pairs, key)?.is_some()),
+        StackValue::ByteString(bytes) | StackValue::Buffer(_, bytes) => {
             Ok(non_negative_index(collection_index_value(key)?)
                 .is_some_and(|index| index < bytes.len()))
         }
@@ -249,7 +260,8 @@ pub fn has_key(collection: &StackValue, key: &StackValue) -> Result<bool, String
 /// Return map keys as an array.
 pub fn keys(value: StackValue) -> Result<StackValue, String> {
     match value {
-        StackValue::Map(pairs) => Ok(StackValue::Array(
+        StackValue::Map(_, pairs) => Ok(StackValue::Array(
+            0,
             pairs.into_iter().map(|(key, _)| key).collect(),
         )),
         _ => Err("KEYS: not a map".into()),
@@ -259,10 +271,13 @@ pub fn keys(value: StackValue) -> Result<StackValue, String> {
 /// Return map values or array/struct values as an array.
 pub fn values(value: StackValue) -> Result<StackValue, String> {
     match value {
-        StackValue::Map(pairs) => Ok(StackValue::Array(
+        StackValue::Map(_, pairs) => Ok(StackValue::Array(
+            0,
             pairs.into_iter().map(|(_, value)| value).collect(),
         )),
-        StackValue::Array(items) | StackValue::Struct(items) => Ok(StackValue::Array(items)),
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
+            Ok(StackValue::Array(crate::next_stack_item_id() as u64, items))
+        }
         _ => Err("VALUES: not a map or array".into()),
     }
 }
@@ -270,13 +285,13 @@ pub fn values(value: StackValue) -> Result<StackValue, String> {
 /// Pack already ordered values as an array.
 #[must_use]
 pub fn pack(items: Vec<StackValue>) -> StackValue {
-    StackValue::Array(items)
+    StackValue::Array(crate::next_stack_item_id() as u64, items)
 }
 
 /// Unpack array/struct values followed by their count.
 pub fn unpack(value: StackValue) -> Result<Vec<StackValue>, String> {
     match value {
-        StackValue::Array(mut items) | StackValue::Struct(mut items) => {
+        StackValue::Array(_, mut items) | StackValue::Struct(_, mut items) => {
             let count = items.len() as i64;
             items.push(StackValue::Integer(count));
             Ok(items)
@@ -288,7 +303,7 @@ pub fn unpack(value: StackValue) -> Result<Vec<StackValue>, String> {
 /// Reverse an array or struct in place.
 pub fn reverse_items(collection: &mut StackValue) -> Result<(), String> {
     match collection {
-        StackValue::Array(items) | StackValue::Struct(items) => {
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
             items.reverse();
             Ok(())
         }
@@ -299,11 +314,11 @@ pub fn reverse_items(collection: &mut StackValue) -> Result<(), String> {
 /// Clear array, struct, or map items.
 pub fn clear_items(collection: &mut StackValue) -> Result<(), String> {
     match collection {
-        StackValue::Array(items) | StackValue::Struct(items) => {
+        StackValue::Array(_, items) | StackValue::Struct(_, items) => {
             items.clear();
             Ok(())
         }
-        StackValue::Map(pairs) => {
+        StackValue::Map(_, pairs) => {
             pairs.clear();
             Ok(())
         }
@@ -314,19 +329,19 @@ pub fn clear_items(collection: &mut StackValue) -> Result<(), String> {
 /// Pop one item from a collection-like value, returning values to push in order.
 pub fn pop_item(value: StackValue) -> Result<Vec<StackValue>, String> {
     match value {
-        StackValue::Array(mut items) => items
+        StackValue::Array(_, mut items) => items
             .pop()
             .map(|value| vec![value])
             .ok_or_else(|| "POPITEM: array is empty".into()),
-        StackValue::Struct(mut items) => items
+        StackValue::Struct(_, mut items) => items
             .pop()
             .map(|value| vec![value])
             .ok_or_else(|| "POPITEM: struct is empty".into()),
-        StackValue::Map(mut pairs) => pairs
+        StackValue::Map(_, mut pairs) => pairs
             .pop()
             .map(|(key, value)| vec![key, value])
             .ok_or_else(|| "POPITEM: map is empty".into()),
-        StackValue::Buffer(mut bytes) => bytes
+        StackValue::Buffer(_, mut bytes) => bytes
             .pop()
             .map(|value| vec![StackValue::Integer(i64::from(value))])
             .ok_or_else(|| "POPITEM: buffer is empty".into()),
@@ -337,13 +352,13 @@ pub fn pop_item(value: StackValue) -> Result<Vec<StackValue>, String> {
 /// Pack values as a struct.
 #[must_use]
 pub fn pack_struct(items: Vec<StackValue>) -> StackValue {
-    StackValue::Struct(items)
+    StackValue::Struct(crate::next_stack_item_id() as u64, items)
 }
 
 /// Pack key/value pairs as a map.
 #[must_use]
 pub fn pack_map(pairs: Vec<(StackValue, StackValue)>) -> StackValue {
-    StackValue::Map(pairs)
+    StackValue::Map(crate::next_stack_item_id() as u64, pairs)
 }
 
 pub(crate) fn non_negative_count(value: i64, error: &'static str) -> Result<usize, String> {

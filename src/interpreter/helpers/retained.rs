@@ -260,8 +260,7 @@ fn decode_retained_value(
         }
         STACK_VALUE_CODEC_TAG_POINTER => {
             let value = decode_retained_u64(bytes, pos)?;
-            let pointer = usize::try_from(value).map_err(|_| "pointer out of range".to_string())?;
-            Ok(StackValue::Pointer(pointer))
+            Ok(StackValue::Pointer(value as i64))
         }
         STACK_VALUE_CODEC_TAG_ARRAY => {
             let id = decode_retained_u64(bytes, pos)?;
@@ -391,8 +390,8 @@ fn ensure_retained_input(bytes: &[u8], pos: usize, needed: usize) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_retained_prefix, encode_retained_prefix_to_slice, StackValue,
-        MAX_RETAINED_COLLECTION_LEN,
+        MAX_RETAINED_COLLECTION_LEN, StackValue, decode_retained_prefix,
+        encode_retained_prefix_to_slice,
     };
     use alloc::vec;
 

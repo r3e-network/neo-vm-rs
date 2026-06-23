@@ -61,7 +61,7 @@ pub fn encode_stack_result(result: &Result<Vec<StackValue>, String>) -> Vec<u8> 
                 out.push(TAG_OK_POINTER);
                 out.extend_from_slice(&value.to_le_bytes());
             }
-            [StackValue::Buffer(bytes)] => {
+            [StackValue::Buffer(_, bytes)] => {
                 out.push(TAG_OK_BUFFER);
                 encode_bytes(bytes, &mut out);
             }
@@ -154,7 +154,10 @@ pub fn decode_stack_result_into(
         }
         TAG_OK_BUFFER => {
             stack.clear();
-            stack.push(StackValue::Buffer(cursor.read_bytes()?.to_vec()));
+            stack.push(StackValue::Buffer(
+                crate::next_stack_item_id() as u64,
+                cursor.read_bytes()?.to_vec(),
+            ));
             Ok(())
         }
         _ => return Err("invalid stack result tag".to_string()),
@@ -192,7 +195,10 @@ pub fn decode_stack_result(bytes: &[u8]) -> Result<Result<Vec<StackValue>, Strin
         TAG_OK_INTEROP => Ok(vec![StackValue::Interop(cursor.read_u64()?)]),
         TAG_OK_ITERATOR => Ok(vec![StackValue::Iterator(cursor.read_u64()?)]),
         TAG_OK_POINTER => Ok(vec![StackValue::Pointer(cursor.read_i64()?)]),
-        TAG_OK_BUFFER => Ok(vec![StackValue::Buffer(cursor.read_bytes()?.to_vec())]),
+        TAG_OK_BUFFER => Ok(vec![StackValue::Buffer(
+            crate::next_stack_item_id() as u64,
+            cursor.read_bytes()?.to_vec(),
+        )]),
         _ => return Err("invalid stack result tag".to_string()),
     };
     cursor.expect_eof("trailing bytes in payload")?;
@@ -218,21 +224,21 @@ fn encode_stack_value(value: &StackValue, out: &mut Vec<u8>) {
             out.push(3);
             out.push(u8::from(*value));
         }
-        StackValue::Array(items) => {
+        StackValue::Array(_, items) => {
             out.push(4);
             encode_u32(items.len() as u32, out);
             for item in items {
                 encode_stack_value(item, out);
             }
         }
-        StackValue::Struct(items) => {
+        StackValue::Struct(_, items) => {
             out.push(5);
             encode_u32(items.len() as u32, out);
             for item in items {
                 encode_stack_value(item, out);
             }
         }
-        StackValue::Map(entries) => {
+        StackValue::Map(_, entries) => {
             out.push(6);
             encode_u32(entries.len() as u32, out);
             for (key, value) in entries {
@@ -249,7 +255,7 @@ fn encode_stack_value(value: &StackValue, out: &mut Vec<u8>) {
             out.extend_from_slice(&handle.to_le_bytes());
         }
         StackValue::Null => out.push(9),
-        StackValue::Buffer(bytes) => {
+        StackValue::Buffer(_, bytes) => {
             out.push(11);
             encode_bytes(bytes, out);
         }
@@ -279,7 +285,7 @@ fn decode_stack_value_depth(cursor: &mut Cursor<'_>, depth: usize) -> Result<Sta
             for _ in 0..len {
                 items.push(decode_stack_value_depth(cursor, depth + 1)?);
             }
-            Ok(StackValue::Array(items))
+            Ok(StackValue::Array(crate::next_stack_item_id() as u64, items))
         }
         5 => {
             let len = cursor.read_u32()? as usize;
@@ -290,7 +296,10 @@ fn decode_stack_value_depth(cursor: &mut Cursor<'_>, depth: usize) -> Result<Sta
             for _ in 0..len {
                 items.push(decode_stack_value_depth(cursor, depth + 1)?);
             }
-            Ok(StackValue::Struct(items))
+            Ok(StackValue::Struct(
+                crate::next_stack_item_id() as u64,
+                items,
+            ))
         }
         6 => {
             let len = cursor.read_u32()? as usize;
@@ -303,13 +312,16 @@ fn decode_stack_value_depth(cursor: &mut Cursor<'_>, depth: usize) -> Result<Sta
                 let value = decode_stack_value_depth(cursor, depth + 1)?;
                 items.push((key, value));
             }
-            Ok(StackValue::Map(items))
+            Ok(StackValue::Map(crate::next_stack_item_id() as u64, items))
         }
         7 => Ok(StackValue::Interop(cursor.read_u64()?)),
         8 => Ok(StackValue::Iterator(cursor.read_u64()?)),
         9 => Ok(StackValue::Null),
         10 => Ok(StackValue::Pointer(cursor.read_i64()?)),
-        11 => Ok(StackValue::Buffer(cursor.read_bytes()?.to_vec())),
+        11 => Ok(StackValue::Buffer(
+            crate::next_stack_item_id() as u64,
+            cursor.read_bytes()?.to_vec(),
+        )),
         _ => Err("invalid stack value tag".to_string()),
     }
 }

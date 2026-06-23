@@ -140,14 +140,14 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
     locals: &mut Vec<StackValue>,
     static_fields: &mut Vec<StackValue>,
     consumed_mutations: &mut Vec<StackValue>,
-    ids: &mut CompoundIds,
+    _ids: &mut CompoundIds,
 ) -> Result<(), String> {
     let arg_count = crate::syscall_arg_count(api).min(stack.len());
     let keep = stack.len() - arg_count;
 
     let mut abi_args: Vec<crate::StackValue> = Vec::with_capacity(arg_count.min(64));
     for item in &stack[keep..] {
-        abi_args.push(to_abi_value(item));
+        abi_args.push(item.clone());
     }
 
     let retained =
@@ -165,7 +165,7 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
                 stack.truncate(keep);
                 stack.reserve(abi_args.len());
                 for item in abi_args {
-                    stack.push(ids.import_abi(item));
+                    stack.push(item);
                 }
                 return Ok(());
             }
@@ -173,7 +173,7 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
             stack.truncate(keep);
             stack.reserve(abi_args.len());
             for item in abi_args {
-                stack.push(ids.import_abi(item));
+                stack.push(item);
             }
             Ok(())
         }
@@ -308,7 +308,7 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
     consumed_mutations: &mut Vec<StackValue>,
     ids: &mut CompoundIds,
 ) -> Result<(), String> {
-    let mut abi_stack = to_abi_stack(stack);
+    let mut abi_stack = stack.clone();
     let retained =
         RetainedHostState::capture(stack, args, locals, static_fields, consumed_mutations)?;
     match host.callt(token, ip, &mut abi_stack) {
@@ -322,18 +322,17 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
             let mut imported_stack =
                 Vec::with_capacity(abi_stack.len().max(POST_SYSCALL_STACK_HEADROOM));
             for item in abi_stack {
-                let imported = ids.import_abi(item);
                 let stabilized = if cfg!(target_arch = "riscv32")
                     && matches!(
-                        imported,
+                        item,
                         StackValue::Array(..)
                             | StackValue::Struct(..)
                             | StackValue::Map(..)
                             | StackValue::Buffer(..)
                     ) {
-                    ids.deep_clone(&imported)
+                    ids.deep_clone(&item)
                 } else {
-                    imported
+                    item
                 };
                 imported_stack.push(stabilized);
             }

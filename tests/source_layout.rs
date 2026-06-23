@@ -660,12 +660,12 @@ fn interpreter_type_checks_reuse_shared_semantics() {
 
     assert!(
         values.contains("pub(crate) fn is_type(")
-            && values.contains("conversion_rules::is_type(&to_abi_value(value), kind)"),
+            && values.contains("conversion_rules::is_type(value, kind)"),
         "interpreter ISTYPE should route through a helper backed by semantics::conversion"
     );
     assert!(
         values.contains("pub(crate) fn is_null(")
-            && values.contains("comparison_rules::is_null(&to_abi_value(value))"),
+            && values.contains("comparison_rules::is_null(value)"),
         "interpreter ISNULL should route through a helper backed by semantics::comparison"
     );
     assert!(
@@ -750,8 +750,8 @@ fn pending_exception_state_is_shared_between_runtime_and_interpreter() {
     let interpreter_state = read_workspace_source("src/interpreter/state.rs");
 
     assert!(
-        runtime_mod.contains("pub(crate) use pending_exception::{")
-            && runtime_mod.contains("PendingException, PendingExceptionValue"),
+        runtime_mod.contains("pub(crate) use pending_exception::")
+            && runtime_mod.contains("PendingException"),
         "runtime should expose the shared pending-exception representation crate-internally"
     );
     assert!(
@@ -793,7 +793,9 @@ fn interpreter_numeric_helpers_call_canonical_rules_directly() {
         "interpreter value helpers should call canonical numeric and ABI integer rules directly"
     );
     assert_eq!(
-        values.matches("numeric::decode_signed_le_bytes_i64").count(),
+        values
+            .matches("numeric::decode_signed_le_bytes_i64")
+            .count(),
         1,
         "interpreter value helpers should keep one primitive i64 decoder table shared by integer and shift-count pops"
     );

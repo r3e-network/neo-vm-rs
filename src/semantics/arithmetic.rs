@@ -8,7 +8,7 @@ use alloc::{
 use num_bigint::BigInt;
 use num_traits::{ToPrimitive, Zero};
 
-use crate::{encode_integer, semantics::numeric, StackValue};
+use crate::{StackValue, encode_integer, semantics::numeric};
 
 /// Return the canonical NeoVM integer result representation.
 pub(crate) fn numeric_stack_value(
@@ -30,11 +30,11 @@ pub(crate) fn numeric_bigint(value: StackValue) -> Result<BigInt, String> {
             numeric::decode_signed_le_bytes_bigint(&value)
         }
         StackValue::Null => Err("expected integer-compatible value".into()),
-        StackValue::Buffer(_)
+        StackValue::Buffer(_, _)
         | StackValue::Pointer(_)
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
+        | StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
         | StackValue::Interop(_)
         | StackValue::Iterator(_) => Err("expected integer-compatible value".into()),
     }
@@ -248,11 +248,11 @@ fn bitwise_operand_bytes(value: &StackValue) -> Result<Vec<u8>, String> {
         StackValue::BigInteger(value) | StackValue::ByteString(value) => Ok(value.clone()),
         StackValue::Boolean(value) => Ok(encode_integer(if *value { 1 } else { 0 })),
         StackValue::Null
-        | StackValue::Buffer(_)
+        | StackValue::Buffer(_, _)
         | StackValue::Pointer(_)
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
+        | StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
         | StackValue::Interop(_)
         | StackValue::Iterator(_) => {
             Err("bitwise op expects primitive numeric or byte string operands".into())

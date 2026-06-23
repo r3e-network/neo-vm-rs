@@ -3,7 +3,8 @@ mod call_stack;
 mod try_frame;
 mod try_stack;
 
-use super::runtime_types::{compound_id, propagate_aliases_from_sources, StackValue};
+use super::runtime_types::{compound_id, propagate_aliases_from_sources};
+use crate::StackValue;
 pub(super) use call_stack::CallStack;
 pub(super) use try_frame::TryFrame;
 pub(super) use try_stack::TryStack;
@@ -108,15 +109,13 @@ pub(super) fn reset_consumed_mutations(consumed_mutations: &mut Vec<StackValue>)
 pub(super) const MAX_STACK_SIZE: usize = 2048;
 pub(super) const MAX_TRY_NESTING: usize = 16;
 
-/// Maximum invocation (call) stack depth.
+/// Maximum saved CALL frames.
 ///
-/// On native targets this matches C# `ExecutionEngineLimits.MaxInvocationStackSize
-/// = 1024`, so a script that performs up to 1024 nested CALLs HALTs exactly as the
-/// reference node does (it previously FAULTed at 64, a consensus divergence on the
-/// external-VM fast path). The riscv32 (PolkaVM) profile keeps the smaller fixed
-/// bound: its call frames live in a fixed on-chip buffer with no heap, so the
-/// `[MaybeUninit<CallFrame>; MAX_CALL_DEPTH]` array must stay small there.
+/// C# counts the currently executing context in `InvocationStack`, while this
+/// interpreter stores only suspended callers here. Keep one slot for the active
+/// frame so the total active execution contexts still match
+/// `ExecutionEngineLimits.MaxInvocationStackSize = 1024`.
 #[cfg(not(target_arch = "riscv32"))]
-pub(super) const MAX_CALL_DEPTH: usize = 1024;
+pub(super) const MAX_CALL_DEPTH: usize = crate::DEFAULT_MAX_INVOCATION_DEPTH - 1;
 #[cfg(target_arch = "riscv32")]
-pub(super) const MAX_CALL_DEPTH: usize = 64;
+pub(super) const MAX_CALL_DEPTH: usize = 63;

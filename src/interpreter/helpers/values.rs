@@ -1,14 +1,15 @@
 use super::*;
 use crate::{
+    NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
+    NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
+    NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
+    NEOVM_STACK_ITEM_TYPE_STRUCT, StackItemType,
     interpreter::runtime_types::structurally_equal,
     semantics::{
         collections as collection_rules, comparison as comparison_rules,
         conversion as conversion_rules, numeric,
     },
-    stack_value_span_bytes, StackItemType, NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY,
-    NEOVM_STACK_ITEM_TYPE_BOOLEAN, NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING,
-    NEOVM_STACK_ITEM_TYPE_INTEGER, NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE,
-    NEOVM_STACK_ITEM_TYPE_MAP, NEOVM_STACK_ITEM_TYPE_STRUCT,
+    stack_value_span_bytes,
 };
 
 #[inline]
@@ -55,16 +56,16 @@ fn stack_value_i64(value: &StackValue, accept_buffer: bool) -> Result<Option<i64
 
 #[inline]
 pub(crate) fn integer_value_for_collection_index(value: &StackValue) -> Result<i64, String> {
-    collection_rules::collection_index_value(&to_abi_value(value))
+    collection_rules::collection_index_value(value)
 }
 
 #[inline]
 pub(crate) fn validate_map_key(key: &StackValue) -> Result<(), String> {
-    collection_rules::validate_map_key_value(&to_abi_value(key))
+    collection_rules::validate_map_key_value(key)
 }
 
 pub(crate) fn primitive_key_equals(left: &StackValue, right: &StackValue) -> bool {
-    collection_rules::primitive_key_equal(&to_abi_value(left), &to_abi_value(right))
+    collection_rules::primitive_key_equal(left, right)
 }
 
 pub(crate) fn vm_equal(left: &StackValue, right: &StackValue) -> bool {
@@ -145,7 +146,7 @@ pub(crate) fn equals_with_limits(left: &StackValue, right: &StackValue) -> Resul
                 if lid == rid {
                     Ok(true)
                 } else {
-                    struct_equals_with_limits(left, right)
+                    bounded_structural_equal(left, right)
                 }
             }
             _ => Ok(false),
@@ -194,7 +195,7 @@ fn byte_string_size_eq_with_budget(
 /// iterative two-stack walk bounded by `MaxStackSize` (item count) and
 /// `MaxComparableSize` (cumulative comparable size). Both `left` and `right` are
 /// `Struct`.
-fn struct_equals_with_limits(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+fn bounded_structural_equal(left: &StackValue, right: &StackValue) -> Result<bool, String> {
     let mut stack1: Vec<StackValue> = vec![left.clone()];
     let mut stack2: Vec<StackValue> = vec![right.clone()];
     let mut count = crate::interpreter::state::MAX_STACK_SIZE;
@@ -277,8 +278,8 @@ pub(crate) fn convert_value(
         | NEOVM_STACK_ITEM_TYPE_INTEGER
         | NEOVM_STACK_ITEM_TYPE_BYTESTRING
         | NEOVM_STACK_ITEM_TYPE_BUFFER => {
-            let converted = conversion_rules::convert_value(into_abi_value(value), kind)?;
-            Ok(ids.import_abi(converted))
+            let converted = conversion_rules::convert_value(value, kind)?;
+            Ok(converted)
         }
         NEOVM_STACK_ITEM_TYPE_ARRAY => Ok(match value {
             StackValue::Array(_, _) => value,
@@ -307,20 +308,20 @@ pub(crate) fn is_type(kind: u8, value: &StackValue) -> Result<bool, String> {
         Some(StackItemType::Any) => Err(format!(
             "unsupported ISTYPE kind {NEOVM_STACK_ITEM_TYPE_ANY:#04x}"
         )),
-        Some(_) => Ok(conversion_rules::is_type(&to_abi_value(value), kind)),
+        Some(_) => Ok(conversion_rules::is_type(value, kind)),
         None => Err(format!("unsupported ISTYPE kind 0x{kind:02x}")),
     }
 }
 
 #[inline]
 pub(crate) fn is_null(value: &StackValue) -> bool {
-    comparison_rules::is_null(&to_abi_value(value))
+    comparison_rules::is_null(value)
 }
 
 #[inline]
 pub(crate) fn pop_boolean(stack: &mut Vec<StackValue>) -> Result<bool, String> {
     let value = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
-    Ok(comparison_rules::boolean_value(&to_abi_value(&value)))
+    Ok(comparison_rules::boolean_value(&value))
 }
 
 pub(crate) fn pop_bytes(stack: &mut Vec<StackValue>) -> Result<Vec<u8>, String> {
@@ -331,7 +332,7 @@ pub(crate) fn pop_bytes(stack: &mut Vec<StackValue>) -> Result<Vec<u8>, String> 
 /// Convert a StackValue to bytes without consuming it from the stack.
 /// Used by CAT to determine result type while extracting byte content.
 pub(crate) fn stack_item_to_bytes(item: StackValue) -> Result<Vec<u8>, String> {
-    stack_value_span_bytes(&to_abi_value(&item))
+    stack_value_span_bytes(&item)
         .ok_or_else(|| "expected byte memory-compatible item on stack".to_string())
 }
 

@@ -5,7 +5,7 @@ mod pending_exception;
 mod try_frame;
 
 use alloc::{format, string::String, string::ToString, vec, vec::Vec};
-pub(crate) use pending_exception::{PendingException, PendingExceptionValue};
+pub(crate) use pending_exception::PendingException;
 use try_frame::TryFrame;
 
 use crate::{ExecutionResult, StackValue, VmState};

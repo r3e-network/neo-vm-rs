@@ -224,11 +224,7 @@ fn validate_try_targets(
 }
 
 fn jump_target(instruction: &ScriptInstruction, offset: i64) -> ValidationResult<usize> {
-    let next_ip = instruction
-        .pointer()
-        .checked_add(instruction.size())
-        .ok_or_else(|| format!("next instruction overflow at {}", instruction.pointer()))?;
-    let target = next_ip as i64 + offset;
+    let target = instruction.pointer() as i64 + offset;
     if target < 0 {
         return Err(format!(
             "negative jump target at position {}: {:?}",

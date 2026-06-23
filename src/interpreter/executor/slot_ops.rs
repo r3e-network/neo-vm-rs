@@ -1,9 +1,10 @@
+use super::super::helpers::StackValue;
 use super::super::helpers::{
-    decode_retained_prefix_into, encode_retained_value_to_slice, ensure_retained_capacity,
-    pop_item, RETAINED_ARGS_BUF,
+    RETAINED_ARGS_BUF, decode_retained_prefix_into, encode_retained_value_to_slice,
+    ensure_retained_capacity, pop_item,
 };
 use super::super::opcodes::*;
-use super::super::runtime_types::{CompoundIds, StackValue};
+use super::super::runtime_types::CompoundIds;
 use super::control::Dispatch;
 use alloc::{
     string::{String, ToString},
@@ -305,7 +306,7 @@ pub(super) fn execute(
             ip += 2;
             finish!(Dispatch::Continue);
         }
-            _ => return Err(format!("unexpected opcode in slot_ops: 0x{opcode:02x}")),
+        _ => return Err(format!("unexpected opcode in slot_ops: 0x{opcode:02x}")),
     }
     *ip_ref = ip;
     Ok(Dispatch::Fallthrough)

@@ -2,7 +2,7 @@
 
 use alloc::{string::String, vec::Vec};
 
-use crate::{runtime::RuntimeStack, semantics::stack as stack_rules, StackValue};
+use crate::{StackValue, runtime::RuntimeStack, semantics::stack as stack_rules};
 
 pub fn drop_top<R: RuntimeStack + ?Sized>(runtime: &mut R) {
     apply_stack_result(runtime, stack_rules::drop_top);

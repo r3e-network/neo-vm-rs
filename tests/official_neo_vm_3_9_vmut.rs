@@ -1,5 +1,5 @@
 use neo_vm_rs::{
-    encode_integer, interpret_with_stack_and_syscalls, OpCode, StackValue, SyscallProvider, VmState,
+    OpCode, StackValue, SyscallProvider, VmState, encode_integer, interpret_with_stack_and_syscalls,
 };
 use num_bigint::BigInt;
 use serde_json::Value;
@@ -279,19 +279,19 @@ fn canonical_actual_item(value: &StackValue) -> Result<CanonicalItem, String> {
             BigInt::from_signed_bytes_le(bytes).to_string(),
         )),
         StackValue::ByteString(bytes) => Ok(CanonicalItem::ByteString(bytes.clone())),
-        StackValue::Buffer(bytes) => Ok(CanonicalItem::Buffer(bytes.clone())),
+        StackValue::Buffer(_, bytes) => Ok(CanonicalItem::Buffer(bytes.clone())),
         StackValue::Interop(_) | StackValue::Iterator(_) => Ok(CanonicalItem::Interop),
-        StackValue::Array(items) => items
+        StackValue::Array(_, items) => items
             .iter()
             .map(canonical_actual_item)
             .collect::<Result<Vec<_>, _>>()
             .map(CanonicalItem::Array),
-        StackValue::Struct(items) => items
+        StackValue::Struct(_, items) => items
             .iter()
             .map(canonical_actual_item)
             .collect::<Result<Vec<_>, _>>()
             .map(CanonicalItem::Struct),
-        StackValue::Map(entries) => entries
+        StackValue::Map(_, entries) => entries
             .iter()
             .map(|(key, item)| {
                 Ok((
@@ -309,12 +309,12 @@ fn stack_item_span(value: &StackValue) -> Result<Vec<u8>, String> {
         StackValue::Integer(value) => Ok(encode_integer(*value)),
         StackValue::BigInteger(bytes)
         | StackValue::ByteString(bytes)
-        | StackValue::Buffer(bytes) => Ok(bytes.clone()),
+        | StackValue::Buffer(_, bytes) => Ok(bytes.clone()),
         StackValue::Boolean(value) => Ok(vec![u8::from(*value)]),
         StackValue::Null
-        | StackValue::Array(_)
-        | StackValue::Struct(_)
-        | StackValue::Map(_)
+        | StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
         | StackValue::Interop(_)
         | StackValue::Iterator(_)
         | StackValue::Pointer(_) => Err(format!("stack item has no NeoVM span: {value:?}")),
