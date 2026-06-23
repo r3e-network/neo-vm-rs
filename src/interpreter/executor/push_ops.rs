@@ -145,9 +145,12 @@ pub(super) fn execute(
                 script[ip + 3],
                 script[ip + 4],
             ]);
-            // NeoVM: negative (high bit set) or oversized lengths are invalid
-            if raw_len > 0x0010_0000 {
-                return Err("PUSHDATA4 length exceeds maximum".to_string());
+            // Canonical PushData4 asserts MaxItemSize (ushort::MAX*2 = 131070)
+            // on the operand length and faults (uncatchably) if exceeded. The
+            // previous 1 MiB cap over-permitted: operands in 131071..=1048576
+            // HALTed here while canonical FAULTs (consensus split).
+            if raw_len as usize > crate::MAX_ITEM_SIZE {
+                return Err("PUSHDATA4 operand exceeds MaxItemSize".to_string());
             }
             let len = raw_len as usize;
             let start = ip + 5;

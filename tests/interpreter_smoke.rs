@@ -414,6 +414,86 @@ fn booland_allows_32_byte_bytestring_operand() {
     assert_eq!(result.stack, vec![StackValue::Boolean(false)]);
 }
 
+#[test]
+fn buffer_as_integer_operand_faults() {
+    // Canonical (int)GetInteger() throws (uncatchable) on a Buffer — Buffer is
+    // NOT a PrimitiveType, so its GetInteger hits the throwing base. An opcode
+    // count/index popped as a Buffer must FAULT, not decode the Buffer's bytes
+    // as a little-endian integer (pre-fix HALTed). D-1.
+    //   PUSH1; NEWBUFFER -> Buffer[0x00]; second NEWBUFFER pops it as size -> fault
+    let result = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::NEWBUFFER.byte(),
+        OpCode::NEWBUFFER.byte(),
+        OpCode::RET.byte(),
+    ]);
+    match result {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "NEWBUFFER with a Buffer size operand must fault (Buffer.GetInteger throws), got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn convert_null_and_integer_to_pointer() {
+    // Canonical: Null.ConvertTo(Pointer) returns Null (Pointer is a defined,
+    // non-Any type); base StackItem.ConvertTo returns self when type==Type.
+    // Pre-fix neo-vm-rs faulted ALL CONVERT->Pointer (0x10 missing from the
+    // target whitelist, checked before the Null short-circuit). D-8.
+    let null_to_ptr = interpret(&[
+        OpCode::PUSHNULL.byte(),
+        OpCode::CONVERT.byte(),
+        0x10,
+        OpCode::RET.byte(),
+    ])
+    .expect("CONVERT Null->Pointer must not fault");
+    assert_eq!(null_to_ptr.state, VmState::Halt);
+    assert_eq!(null_to_ptr.stack, vec![StackValue::Null]);
+    // An Integer source -> Pointer is an invalid conversion (InvalidCastException).
+    let int_to_ptr = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::CONVERT.byte(),
+        0x10,
+        OpCode::RET.byte(),
+    ]);
+    match int_to_ptr {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "CONVERT Integer->Pointer must fault, got {r:?}"
+        ),
+    }
+}
+
+#[test]
+fn pushdata4_over_max_item_size_faults() {
+    // Canonical PushData4 asserts MaxItemSize (ushort::MAX*2 = 131070) on the
+    // operand length; 131071 bytes faults. Pre-fix the only bound was a 1 MiB
+    // cap, so 131071..=1048576 HALTed where canonical FAULTs. D-2.
+    let mk = |len: u32| {
+        let mut s = vec![OpCode::PUSHDATA4.byte()];
+        s.extend_from_slice(&len.to_le_bytes());
+        s.resize(s.len() + len as usize, 0u8);
+        s.push(OpCode::RET.byte());
+        s
+    };
+    match interpret(&mk(131071)) {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "PUSHDATA4 of 131071 bytes must fault (> MaxItemSize), got {r:?}"
+        ),
+    }
+    // Boundary: 131070 == MaxItemSize is allowed.
+    let ok = interpret(&mk(131070)).expect("PUSHDATA4 of 131070 bytes must not fault");
+    assert_eq!(ok.state, VmState::Halt);
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
 
 /// A faulting script may surface either as `Ok` with `VmState::Fault` or as an

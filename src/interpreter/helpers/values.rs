@@ -3,7 +3,7 @@ use crate::{
     NEOVM_STACK_ITEM_TYPE_ANY, NEOVM_STACK_ITEM_TYPE_ARRAY, NEOVM_STACK_ITEM_TYPE_BOOLEAN,
     NEOVM_STACK_ITEM_TYPE_BUFFER, NEOVM_STACK_ITEM_TYPE_BYTESTRING, NEOVM_STACK_ITEM_TYPE_INTEGER,
     NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE, NEOVM_STACK_ITEM_TYPE_MAP,
-    NEOVM_STACK_ITEM_TYPE_STRUCT, StackItemType,
+    NEOVM_STACK_ITEM_TYPE_POINTER, NEOVM_STACK_ITEM_TYPE_STRUCT, StackItemType,
     interpreter::runtime_types::structurally_equal,
     semantics::{
         collections as collection_rules, comparison as comparison_rules,
@@ -20,12 +20,12 @@ pub(crate) fn pop_item(stack: &mut Vec<StackValue>) -> Result<StackValue, String
 #[inline]
 pub(crate) fn pop_integer(stack: &mut Vec<StackValue>) -> Result<i64, String> {
     let value = pop_item(stack)?;
-    stack_value_i64(&value, true)?.ok_or_else(|| "expected integer on stack".to_string())
+    stack_value_i64(&value)?.ok_or_else(|| "expected integer on stack".to_string())
 }
 
 pub(crate) fn pop_shift_count(stack: &mut Vec<StackValue>) -> Result<i64, String> {
     let value = pop_item(stack)?;
-    if let Some(integer) = stack_value_i64(&value, false)? {
+    if let Some(integer) = stack_value_i64(&value)? {
         return Ok(integer);
     }
 
@@ -37,20 +37,23 @@ pub(crate) fn pop_shift_count(stack: &mut Vec<StackValue>) -> Result<i64, String
     }
 }
 
-fn stack_value_i64(value: &StackValue, accept_buffer: bool) -> Result<Option<i64>, String> {
+/// Decode a stack value as an i64 the way canonical NeoVM's `(int)GetInteger()`
+/// does for opcode count/index operands. Integer/Boolean/ByteString/BigInteger
+/// decode (ByteString/BigInteger capped at 32 bytes by the shared decoder).
+/// Everything else — **Buffer** (NOT a PrimitiveType; its `GetInteger()` throws
+/// an uncatchable InvalidCastException), Null, compounds, Pointer, Interop —
+/// returns `None` so the caller faults, matching canonical. Buffer was
+/// previously accepted here, which let PICK/ROLL/XDROP/REVERSEN, NEWBUFFER/
+/// LEFT/RIGHT/SUBSTR/MEMCPY and NEWARRAY/NEWSTRUCT/PACK* HALT on a Buffer
+/// count/index where canonical FAULTs (consensus split).
+fn stack_value_i64(value: &StackValue) -> Result<Option<i64>, String> {
     match value {
         StackValue::Integer(value) => Ok(Some(*value)),
         StackValue::Boolean(value) => Ok(Some(if *value { 1 } else { 0 })),
-        _ => {
-            let bytes = match value {
-                StackValue::ByteString(bytes) | StackValue::BigInteger(bytes) => {
-                    Some(bytes.as_slice())
-                }
-                StackValue::Buffer(_, bytes) if accept_buffer => Some(bytes.as_slice()),
-                _ => None,
-            };
-            bytes.map(numeric::decode_signed_le_bytes_i64).transpose()
+        StackValue::ByteString(bytes) | StackValue::BigInteger(bytes) => {
+            numeric::decode_signed_le_bytes_i64(bytes).map(Some)
         }
+        _ => Ok(None),
     }
 }
 
@@ -269,6 +272,7 @@ pub(crate) fn convert_value(
         | NEOVM_STACK_ITEM_TYPE_ARRAY
         | NEOVM_STACK_ITEM_TYPE_STRUCT
         | NEOVM_STACK_ITEM_TYPE_MAP
+        | NEOVM_STACK_ITEM_TYPE_POINTER
         | NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => {}
         _ => return Err(format!("unsupported CONVERT target 0x{kind:02x}")),
     }
@@ -302,6 +306,13 @@ pub(crate) fn convert_value(
         NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => Ok(match value {
             StackValue::Interop(_) => value,
             other => return Err(format!("unsupported CONVERT source for Interop: {other:?}")),
+        }),
+        // Canonical: base StackItem.ConvertTo returns `this` when type == Type,
+        // so Pointer->Pointer succeeds (Null->Pointer is handled by the Null
+        // short-circuit above). Any other source hits InvalidCastException.
+        NEOVM_STACK_ITEM_TYPE_POINTER => Ok(match value {
+            StackValue::Pointer(_) => value,
+            other => return Err(format!("unsupported CONVERT source for Pointer: {other:?}")),
         }),
         _ => Err(format!("unsupported CONVERT target 0x{kind:02x}")),
     }
