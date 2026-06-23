@@ -5,8 +5,8 @@ use alloc::{format, string::String};
 use crate::semantics::{arithmetic, comparison, numeric};
 use crate::{
     COMPACT_TAG_ARRAY, COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_BOOLEAN, COMPACT_TAG_BUFFER,
-    COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER, COMPACT_TAG_STRUCT, StackValue,
-    normalize_stack_item_type_tag,
+    COMPACT_TAG_BYTESTRING, COMPACT_TAG_INTEGER, COMPACT_TAG_INTEROP, COMPACT_TAG_ITERATOR,
+    COMPACT_TAG_STRUCT, StackValue, normalize_stack_item_type_tag,
 };
 
 /// Return whether a value has the requested compact or NeoVM stack item type.
@@ -17,6 +17,10 @@ pub fn is_type(value: &StackValue, type_tag: u8) -> bool {
         normalize_stack_item_type_tag(type_tag),
     ) {
         (COMPACT_TAG_BIG_INTEGER, COMPACT_TAG_INTEGER) => true,
+        // A (host-backed) iterator's canonical StackItemType is InteropInterface,
+        // so ISTYPE(InteropInterface) on an iterator is true. The distinct
+        // Iterator tag is an internal representation detail.
+        (COMPACT_TAG_ITERATOR, COMPACT_TAG_INTEROP) => true,
         (actual, expected) => actual == expected,
     }
 }
