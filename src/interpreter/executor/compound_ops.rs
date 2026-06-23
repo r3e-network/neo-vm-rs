@@ -268,19 +268,23 @@ pub(super) fn execute(
         }
         VALUES => {
             let item = pop_item(stack)?;
+            // Canonical VALUES clones Struct elements (`item is Struct s ? s.Clone()
+            // : item`) so the returned array is isolated from later mutation of a
+            // source struct; non-Struct items are kept by reference.
             match item {
                 StackValue::Map(_, items) => {
                     let values = items
                         .into_iter()
-                        .map(|(_, value)| value)
+                        .map(|(_, value)| ids.clone_struct_for_storage(&value))
                         .collect::<Vec<_>>();
                     stack.push(ids.array(values));
                 }
-                StackValue::Array(_, items) => {
-                    stack.push(ids.array(items));
-                }
-                StackValue::Struct(_, items) => {
-                    stack.push(ids.array(items));
+                StackValue::Array(_, items) | StackValue::Struct(_, items) => {
+                    let values = items
+                        .into_iter()
+                        .map(|value| ids.clone_struct_for_storage(&value))
+                        .collect::<Vec<_>>();
+                    stack.push(ids.array(values));
                 }
                 _ => return Err("VALUES expects a map, array, or struct".to_string()),
             }
