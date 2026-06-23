@@ -321,7 +321,11 @@ pub(crate) fn is_null(value: &StackValue) -> bool {
 #[inline]
 pub(crate) fn pop_boolean(stack: &mut Vec<StackValue>) -> Result<bool, String> {
     let value = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
-    Ok(comparison_rules::boolean_value(&value))
+    // Canonical boolean coercion is `GetBoolean()`, which faults (uncatchable
+    // InvalidCastException) for a ByteString/Integer wider than Integer.MaxSize
+    // (32 bytes). JMPIF/JMPIFNOT/ASSERT/etc. must use this strict path, not a lax
+    // any-nonzero-byte truthiness check.
+    comparison_rules::strict_boolean_value(&value)
 }
 
 pub(crate) fn pop_bytes(stack: &mut Vec<StackValue>) -> Result<Vec<u8>, String> {
