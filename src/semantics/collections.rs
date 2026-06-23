@@ -23,6 +23,33 @@ pub fn collection_index_value(value: &StackValue) -> Result<i64, String> {
     }
 }
 
+/// Decode a collection index the canonical `(int)key.GetInteger()` way for
+/// opcodes that FAULT (uncatchably) on a non-integer/oversize/overflowing key
+/// rather than coercing it (HASKEY etc.). Unlike [`collection_index_value`], a
+/// `Null` (or any non-primitive) key is an error, and a value outside `Int32`
+/// range is an error (canonical `(int)` cast throws `OverflowException`). The
+/// returned value may be negative — the caller decides whether negative faults.
+pub fn collection_index_value_strict(value: &StackValue) -> Result<i64, String> {
+    let index = match value {
+        StackValue::Integer(value) => *value,
+        StackValue::Boolean(value) => {
+            if *value {
+                1
+            } else {
+                0
+            }
+        }
+        StackValue::ByteString(value) | StackValue::BigInteger(value) => {
+            numeric::decode_signed_le_bytes_i64(value)?
+        }
+        _ => return Err("collection index must be an integer".into()),
+    };
+    if index < i32::MIN as i64 || index > i32::MAX as i64 {
+        return Err("collection index exceeds Int32 range".into());
+    }
+    Ok(index)
+}
+
 /// Validate a NeoVM primitive map key.
 pub fn validate_map_key_value(key: &StackValue) -> Result<(), String> {
     match key {
@@ -244,17 +271,30 @@ pub fn size(value: &StackValue) -> Result<i64, String> {
 /// Return whether a key exists in a collection-like value.
 pub fn has_key(collection: &StackValue, key: &StackValue) -> Result<bool, String> {
     match collection {
+        // Canonical HASKEY coerces the index via GetInteger and FAULTS
+        // (uncatchable) on a negative/null/non-integer/overflowing index — it does
+        // not silently report `false`. `has_index_key` enforces that strict path.
         StackValue::Array(_, items) | StackValue::Struct(_, items) => {
-            Ok(non_negative_index(collection_index_value(key)?)
-                .is_some_and(|index| index < items.len()))
+            has_index_key(key, items.len())
         }
         StackValue::Map(_, pairs) => Ok(map_entry_index(pairs, key)?.is_some()),
         StackValue::ByteString(bytes) | StackValue::Buffer(_, bytes) => {
-            Ok(non_negative_index(collection_index_value(key)?)
-                .is_some_and(|index| index < bytes.len()))
+            has_index_key(key, bytes.len())
         }
         _ => Err("HASKEY: unsupported types".into()),
     }
+}
+
+/// Canonical HASKEY index semantics for Array/Struct/Buffer/ByteString:
+/// `(int)key.GetInteger()` (faults uncatchably on null/non-integer/Int32
+/// overflow), then `if (index < 0) throw`, else return `index < count`.
+/// The pre-fix path coerced null→0 and treated negative/overflow as `false`.
+fn has_index_key(key: &StackValue, count: usize) -> Result<bool, String> {
+    let index = collection_index_value_strict(key)?;
+    if index < 0 {
+        return Err("negative index for HASKEY".into());
+    }
+    Ok((index as usize) < count)
 }
 
 /// Return map keys as an array.

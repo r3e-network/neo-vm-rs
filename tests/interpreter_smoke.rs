@@ -193,4 +193,27 @@ fn jmpeq_compares_by_integer_value_not_bytes() {
     );
 }
 
+#[test]
+fn haskey_faults_on_negative_and_null_index() {
+    // Canonical HASKEY on Array/Buffer/ByteString does (int)key.GetInteger() then
+    // `if (index < 0) throw` — so a negative index, a null key, or an Int32
+    // overflow faults uncatchably (pre-fix returned false / coerced null to 0).
+    for key in [OpCode::PUSHM1.byte(), OpCode::PUSHNULL.byte()] {
+        let result = interpret(&[
+            OpCode::NEWARRAY0.byte(),
+            key,
+            OpCode::HASKEY.byte(),
+            OpCode::RET.byte(),
+        ]);
+        match result {
+            Err(_) => {}
+            Ok(r) => assert_eq!(
+                r.state,
+                VmState::Fault,
+                "HASKEY with negative/null index must fault, got {r:?}"
+            ),
+        }
+    }
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
