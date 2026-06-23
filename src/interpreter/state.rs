@@ -114,8 +114,14 @@ pub(super) const MAX_TRY_NESTING: usize = 16;
 /// C# counts the currently executing context in `InvocationStack`, while this
 /// interpreter stores only suspended callers here. Keep one slot for the active
 /// frame so the total active execution contexts still match
-/// `ExecutionEngineLimits.MaxInvocationStackSize = 1024`.
-#[cfg(not(target_arch = "riscv32"))]
+/// `ExecutionEngineLimits.MaxInvocationStackSize = 1024` (so 1023 saved frames
+/// + 1 entry = 1024 contexts).
+///
+/// This MUST be the same on every target: a smaller riscv32 cap (e.g. 63) would
+/// FAULT a contract that legally nests 64..=1023 deep and then returns, while
+/// canonical NeoVM (and the non-riscv32 host) HALTs it — a consensus divergence
+/// on the actual guest. 1023 frames is safe on riscv32: each `CallFrame` holds
+/// only small offsets (~20 B) into the static retained buffers, so the inline
+/// `[CallFrame; MAX_CALL_DEPTH]` is ~20 KiB — well within the guest's 1 MiB
+/// stack (`min_stack_size!(1048576)`) and off the bump allocator.
 pub(super) const MAX_CALL_DEPTH: usize = crate::DEFAULT_MAX_INVOCATION_DEPTH - 1;
-#[cfg(target_arch = "riscv32")]
-pub(super) const MAX_CALL_DEPTH: usize = 63;

@@ -35,6 +35,56 @@ fn commit_collection_update(
     );
 }
 
+/// Decode a PICKITEM index key the way canonical NeoVM does.
+///
+/// In C# (`JumpTable.Compound.cs::PickItem`) the key is popped as a
+/// `PrimitiveType` and the index is `(int)key.GetInteger()`. Consequences,
+/// reproduced here:
+/// - A non-`PrimitiveType` key (Null/Map/Array/Struct/Buffer) makes
+///   `Pop<PrimitiveType>()` throw `InvalidCastException` → **uncatchable** FAULT.
+/// - A `ByteString` key wider than `Integer.MaxSize` (32 bytes) throws
+///   `InvalidCastException` → **uncatchable** FAULT.
+/// - A value outside `Int32` range makes the `(int)` cast throw
+///   `OverflowException` → **uncatchable** FAULT.
+///
+/// All of those are returned here as `Err`, which the caller propagates with
+/// `?` (a hard fault). A valid (possibly negative) `Int32` index is returned as
+/// `Ok`; the caller performs the range check, which is the only **catchable**
+/// failure (`CatchableException` in C#).
+///
+/// Note: a `ByteString`/`BigInteger` of 17..=32 bytes whose magnitude still fits
+/// `Int32` is the one residual edge not handled exactly (it faults uncatchably
+/// here rather than decoding); such an index is astronomically unlikely and
+/// would be out-of-range in both engines for any realistic collection.
+fn decode_pickitem_index(key: &StackValue) -> Result<i64, String> {
+    let value: i128 = match key {
+        StackValue::Integer(v) => *v as i128,
+        StackValue::Boolean(b) => {
+            if *b {
+                1
+            } else {
+                0
+            }
+        }
+        StackValue::BigInteger(bytes) => crate::semantics::numeric::decode_signed_le_bytes_i128(
+            bytes,
+        )
+        .map_err(|_| "PICKITEM index exceeds Int32 range".to_string())?,
+        StackValue::ByteString(bytes) => {
+            if bytes.len() > 32 {
+                return Err("PICKITEM index ByteString exceeds maximum integer size".to_string());
+            }
+            crate::semantics::numeric::decode_signed_le_bytes_i128(bytes)
+                .map_err(|_| "PICKITEM index exceeds Int32 range".to_string())?
+        }
+        _ => return Err("PICKITEM index must be an integer".to_string()),
+    };
+    if value < i32::MIN as i128 || value > i32::MAX as i128 {
+        return Err("PICKITEM index exceeds Int32 range".to_string());
+    }
+    Ok(value as i64)
+}
+
 #[allow(clippy::too_many_arguments)]
 #[inline]
 pub(super) fn execute(
@@ -266,77 +316,83 @@ pub(super) fn execute(
             }
         }
         PICKITEM => {
-            let pick_result = (|| -> Result<(), String> {
-                let key_or_index = pop_item(stack)?;
-                let item = pop_item(stack)?;
-                match item {
-                    StackValue::Map(_, items) => {
-                        // Map key can be any primitive type
-                        let index = collection_rules::map_entry_index_by(
-                            &items,
-                            &key_or_index,
-                            primitive_key_equals,
-                            validate_map_key,
-                        )?
-                        .ok_or_else(|| "key not found for PICKITEM".to_string())?;
-                        stack.push(items[index].1.clone());
-                    }
-                    StackValue::ByteString(_)
-                    | StackValue::Buffer(_, _)
-                    | StackValue::Integer(_)
-                    | StackValue::BigInteger(_)
-                    | StackValue::Boolean(_) => {
-                        let value = collection_rules::pick_item(&item, &key_or_index)
-                            .map_err(|_| "index out of range for PICKITEM".to_string())?;
-                        stack.push(value);
-                    }
-                    _ => {
-                        // Array and Struct preserve interpreter object identity when
-                        // a compound value is picked from them.
-                        let index = match key_or_index {
-                            StackValue::Integer(v) if v >= 0 => v as usize,
-                            StackValue::Boolean(v) => {
-                                if v {
-                                    1
-                                } else {
-                                    0
-                                }
+            let key_or_index = pop_item(stack)?;
+            let item = pop_item(stack)?;
+            // Canonical NeoVM PICKITEM throws CatchableException only for an
+            // out-of-range index or a map-key miss; a bad key TYPE, an oversized
+            // ByteString key, or an Int32 overflow is an uncatchable engine
+            // fault. Catchable failures route through `pending_error` (enter a
+            // surrounding TRY/CATCH); uncatchable ones `return Err` (hard fault).
+            match item {
+                StackValue::Map(_, items) => {
+                    // A non-primitive map key is an uncatchable fault (the `?` on
+                    // `validate_map_key`); a key miss is catchable.
+                    let found = collection_rules::map_entry_index_by(
+                        &items,
+                        &key_or_index,
+                        primitive_key_equals,
+                        validate_map_key,
+                    )?;
+                    match found {
+                        Some(index) => stack.push(items[index].1.clone()),
+                        None => {
+                            let msg = "Key not found in Map".to_string();
+                            if try_frames.is_empty() {
+                                return Err(msg);
                             }
-                            StackValue::Null => 0,
-                            _ => {
-                                return Err(
-                                    "PICKITEM index must be a non-negative integer".to_string()
-                                );
-                            }
-                        };
-                        match item {
-                            StackValue::Array(_, items) | StackValue::Struct(_, items) => {
-                                let value = items
-                                    .get(index)
-                                    .cloned()
-                                    .ok_or_else(|| "index out of range for PICKITEM".to_string())?;
-                                if cfg!(target_arch = "riscv32") {
-                                    core::mem::forget(items);
-                                }
-                                stack.push(value);
-                            }
-                            _ => {
-                                return Err(
-                                    "PICKITEM expects an array, map, byte string, or integer"
-                                        .to_string(),
-                                );
-                            }
+                            *pending_error = Some(PendingException::message(msg));
+                            finish!(Dispatch::Continue);
                         }
                     }
                 }
-                Ok(())
-            })();
-            if let Err(error) = pick_result {
-                if try_frames.is_empty() {
-                    return Err(error);
+                StackValue::Array(_, items) | StackValue::Struct(_, items) => {
+                    // Array/Struct preserve interpreter object identity, so the
+                    // picked value may alias `items`' backing on riscv32; the
+                    // success path leaks `items` (mem::forget) to keep it alive.
+                    let index = decode_pickitem_index(&key_or_index)?;
+                    if index < 0 || index as usize >= items.len() {
+                        // Out-of-range: catchable. No value is aliased out, so
+                        // `items` may drop normally (no mem::forget).
+                        let msg = "The index of Array is out of range".to_string();
+                        if try_frames.is_empty() {
+                            return Err(msg);
+                        }
+                        *pending_error = Some(PendingException::message(msg));
+                        finish!(Dispatch::Continue);
+                    }
+                    let value = items[index as usize].clone();
+                    if cfg!(target_arch = "riscv32") {
+                        core::mem::forget(items);
+                    }
+                    stack.push(value);
                 }
-                *pending_error = Some(PendingException::message(error));
-                finish!(Dispatch::Continue);
+                StackValue::ByteString(_)
+                | StackValue::Buffer(_, _)
+                | StackValue::Integer(_)
+                | StackValue::BigInteger(_)
+                | StackValue::Boolean(_) => {
+                    // Primitive container: index a byte of the value's span.
+                    // Validate the key type first (uncatchable on bad type),
+                    // then the bounds check via `pick_item` is catchable. Uses
+                    // main's interpreter-native `pick_item` (no ABI round-trip).
+                    let _ = decode_pickitem_index(&key_or_index)?;
+                    match collection_rules::pick_item(&item, &key_or_index) {
+                        Ok(value) => stack.push(value),
+                        Err(_) => {
+                            let msg = "The index of PrimitiveType is out of range".to_string();
+                            if try_frames.is_empty() {
+                                return Err(msg);
+                            }
+                            *pending_error = Some(PendingException::message(msg));
+                            finish!(Dispatch::Continue);
+                        }
+                    }
+                }
+                _ => {
+                    return Err(
+                        "PICKITEM expects an array, map, buffer, or byte string".to_string(),
+                    )
+                }
             }
         }
         SETITEM => {
