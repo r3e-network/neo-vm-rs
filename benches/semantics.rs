@@ -73,15 +73,21 @@ fn stack_codec(c: &mut Criterion) {
         StackValue::Integer(42),
         StackValue::ByteString(vec![0xAA; 32]),
         StackValue::Boolean(true),
-        StackValue::Array(vec![
-            StackValue::Integer(1),
-            StackValue::Integer(2),
-            StackValue::ByteString(vec![0xBB; 16]),
-        ]),
-        StackValue::Map(vec![(
-            StackValue::ByteString(b"key".to_vec()),
-            StackValue::ByteString(vec![0xCC; 24]),
-        )]),
+        StackValue::Array(
+            1,
+            vec![
+                StackValue::Integer(1),
+                StackValue::Integer(2),
+                StackValue::ByteString(vec![0xBB; 16]),
+            ],
+        ),
+        StackValue::Map(
+            2,
+            vec![(
+                StackValue::ByteString(b"key".to_vec()),
+                StackValue::ByteString(vec![0xCC; 24]),
+            )],
+        ),
     ];
     let encoded = fast_codec::encode_stack(&stack);
 
