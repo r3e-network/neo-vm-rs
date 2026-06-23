@@ -54,9 +54,13 @@ fn stack_value_i64(value: &StackValue, accept_buffer: bool) -> Result<Option<i64
     }
 }
 
+/// Strict canonical index decode for opcodes whose key is popped as a
+/// `PrimitiveType` and cast `(int)GetInteger()` — a null/non-integer key or an
+/// Int32-overflowing value is an (uncatchable) fault, not coerced to 0 (REMOVE,
+/// SETITEM array/buffer). The returned value may be negative; the caller decides.
 #[inline]
-pub(crate) fn integer_value_for_collection_index(value: &StackValue) -> Result<i64, String> {
-    collection_rules::collection_index_value(value)
+pub(crate) fn integer_value_for_collection_index_strict(value: &StackValue) -> Result<i64, String> {
+    collection_rules::collection_index_value_strict(value)
 }
 
 #[inline]

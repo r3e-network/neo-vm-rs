@@ -411,7 +411,7 @@ pub(super) fn execute(
                     );
                 }
                 StackValue::Buffer(id, mut bytes) => {
-                    let index = integer_value_for_collection_index(&key)?;
+                    let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= bytes.len() {
                         return Err("index out of range for SETITEM".to_string());
                     }
@@ -434,7 +434,7 @@ pub(super) fn execute(
                     );
                 }
                 StackValue::Array(id, mut items) => {
-                    let index = integer_value_for_collection_index(&key)?;
+                    let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= items.len() {
                         return Err("index out of range for SETITEM".to_string());
                     }
@@ -452,7 +452,7 @@ pub(super) fn execute(
                     );
                 }
                 StackValue::Struct(id, mut items) => {
-                    let index = integer_value_for_collection_index(&key)?;
+                    let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= items.len() {
                         return Err("index out of range for SETITEM".to_string());
                     }
@@ -503,7 +503,7 @@ pub(super) fn execute(
             let item = pop_item(stack)?;
             match item {
                 StackValue::Array(id, mut items) => {
-                    let index = integer_value_for_collection_index(&key)?;
+                    let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= items.len() {
                         return Err("index out of range for REMOVE".to_string());
                     }
@@ -521,7 +521,7 @@ pub(super) fn execute(
                     );
                 }
                 StackValue::Struct(id, mut items) => {
-                    let index = integer_value_for_collection_index(&key)?;
+                    let index = integer_value_for_collection_index_strict(&key)?;
                     if index < 0 || (index as usize) >= items.len() {
                         return Err("index out of range for REMOVE".to_string());
                     }

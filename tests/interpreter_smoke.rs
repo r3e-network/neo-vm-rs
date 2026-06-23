@@ -216,4 +216,27 @@ fn haskey_faults_on_negative_and_null_index() {
     }
 }
 
+#[test]
+fn remove_faults_on_null_index() {
+    // REMOVE pops its key as PrimitiveType + (int)GetInteger; a null key faults
+    // uncatchably (pre-fix coerced null to index 0 and removed element 0).
+    //   PUSH1; NEWARRAY  -> Array[Null] (len 1)
+    //   PUSHNULL; REMOVE -> fault (null index)
+    let result = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::NEWARRAY.byte(),
+        OpCode::PUSHNULL.byte(),
+        OpCode::REMOVE.byte(),
+        OpCode::RET.byte(),
+    ]);
+    match result {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "REMOVE with a null index must fault, got {r:?}"
+        ),
+    }
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
