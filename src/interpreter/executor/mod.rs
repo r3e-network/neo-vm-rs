@@ -735,7 +735,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             ENDFINALLY => {
-                if let Some(next_ip) = control::end_finally(ip, &mut try_frames, &pending_error)? {
+                if let Some(next_ip) =
+                    control::end_finally(ip, script.len(), &mut try_frames, &pending_error)?
+                {
                     ip = next_ip;
                     continue;
                 }

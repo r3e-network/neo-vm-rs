@@ -556,6 +556,30 @@ fn endtry_in_finally_block_faults() {
     }
 }
 
+#[test]
+fn endtry_out_of_bounds_target_faults() {
+    // Canonical assigns the ENDTRY end target through the InstructionPointer
+    // setter, which faults on value > Script.Length. An out-of-range end target
+    // must FAULT, not fall through and HALT (pre-fix). D-9.
+    //   ip0 TRY catch=3 finally=0
+    //   ip3 ENDTRY +127  (target = 3 + 127 = 130 > len(5) -> fault)
+    let result = interpret(&[
+        OpCode::TRY.byte(),
+        0x03,
+        0x00,
+        OpCode::ENDTRY.byte(),
+        0x7F,
+    ]);
+    match result {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "ENDTRY with an out-of-bounds end target must fault, got {r:?}"
+        ),
+    }
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
 
 /// A faulting script may surface either as `Ok` with `VmState::Fault` or as an

@@ -126,7 +126,7 @@ pub(super) fn end_try_short(
     } else {
         ip + 2
     };
-    end_try_at(target_ip, try_frames)
+    end_try_at(target_ip, script.len(), try_frames)
 }
 
 pub(super) fn end_try_long(
@@ -152,11 +152,12 @@ pub(super) fn end_try_long(
     } else {
         ip + 5
     };
-    end_try_at(target_ip, try_frames)
+    end_try_at(target_ip, script.len(), try_frames)
 }
 
 pub(super) fn end_finally(
     ip: usize,
+    script_len: usize,
     try_frames: &mut TryStack,
     pending_error: &Option<PendingException>,
 ) -> Result<Option<usize>, String> {
@@ -170,12 +171,21 @@ pub(super) fn end_finally(
         return Ok(Some(ip));
     }
     if frame.end_ip != 0 {
+        // The stashed ENDTRY end target becomes the IP now — bounds-check it
+        // like the canonical InstructionPointer setter (faults on > Length).
+        if frame.end_ip > script_len {
+            return Err("Out of script bounds".to_string());
+        }
         return Ok(Some(frame.end_ip));
     }
     Ok(None)
 }
 
-fn end_try_at(target_ip: usize, try_frames: &mut TryStack) -> Result<usize, String> {
+fn end_try_at(
+    target_ip: usize,
+    script_len: usize,
+    try_frames: &mut TryStack,
+) -> Result<usize, String> {
     // C# ExecuteEndTry throws "The corresponding TRY block cannot be found."
     // when the current context has no try frame; mirror that as a FAULT
     // instead of silently treating ENDTRY/ENDTRY_L as a no-op jump.
@@ -188,9 +198,18 @@ fn end_try_at(target_ip: usize, try_frames: &mut TryStack) -> Result<usize, Stri
         return Err("The opcode ENDTRY can't be executed in a FINALLY block.".to_string());
     }
     if frame.finally_ip != 0 {
+        // The end target is applied LATER by ENDFINALLY (and bounds-checked
+        // there, lazily — canonical stashes it in EndPointer and only validates
+        // when it is assigned to InstructionPointer). We jump to the already
+        // bounds-checked finally entry now.
         frame.end_ip = target_ip;
         frame.in_finally = true;
         return Ok(frame.finally_ip);
+    }
+    // No finally: the end target becomes the IP now, so bounds-check it like the
+    // canonical InstructionPointer setter (faults on value > Script.Length).
+    if target_ip > script_len {
+        return Err("Out of script bounds".to_string());
     }
     try_frames.pop();
     Ok(target_ip)
