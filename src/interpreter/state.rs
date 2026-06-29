@@ -125,3 +125,16 @@ pub(super) const MAX_TRY_NESTING: usize = 16;
 /// `[CallFrame; MAX_CALL_DEPTH]` is ~20 KiB — well within the guest's 1 MiB
 /// stack (`min_stack_size!(1048576)`) and off the bump allocator.
 pub(super) const MAX_CALL_DEPTH: usize = crate::DEFAULT_MAX_INVOCATION_DEPTH - 1;
+
+/// Total TryFrame capacity across ALL call contexts. Canonical caps each context
+/// at `MAX_TRY_NESTING` (16); with up to `MAX_CALL_DEPTH + 1` simultaneously
+/// active contexts (call_depth ranges 0..=MAX_CALL_DEPTH), the global worst case
+/// is their product. Sizing the inline (no-heap) array to this worst case means a
+/// contract that legally opens ≤16 trys in each of many call frames is never
+/// over-faulted, while the per-context limit is still enforced in `TryStack::push`.
+/// At ~20 B/frame this inline array is ~320 KiB on riscv32 — the blob-regen cycle
+/// MUST confirm it fits the 1 MiB guest stack alongside the CallFrame array (bump
+/// `min_stack_size!` if not). Only the inline (riscv32) TryStack uses this; the
+/// host TryStack is a heap `Vec` that grows on demand.
+#[cfg(target_arch = "riscv32")]
+pub(super) const MAX_TRY_FRAMES_TOTAL: usize = (MAX_CALL_DEPTH + 1) * MAX_TRY_NESTING;

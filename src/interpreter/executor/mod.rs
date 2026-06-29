@@ -100,7 +100,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                         slots_initialized = saved_init;
                     }
                 }
-                while try_frames.len > frame_index + 1 {
+                while try_frames.len() > frame_index + 1 {
                     try_frames.pop();
                 }
                 let frame = try_frames
