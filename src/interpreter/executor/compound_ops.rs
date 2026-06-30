@@ -52,37 +52,18 @@ fn commit_collection_update(
 /// `Ok`; the caller performs the range check, which is the only **catchable**
 /// failure (`CatchableException` in C#).
 ///
-/// Note: a `ByteString`/`BigInteger` of 17..=32 bytes whose magnitude still fits
-/// `Int32` is the one residual edge not handled exactly (it faults uncatchably
-/// here rather than decoding); such an index is astronomically unlikely and
-/// would be out-of-range in both engines for any realistic collection.
+/// Decodes via the SAME strict helper SETITEM/REMOVE/HASKEY use
+/// ([`collection_rules::collection_index_value_strict`]): a `ByteString`/
+/// `BigInteger` key is read as a canonical `GetInteger` (up to
+/// `MAX_INTEGER_SIZE` = 32 bytes) and then range-checked to `Int32`. This is
+/// load-bearing: a 17..=32 byte little-endian key with leading zeros encodes a
+/// SMALL in-range value (e.g. 20 bytes of `05 00..00` is the integer 5), which
+/// canonical `(int)GetInteger()` accepts and returns the element for. The old
+/// 16-byte (`i128`) decoder faulted that valid pick uncatchably — a HALT-vs-
+/// FAULT consensus divergence, and an internal inconsistency with the 32-byte
+/// decoder already used by every other collection-index opcode.
 fn decode_pickitem_index(key: &StackValue) -> Result<i64, String> {
-    let value: i128 = match key {
-        StackValue::Integer(v) => *v as i128,
-        StackValue::Boolean(b) => {
-            if *b {
-                1
-            } else {
-                0
-            }
-        }
-        StackValue::BigInteger(bytes) => crate::semantics::numeric::decode_signed_le_bytes_i128(
-            bytes,
-        )
-        .map_err(|_| "PICKITEM index exceeds Int32 range".to_string())?,
-        StackValue::ByteString(bytes) => {
-            if bytes.len() > 32 {
-                return Err("PICKITEM index ByteString exceeds maximum integer size".to_string());
-            }
-            crate::semantics::numeric::decode_signed_le_bytes_i128(bytes)
-                .map_err(|_| "PICKITEM index exceeds Int32 range".to_string())?
-        }
-        _ => return Err("PICKITEM index must be an integer".to_string()),
-    };
-    if value < i32::MIN as i128 || value > i32::MAX as i128 {
-        return Err("PICKITEM index exceeds Int32 range".to_string());
-    }
-    Ok(value as i64)
+    collection_rules::collection_index_value_strict(key)
 }
 
 #[allow(clippy::too_many_arguments)]

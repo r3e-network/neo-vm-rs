@@ -60,6 +60,35 @@ fn executes_historical_size_and_pickitem_primitive_cases() {
 }
 
 #[test]
+fn pickitem_accepts_long_bytestring_index_encoding_small_value() {
+    // Regression (consensus): a 17..=32 byte little-endian ByteString with
+    // leading zeros encodes a SMALL in-range index. Here 20 bytes of
+    // `01 00..00` is the integer 1. Canonical `(int)key.GetInteger()` decodes it
+    // (GetInteger accepts up to 32 bytes) and returns the element -> HALT. The
+    // old 16-byte (`i128`) PICKITEM index decoder faulted this valid pick, a
+    // HALT-vs-FAULT divergence and an inconsistency with SETITEM/REMOVE/HASKEY
+    // which already used the 32-byte decoder.
+    let mut script = vec![
+        OpCode::PUSH12.byte(), // -> array[2]
+        OpCode::PUSH11.byte(), // -> array[1]
+        OpCode::PUSH10.byte(), // -> array[0] (top item becomes index 0)
+        OpCode::PUSH3.byte(),
+        OpCode::PACK.byte(), // Array[10, 11, 12]
+        OpCode::PUSHDATA1.byte(),
+        0x14, // 20-byte ByteString length
+        0x01, // little-endian value 1
+    ];
+    script.extend(core::iter::repeat(0x00u8).take(19)); // 19 trailing zero bytes
+    script.push(OpCode::PICKITEM.byte());
+    script.push(OpCode::RET.byte());
+
+    let result =
+        interpret(&script).expect("PICKITEM with a 20-byte index encoding 1 must execute");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.stack, vec![StackValue::Integer(11)]);
+}
+
+#[test]
 fn equal_keeps_primitive_types_strict() {
     let equal = interpret(&[
         OpCode::PUSH1.byte(),
