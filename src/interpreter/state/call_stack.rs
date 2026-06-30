@@ -152,4 +152,66 @@ impl CallStack {
             )))
         }
     }
+
+    /// Count the canonical reference contribution of every SUSPENDED caller
+    /// frame's slots (locals + arguments). Canonical `ReferenceCounter.Count`
+    /// spans all ExecutionContexts, so these still hold stack references until
+    /// RET. `visited` is shared with the active-context walk so a compound
+    /// reachable from several frames has its child edges counted once while each
+    /// slot reference is counted (matching C# stack-reference vs object-reference
+    /// accounting). Counting runs before opcode dispatch, so on riscv32 the
+    /// decoded temporaries are freed before any host_call.
+    #[cfg(not(target_arch = "riscv32"))]
+    pub(in crate::interpreter) fn count_slot_references(
+        &self,
+        visited: &mut alloc::collections::BTreeSet<u64>,
+    ) -> usize {
+        use crate::interpreter::runtime_types::count_child_edges;
+        let mut total = 0;
+        for i in 0..self.len {
+            // Safety: frames[i] was previously initialized by push_frame()
+            let frame = unsafe { &*self.frames[i].as_ptr() };
+            total += frame.locals.len() + frame.args.len();
+            for value in frame.locals.iter().chain(frame.args.iter()) {
+                total += count_child_edges(value, visited);
+            }
+        }
+        total
+    }
+
+    #[cfg(target_arch = "riscv32")]
+    pub(in crate::interpreter) fn count_slot_references(
+        &self,
+        visited: &mut alloc::collections::BTreeSet<u64>,
+    ) -> usize {
+        use crate::interpreter::runtime_types::count_child_edges;
+        let mut total = 0;
+        let buf = unsafe { RETAINED_CALL_STACK_BUF.as_slice(self.retained_len) };
+        for i in 0..self.len {
+            // Safety: frames[i] was previously initialized by push_frame_refs()
+            let frame = unsafe { &*self.frames[i].as_ptr() };
+            let locals_offset = frame.retained_offset + frame.args_len;
+            // The retained codec is round-trip safe (these bytes were written by
+            // push); a decode error is impossible, so on the off chance it does,
+            // contribute nothing for that frame rather than panic.
+            let mut args = Vec::new();
+            if decode_retained_prefix_into(
+                &buf[frame.retained_offset..frame.retained_offset + frame.args_len],
+                &mut args,
+            )
+            .is_err()
+            {
+                continue;
+            }
+            let mut locals = Vec::new();
+            if decode_retained_prefix_into(&buf[locals_offset..locals_offset + frame.locals_len], &mut locals).is_err() {
+                continue;
+            }
+            total += args.len() + locals.len();
+            for value in args.iter().chain(locals.iter()) {
+                total += count_child_edges(value, visited);
+            }
+        }
+        total
+    }
 }

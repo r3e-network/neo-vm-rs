@@ -89,6 +89,30 @@ fn pickitem_accepts_long_bytestring_index_encoding_small_value() {
 }
 
 #[test]
+fn nested_calls_overflow_reference_count_via_slots() {
+    // Consensus regression (F1 ReferenceCounter): each recursion INITSLOTs 255
+    // Null locals into a fresh context then CALLs itself. No single context
+    // exceeds MaxStackSize, but the SUSPENDED frames' slots accumulate — by ~8
+    // frames the total reference count exceeds 2048 and the VM must FAULT with
+    // "stack overflow", well before the call-depth limit (1023). Pre-fix only the
+    // active context was counted, so this HALTed/over-recursed past canonical
+    // (`ReferenceCounter.Count` spans every ExecutionContext's slots).
+    let script = vec![
+        OpCode::INITSLOT.byte(),
+        0xFF,
+        0x00, // 255 locals, 0 args
+        OpCode::CALL.byte(),
+        0xFD, // CALL -3 -> recurse to IP0
+        OpCode::RET.byte(),
+    ];
+    let err = interpret(&script).expect_err("must fault on reference-count overflow");
+    assert!(
+        err.contains("stack overflow"),
+        "expected a reference-count (stack overflow) fault before call-depth, got: {err}"
+    );
+}
+
+#[test]
 fn try_catch_handler_at_ip_zero_is_honored() {
     // Consensus regression: a catch block whose computed target is IP 0 (a
     // backward TRY catchOffset of -ip) is PRESENT, not absent. Canonical NeoVM

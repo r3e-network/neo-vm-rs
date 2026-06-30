@@ -171,6 +171,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             &locals,
             &args,
             &static_fields,
+            &call_stack,
         ) > MAX_STACK_SIZE
         {
             return Err("stack overflow".to_string());

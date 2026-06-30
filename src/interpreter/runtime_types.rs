@@ -142,6 +142,7 @@ pub(crate) fn count_references(
     locals: &[StackValue],
     args: &[StackValue],
     static_fields: &[StackValue],
+    call_stack: &crate::interpreter::state::CallStack,
 ) -> usize {
     let mut total = stack.len() + locals.len() + args.len() + static_fields.len();
     let mut visited: alloc::collections::BTreeSet<u64> = alloc::collections::BTreeSet::new();
@@ -150,10 +151,19 @@ pub(crate) fn count_references(
             total += count_child_edges(value, &mut visited);
         }
     }
+    // Canonical `ReferenceCounter.Count` is over EVERY ExecutionContext's slots,
+    // not just the active one: each suspended caller frame's locals + arguments
+    // still hold stack references (even Null slots count) until the frame is
+    // RET'd. Sharing `visited` keeps a compound reachable from several frames
+    // counted once for its child edges while each slot reference is counted.
+    total += call_stack.count_slot_references(&mut visited);
     total
 }
 
-fn count_child_edges(value: &StackValue, visited: &mut alloc::collections::BTreeSet<u64>) -> usize {
+pub(in crate::interpreter) fn count_child_edges(
+    value: &StackValue,
+    visited: &mut alloc::collections::BTreeSet<u64>,
+) -> usize {
     match value {
         StackValue::Array(id, items) | StackValue::Struct(id, items) => {
             if !visited.insert(*id) {
@@ -183,12 +193,18 @@ fn count_child_edges(value: &StackValue, visited: &mut alloc::collections::BTree
 #[cfg(test)]
 mod reference_count_tests {
     use super::*;
+    use crate::interpreter::state::CallStack;
     use alloc::vec;
+
+    /// No suspended call frames — the common case for the existing assertions.
+    fn no_frames() -> CallStack {
+        CallStack::new()
+    }
 
     #[test]
     fn nested_array_counts_each_child_edge() {
         let arr = StackValue::Array(1, vec![StackValue::Integer(0); 5]);
-        assert_eq!(count_references(&[arr], &[], &[], &[]), 6);
+        assert_eq!(count_references(&[arr], &[], &[], &[], &no_frames()), 6);
     }
 
     #[test]
@@ -200,7 +216,7 @@ mod reference_count_tests {
                 (StackValue::Integer(2), StackValue::Integer(20)),
             ],
         );
-        assert_eq!(count_references(&[map], &[], &[], &[]), 5);
+        assert_eq!(count_references(&[map], &[], &[], &[], &no_frames()), 5);
     }
 
     #[test]
@@ -208,7 +224,10 @@ mod reference_count_tests {
         let stack = vec![StackValue::Integer(0)];
         let locals = vec![StackValue::Integer(1), StackValue::Integer(2)];
         let statics = vec![StackValue::Integer(3)];
-        assert_eq!(count_references(&stack, &locals, &[], &statics), 4);
+        assert_eq!(
+            count_references(&stack, &locals, &[], &statics, &no_frames()),
+            4
+        );
     }
 
     #[test]
@@ -216,14 +235,52 @@ mod reference_count_tests {
         let inner = || StackValue::Array(9, vec![StackValue::Integer(0); 2]);
         let a = StackValue::Array(1, vec![inner()]);
         let b = StackValue::Array(2, vec![inner()]);
-        assert_eq!(count_references(&[a, b], &[], &[], &[]), 6);
+        assert_eq!(count_references(&[a, b], &[], &[], &[], &no_frames()), 6);
     }
 
     #[test]
     fn deeply_nested_array_exceeds_limit() {
         let items: vec::Vec<StackValue> = (0..3000).map(StackValue::Integer).collect();
         let arr = StackValue::Array(1, items);
-        assert!(count_references(&[arr], &[], &[], &[]) > 2048);
+        assert!(count_references(&[arr], &[], &[], &[], &no_frames()) > 2048);
+    }
+
+    #[test]
+    fn suspended_call_frames_count_their_slots() {
+        // Canonical ReferenceCounter spans every context: each suspended frame's
+        // locals + args (even Null slots) still hold stack references. Two frames
+        // with (2 locals + 1 arg) each contribute 6 references with an otherwise
+        // empty active context.
+        let mut cs = CallStack::new();
+        let nulls = || vec![StackValue::Null, StackValue::Null];
+        cs.push_frame(0, nulls(), vec![StackValue::Null], true).unwrap();
+        cs.push_frame(0, nulls(), vec![StackValue::Null], true).unwrap();
+        assert_eq!(count_references(&[], &[], &[], &[], &cs), 6);
+    }
+
+    #[test]
+    fn compound_shared_between_frame_and_active_counts_edges_once() {
+        // The same Array (id 7, 3 children) is held both on the active eval stack
+        // and in a suspended frame's local. Canonical counts TWO stack references
+        // to it but its 3 child edges only once: 2 + 3 = 5.
+        let shared = StackValue::Array(7, vec![StackValue::Integer(0); 3]);
+        let mut cs = CallStack::new();
+        cs.push_frame(0, vec![shared.clone()], vec![], true).unwrap();
+        assert_eq!(count_references(&[shared], &[], &[], &[], &cs), 5);
+    }
+
+    #[test]
+    fn nested_calls_overflow_via_slots_alone() {
+        // Five suspended frames each holding 500 Null local slots = 2500 stack
+        // references > MaxStackSize (2048), even though no single context exceeds
+        // it. This is the divergence the active-only count missed (F1): canonical
+        // FAULTs, the old count HALTed.
+        let mut cs = CallStack::new();
+        for _ in 0..5 {
+            cs.push_frame(0, vec![StackValue::Null; 500], vec![], true)
+                .unwrap();
+        }
+        assert!(count_references(&[], &[], &[], &[], &cs) > 2048);
     }
 
     #[test]
