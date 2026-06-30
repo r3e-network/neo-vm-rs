@@ -30,7 +30,7 @@ use super::TryFrame;
 /// finally. Mirrors v3.9.0 JumpTable.Control.ExecuteThrow's skip condition
 /// `State==Finally || (State==Catch && !HasFinally)`.
 fn frame_can_handle(frame: &TryFrame) -> bool {
-    !frame.in_finally && (!frame.caught || frame.finally_ip != 0)
+    !frame.in_finally && (!frame.caught || frame.has_finally)
 }
 
 #[cfg(target_arch = "riscv32")]
@@ -217,6 +217,8 @@ mod tests {
         TryFrame {
             catch_ip: 1,
             finally_ip: 0,
+            has_catch: true,
+            has_finally: false,
             call_depth,
             caught: false,
             in_finally: false,

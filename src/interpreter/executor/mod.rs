@@ -119,13 +119,16 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let was_caught = frame.caught;
                 let saved_catch_ip = frame.catch_ip;
                 let saved_finally_ip = frame.finally_ip;
+                let saved_has_catch = frame.has_catch;
                 // Canonical ExecuteThrow routing: a State==Try frame WITH a catch
                 // goes to its catch (consuming the exception); otherwise — a
                 // finally-only frame, or a State==Catch frame re-throwing into its
                 // own finally — goes to the finally CARRYING the exception. Set the
                 // frame's new state here (before any allocation), then drop the
-                // borrow.
-                let route_to_catch = !was_caught && saved_catch_ip != 0;
+                // borrow. Presence is the explicit `has_catch` flag, NOT
+                // `catch_ip != 0`: a catch legitimately at IP 0 (backward offset)
+                // is present and must be routed to.
+                let route_to_catch = !was_caught && saved_has_catch;
                 if route_to_catch {
                     frame.caught = true;
                 } else {
@@ -145,7 +148,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     // finally route: run the finally body with pending_error==None,
                     // carrying the exception for ENDFINALLY to re-propagate. This
                     // also overwrites any previously-carried exception (a new throw
-                    // supersedes). (find_handler_index guarantees finally_ip != 0.)
+                    // supersedes). (find_handler_index guarantees has_finally.)
                     ip = saved_finally_ip;
                     unwind_exception = Some(pending);
                 }

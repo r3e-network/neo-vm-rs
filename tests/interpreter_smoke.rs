@@ -89,6 +89,46 @@ fn pickitem_accepts_long_bytestring_index_encoding_small_value() {
 }
 
 #[test]
+fn try_catch_handler_at_ip_zero_is_honored() {
+    // Consensus regression: a catch block whose computed target is IP 0 (a
+    // backward TRY catchOffset of -ip) is PRESENT, not absent. Canonical NeoVM
+    // tests `HasCatch = CatchPointer >= 0`, so a throw routes to the catch at
+    // IP 0; main previously used 0 as the "no catch" sentinel and mis-routed
+    // such a throw as a finally (a HALT-vs-FAULT divergence). Because the
+    // script's entry IS the catch target, a stack-depth phase flag selects the
+    // setup path (first entry, depth 0) vs the handler path (catch entry, the
+    // pushed exception makes depth 1).
+    //
+    //   IP0  DEPTH               ; 0 on first entry, 1 (exception present) on catch
+    //   IP1  JMPIF +7  -> IP8    ; nonzero depth -> jump to the handler body
+    //   IP3  TRY  -3, 0          ; catchOffset -3 => catch target = IP0; no finally
+    //   IP6  PUSH1               ; exception object
+    //   IP7  THROW               ; routes to the catch at IP0
+    //   IP8  DROP                ; (handler) drop the caught exception
+    //   IP9  PUSH5
+    //   IP10 ENDTRY +2 -> IP12   ; leave the try/catch
+    //   IP12 RET
+    let script = vec![
+        OpCode::DEPTH.byte(),
+        OpCode::JMPIF.byte(),
+        0x07,
+        OpCode::TRY.byte(),
+        0xFD, // catchOffset = -3 (i8) -> catch target IP0
+        0x00, // finallyOffset = 0 -> no finally
+        OpCode::PUSH1.byte(),
+        OpCode::THROW.byte(),
+        OpCode::DROP.byte(),
+        OpCode::PUSH5.byte(),
+        OpCode::ENDTRY.byte(),
+        0x02,
+        OpCode::RET.byte(),
+    ];
+    let result = interpret(&script).expect("crafted try/catch script must execute");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.stack, vec![StackValue::Integer(5)]);
+}
+
+#[test]
 fn equal_keeps_primitive_types_strict() {
     let equal = interpret(&[
         OpCode::PUSH1.byte(),

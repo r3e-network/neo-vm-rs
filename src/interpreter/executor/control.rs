@@ -25,12 +25,14 @@ pub(super) fn enter_try_short(
     if catch_offset == 0 && finally_offset == 0 {
         return Err("catchOffset and finallyOffset can't be 0 in a TRY block".to_string());
     }
-    let catch_ip = if catch_offset != 0 {
+    let has_catch = catch_offset != 0;
+    let has_finally = finally_offset != 0;
+    let catch_ip = if has_catch {
         (ip as isize + catch_offset as isize) as usize
     } else {
         0
     };
-    let finally_ip = if finally_offset != 0 {
+    let finally_ip = if has_finally {
         (ip as isize + finally_offset as isize) as usize
     } else {
         0
@@ -44,6 +46,8 @@ pub(super) fn enter_try_short(
     try_frames.push(TryFrame {
         catch_ip,
         finally_ip,
+        has_catch,
+        has_finally,
         call_depth,
         caught: false,
         in_finally: false,
@@ -81,12 +85,14 @@ pub(super) fn enter_try_long(
     if catch_offset == 0 && finally_offset == 0 {
         return Err("catchOffset and finallyOffset can't be 0 in a TRY block".to_string());
     }
-    let catch_ip = if catch_offset != 0 {
+    let has_catch = catch_offset != 0;
+    let has_finally = finally_offset != 0;
+    let catch_ip = if has_catch {
         (ip as isize + catch_offset as isize) as usize
     } else {
         0
     };
-    let finally_ip = if finally_offset != 0 {
+    let finally_ip = if has_finally {
         (ip as isize + finally_offset as isize) as usize
     } else {
         0
@@ -100,6 +106,8 @@ pub(super) fn enter_try_long(
     try_frames.push(TryFrame {
         catch_ip,
         finally_ip,
+        has_catch,
+        has_finally,
         call_depth,
         caught: false,
         in_finally: false,
@@ -202,7 +210,7 @@ fn end_try_at(
     if frame.in_finally {
         return Err("The opcode ENDTRY can't be executed in a FINALLY block.".to_string());
     }
-    if frame.finally_ip != 0 {
+    if frame.has_finally {
         // The end target is applied LATER by ENDFINALLY (and bounds-checked
         // there, lazily — canonical stashes it in EndPointer and only validates
         // when it is assigned to InstructionPointer). We jump to the already
