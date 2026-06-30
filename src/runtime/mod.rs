@@ -20,11 +20,14 @@
 //! opcode rules, so behavior stays consistent between interpreting a script and
 //! compiling it.
 //!
-//! NOTE: the try/finally methods here ([`VmContext::check_exception`],
-//! [`VmContext::end_finally`]) currently carry the F5 finally-on-exception-unwind
-//! defect that was fixed in the interpreter (the `unwind_exception` single-cell
-//! design). A compiled contract that uses try/finally would inherit it; the
-//! analogous fix must be coordinated with the translator's emitted dispatch.
+//! The try/finally methods here ([`VmContext::check_exception`],
+//! [`VmContext::end_finally`]) use the SAME `unwind_exception` single-cell design
+//! as the interpreter's F5 fix: the unwinding exception is carried in
+//! `unwind_exception` (not `pending_error`) so the finally body runs with
+//! `pending_error == None` and the translator's loop-top `check_exception` does
+//! not re-fire and skip it. The fix is transparent to the translator (the method
+//! contracts — `check_exception` returns the target PC, `end_finally` returns the
+//! next PC or `-1` to re-propagate — are unchanged).
 
 pub mod ops;
 mod pending_exception;
@@ -145,6 +148,12 @@ pub struct VmContext {
     pub state: VmState,
     try_stack: Vec<TryFrame>,
     pending_error: Option<PendingException<StackValue>>,
+    /// Exception carried THROUGH a finally during unwinding. Held separately from
+    /// `pending_error` (mirrors the interpreter's `unwind_exception` single-cell
+    /// F5 fix) so the finally body runs with `pending_error == None` and the
+    /// loop-top `check_exception` does not re-fire before the finally is
+    /// dispatched; ENDFINALLY then re-propagates it.
+    unwind_exception: Option<PendingException<StackValue>>,
     call_stack: Vec<i32>,
 }
 
@@ -161,6 +170,7 @@ impl VmContext {
             state: VmState::Halt,
             try_stack: Vec::new(),
             pending_error: None,
+            unwind_exception: None,
             call_stack: Vec::new(),
         }
     }
@@ -385,7 +395,11 @@ impl VmContext {
     pub fn end_finally(&mut self) -> i32 {
         if let Some(frame) = self.try_stack.pop() {
             if frame.in_finally {
-                if self.pending_error.is_some() {
+                // If this finally ran during exception unwinding, re-propagate the
+                // carried exception (the loop-top check_exception then dispatches
+                // it to the next outer handler, or faults if none).
+                if let Some(carried) = self.unwind_exception.take() {
+                    self.pending_error = Some(carried);
                     return -1;
                 }
                 if frame.end_pc != 0 {
@@ -397,25 +411,41 @@ impl VmContext {
         -1
     }
 
-    /// Handles a pending exception through the try stack.
+    /// Handles a pending exception through the try stack. Called at the top of the
+    /// translator-emitted dispatch loop; returns the PC to jump to, or None.
     #[must_use]
     pub fn check_exception(&mut self) -> Option<i32> {
         let error = self.pending_error.take()?;
-        let frame_index = self.try_stack.iter().rposition(|frame| !frame.caught)?;
+        // Canonical handler selection: the topmost frame that is NOT already
+        // running its finally and is either uncaught (State==Try) or a caught
+        // frame that still has a finally to run (State==Catch with finally).
+        let Some(frame_index) = self
+            .try_stack
+            .iter()
+            .rposition(|frame| !frame.in_finally && (!frame.caught || frame.finally_pc != 0))
+        else {
+            // No handler: uncaught exception -> fault with its message.
+            self.fault(&error.fault_message());
+            return None;
+        };
         let frame = &mut self.try_stack[frame_index];
-        frame.caught = true;
+        let was_caught = frame.caught;
         let catch_pc = frame.catch_pc;
         let finally_pc = frame.finally_pc;
-        if catch_pc != 0 {
+        if !was_caught && catch_pc != 0 {
+            // Route to catch: the exception is consumed onto the stack.
+            frame.caught = true;
+            self.unwind_exception = None;
             self.push_value(error.into_catch_item());
             Some(catch_pc)
-        } else if finally_pc != 0 {
-            self.try_stack[frame_index].in_finally = true;
-            self.pending_error = Some(error);
-            Some(finally_pc)
         } else {
-            self.fault(&error.fault_message());
-            None
+            // Route to finally (a finally-only frame, or a re-throwing catch's own
+            // finally). CARRY the exception so the finally body runs with
+            // pending_error == None — the loop-top check_exception does NOT re-fire
+            // and skip it (the F5 defect); ENDFINALLY re-propagates the carried one.
+            frame.in_finally = true;
+            self.unwind_exception = Some(error);
+            Some(finally_pc)
         }
     }
 
@@ -497,6 +527,58 @@ mod tests {
         assert_eq!(
             ctx.fault_message.as_deref(),
             Some("invalid static field index")
+        );
+    }
+
+    #[test]
+    fn finally_runs_and_exception_propagates_on_unwind() {
+        // Drives VmContext through the EXACT translator-emitted dispatch loop for:
+        //   pc 0:  TRY (catch=none, finally=10)
+        //   pc 1:  THROW
+        //   pc 10: finally { push 99 }
+        //   pc 11: ENDFINALLY
+        // The finally body must RUN (push 99) and the uncaught exception must then
+        // FAULT. Pre-fix, check_exception re-fired at the loop top and skipped the
+        // finally (99 never pushed, exception swallowed). F5.
+        let mut ctx = VmContext::from_stack(Vec::new());
+        let mut pc: i32 = 0;
+        for _ in 0..50 {
+            if ctx.is_faulted() {
+                break;
+            }
+            if let Some(new_pc) = ctx.check_exception() {
+                pc = new_pc;
+                continue;
+            }
+            match pc {
+                0 => {
+                    ctx.try_enter(0, 10);
+                    pc = 1;
+                }
+                1 => {
+                    ctx.push(StackValue::Integer(1));
+                    ctx.throw_ex(); // no pc advance, exactly like the translator
+                }
+                10 => {
+                    ctx.push(StackValue::Integer(99));
+                    pc = 11;
+                }
+                11 => {
+                    pc = ctx.end_finally();
+                }
+                _ => break,
+            }
+        }
+        assert!(
+            ctx.is_faulted(),
+            "an uncaught exception after the finally must FAULT"
+        );
+        assert!(
+            ctx.stack
+                .iter()
+                .any(|v| matches!(v, StackValue::Integer(99))),
+            "the finally body must have run (pushed 99); stack={:?}",
+            ctx.stack
         );
     }
 }
