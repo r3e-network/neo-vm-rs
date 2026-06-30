@@ -292,29 +292,20 @@ impl VmContext {
 
     /// Throws an exception with the top stack value as payload.
     pub fn throw_ex(&mut self) {
+        // THROW is CATCHABLE: always record the pending exception. The loop-top
+        // check_exception dispatches it to a handler (or faults if there is none),
+        // matching the interpreter's pending_error routing.
         let value = self.pop_value();
-        if self.try_stack.iter().any(|frame| !frame.caught) {
-            self.pending_error = Some(PendingException::thrown_value(value));
-        } else {
-            let message = match &value {
-                StackValue::ByteString(bytes) => String::from_utf8_lossy(bytes).to_string(),
-                StackValue::Integer(value) => format!("exception: {value}"),
-                _ => format!("exception: {:?}", value),
-            };
-            self.fault(&message);
-        }
+        self.pending_error = Some(PendingException::thrown_value(value));
     }
 
-    /// Immediately faults the VM, or records pending error inside a try frame.
+    /// Faults the VM unconditionally — ABORT is UNCATCHABLE.
     pub fn abort(&mut self) {
-        if self.try_stack.iter().any(|frame| !frame.caught) {
-            self.pending_error = Some(PendingException::message("ABORT".to_string()));
-        } else {
-            self.fault("ABORT");
-        }
+        self.fault("ABORT");
     }
 
-    /// Faults the VM with a message from the top stack value.
+    /// Faults the VM with a message from the top stack value — ABORTMSG is
+    /// UNCATCHABLE.
     pub fn abort_msg(&mut self) {
         let value = self.pop_value();
         let message = match &value {
@@ -323,28 +314,19 @@ impl VmContext {
             }
             _ => format!("ABORTMSG: {:?}", value),
         };
-        if self.try_stack.iter().any(|frame| !frame.caught) {
-            self.pending_error = Some(PendingException::message(message));
-        } else {
-            self.fault(&message);
-        }
+        self.fault(&message);
     }
 
-    /// Pops a boolean-like value and faults when it is false.
+    /// Pops a boolean-like value and faults when it is false — ASSERT failure is
+    /// UNCATCHABLE (matches the interpreter / canonical).
     pub fn assert_top(&mut self) {
-        let is_true = self.pop_value().to_bool();
-        if !is_true {
-            if self.try_stack.iter().any(|frame| !frame.caught) {
-                self.pending_error = Some(PendingException::message(
-                    "ASSERT: assertion failed".to_string(),
-                ));
-            } else {
-                self.fault("ASSERT: assertion failed");
-            }
+        if !self.pop_value().to_bool() {
+            self.fault("ASSERT: assertion failed");
         }
     }
 
-    /// Pops a message then a boolean-like value and faults when it is false.
+    /// Pops a message then a boolean-like value and faults when it is false —
+    /// ASSERTMSG failure is UNCATCHABLE.
     pub fn assert_msg(&mut self) {
         let message_value = self.pop_value();
         let condition_value = self.pop_value();
@@ -358,11 +340,7 @@ impl VmContext {
             }
             _ => format!("ASSERTMSG: {:?}", message_value),
         };
-        if self.try_stack.iter().any(|frame| !frame.caught) {
-            self.pending_error = Some(PendingException::message(message));
-        } else {
-            self.fault(&message);
-        }
+        self.fault(&message);
     }
 
     /// Enters a try block with catch/finally offsets.
@@ -580,5 +558,88 @@ mod tests {
             "the finally body must have run (pushed 99); stack={:?}",
             ctx.stack
         );
+    }
+
+    #[test]
+    fn catch_rethrow_runs_own_finally() {
+        // try(catch=5, finally=10) { THROW1 }; 5: catch { drop; THROW2 };
+        // 10: finally { push 77 }; 11: ENDFINALLY.
+        // The catch handles THROW1 and re-throws THROW2; the frame's OWN finally
+        // must run, then THROW2 propagates -> FAULT.
+        let mut ctx = VmContext::from_stack(Vec::new());
+        let mut pc: i32 = 0;
+        for _ in 0..50 {
+            if ctx.is_faulted() {
+                break;
+            }
+            if let Some(new_pc) = ctx.check_exception() {
+                pc = new_pc;
+                continue;
+            }
+            match pc {
+                0 => {
+                    ctx.try_enter(5, 10);
+                    pc = 1;
+                }
+                1 => {
+                    ctx.push(StackValue::Integer(1));
+                    ctx.throw_ex();
+                }
+                5 => {
+                    ctx.pop();
+                    ctx.push(StackValue::Integer(2));
+                    ctx.throw_ex();
+                }
+                10 => {
+                    ctx.push(StackValue::Integer(77));
+                    pc = 11;
+                }
+                11 => {
+                    pc = ctx.end_finally();
+                }
+                _ => break,
+            }
+        }
+        assert!(ctx.is_faulted(), "the re-thrown exception must FAULT");
+        assert!(
+            ctx.stack
+                .iter()
+                .any(|v| matches!(v, StackValue::Integer(77))),
+            "a catch re-throw must run the frame's own finally; stack={:?}",
+            ctx.stack
+        );
+    }
+
+    #[test]
+    fn abort_is_uncatchable() {
+        // try(catch=5) { ABORT } — ABORT must fault directly, NOT be caught at 5.
+        let mut ctx = VmContext::from_stack(Vec::new());
+        let mut pc: i32 = 0;
+        let mut reached_catch = false;
+        for _ in 0..50 {
+            if ctx.is_faulted() {
+                break;
+            }
+            if let Some(new_pc) = ctx.check_exception() {
+                pc = new_pc;
+                continue;
+            }
+            match pc {
+                0 => {
+                    ctx.try_enter(5, 0);
+                    pc = 1;
+                }
+                1 => {
+                    ctx.abort();
+                }
+                5 => {
+                    reached_catch = true;
+                    break;
+                }
+                _ => break,
+            }
+        }
+        assert!(ctx.is_faulted(), "ABORT must fault");
+        assert!(!reached_catch, "ABORT must be uncatchable (catch must not run)");
     }
 }
