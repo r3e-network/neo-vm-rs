@@ -123,6 +123,9 @@ pub(super) fn execute(
             let mut pairs = Vec::with_capacity(count);
             for _ in 0..count {
                 let key = pop_item(stack)?;
+                // Canonical PackMap pops the key as Pop<PrimitiveType>() before the
+                // value, so a Null/Array/Map/Buffer key faults uncatchably.
+                collection_rules::validate_map_key_value(&key)?;
                 let value = pop_item(stack)?;
                 pairs.push((key, value));
             }

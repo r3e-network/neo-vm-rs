@@ -698,6 +698,50 @@ fn popitem_on_map_and_buffer_fault() {
     }
 }
 
+#[test]
+fn map_null_key_query_faults() {
+    // Canonical HASKEY/PICKITEM pop the key as Pop<PrimitiveType>(); a Null key is
+    // not a PrimitiveType -> uncatchable fault (not a membership false / catchable
+    // miss). Stack [Map, Null] with the Null key on top.
+    for op in [OpCode::HASKEY, OpCode::PICKITEM] {
+        let r = interpret(&[
+            OpCode::NEWMAP.byte(),
+            OpCode::PUSHNULL.byte(),
+            op.byte(),
+            OpCode::RET.byte(),
+        ]);
+        match r {
+            Err(_) => {}
+            Ok(r) => assert_eq!(
+                r.state,
+                VmState::Fault,
+                "{op:?} with a Null map key must fault, got {r:?}"
+            ),
+        }
+    }
+}
+
+#[test]
+fn packmap_null_key_faults() {
+    // Canonical PackMap pops each key as Pop<PrimitiveType>(); a Null key faults.
+    //   PUSH1 (value); PUSHNULL (key); PUSH1 (count); PACKMAP
+    let r = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::PUSHNULL.byte(),
+        OpCode::PUSH1.byte(),
+        OpCode::PACKMAP.byte(),
+        OpCode::RET.byte(),
+    ]);
+    match r {
+        Err(_) => {}
+        Ok(r) => assert_eq!(
+            r.state,
+            VmState::Fault,
+            "PACKMAP with a Null key must fault, got {r:?}"
+        ),
+    }
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
 
 /// A faulting script may surface either as `Ok` with `VmState::Fault` or as an

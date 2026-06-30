@@ -304,7 +304,11 @@ pub(crate) fn convert_value(
             other => return Err(format!("unsupported CONVERT source for Map: {other:?}")),
         }),
         NEOVM_STACK_ITEM_TYPE_INTEROP_INTERFACE => Ok(match value {
-            StackValue::Interop(_) => value,
+            // Canonical: an item whose Type is already InteropInterface converts
+            // to InteropInterface by returning itself (base ConvertTo type==Type).
+            // A neo-vm-rs Iterator is an InteropInterface (consistent with ISTYPE),
+            // so it identity-converts rather than faulting.
+            StackValue::Interop(_) | StackValue::Iterator(_) => value,
             other => return Err(format!("unsupported CONVERT source for Interop: {other:?}")),
         }),
         // Canonical: base StackItem.ConvertTo returns `this` when type == Type,

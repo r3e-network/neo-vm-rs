@@ -56,10 +56,12 @@ pub fn validate_map_key_value(key: &StackValue) -> Result<(), String> {
         // A large integer (the dual-representation BigInteger arm, e.g. from
         // PUSHINT128/256 or arithmetic) is still a valid PrimitiveType integer
         // map key in canonical NeoVM — it must not be rejected.
-        StackValue::Integer(_)
-        | StackValue::BigInteger(_)
-        | StackValue::Boolean(_)
-        | StackValue::Null => Ok(()),
+        //
+        // Null is NOT accepted: canonical map ops pop the key as
+        // Pop<PrimitiveType>() (Integer/Boolean/ByteString), and Null is not a
+        // PrimitiveType, so a Null key faults uncatchably (InvalidCastException)
+        // before the container is even inspected.
+        StackValue::Integer(_) | StackValue::BigInteger(_) | StackValue::Boolean(_) => Ok(()),
         StackValue::ByteString(value) => {
             if value.len() > 64 {
                 Err("map key exceeds maximum size".into())
