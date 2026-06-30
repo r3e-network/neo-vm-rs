@@ -120,6 +120,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let saved_catch_ip = frame.catch_ip;
                 let saved_finally_ip = frame.finally_ip;
                 let saved_has_catch = frame.has_catch;
+                let saved_has_finally = frame.has_finally;
                 // Canonical ExecuteThrow routing: a State==Try frame WITH a catch
                 // goes to its catch (consuming the exception); otherwise — a
                 // finally-only frame, or a State==Catch frame re-throwing into its
@@ -138,6 +139,12 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     "missing pending exception during exception unwind".to_string()
                 })?;
                 if route_to_catch {
+                    // Bounds-check the catch target like the canonical
+                    // InstructionPointer setter (uncatchable fault on > Length);
+                    // TRY no longer eager-checks it.
+                    if saved_catch_ip > script.len() {
+                        return Err("Out of script bounds".to_string());
+                    }
                     stack.push(pending.into_catch_item());
                     ip = saved_catch_ip;
                     // A new throw raised during an outer finally supersedes the
@@ -145,10 +152,19 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     // the catch consumes it, so drop any carried one.
                     unwind_exception = None;
                 } else {
-                    // finally route: run the finally body with pending_error==None,
-                    // carrying the exception for ENDFINALLY to re-propagate. This
-                    // also overwrites any previously-carried exception (a new throw
-                    // supersedes). (find_handler_index guarantees has_finally.)
+                    // Finally route. A frame with neither catch nor finally — e.g.
+                    // a backward catch target before IP 0 (HasCatch false) with no
+                    // finally — is canonically routed to FinallyPointer = -1, which
+                    // the InstructionPointer setter rejects -> uncatchable fault;
+                    // likewise an out-of-range finally target. (When a catch IS
+                    // present this branch is only reached for a re-throw, which
+                    // always still has a finally to run.)
+                    if !saved_has_finally || saved_finally_ip > script.len() {
+                        return Err("Out of script bounds".to_string());
+                    }
+                    // Run the finally body with pending_error==None, carrying the
+                    // exception for ENDFINALLY to re-propagate (a new throw
+                    // supersedes any previously-carried exception).
                     ip = saved_finally_ip;
                     unwind_exception = Some(pending);
                 }

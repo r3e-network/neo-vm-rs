@@ -153,6 +153,68 @@ fn try_catch_handler_at_ip_zero_is_honored() {
 }
 
 #[test]
+fn try_out_of_bounds_catch_without_throw_halts() {
+    // Canonical ExecuteTry does NOT bounds-check the catch/finally target — it is
+    // validated only when assigned to the InstructionPointer (at a throw). A try
+    // body that completes via ENDTRY WITHOUT throwing never touches an
+    // out-of-bounds catch, so it HALTs. Pre-fix main eager-faulted at TRY: a real
+    // HALT-vs-FAULT divergence.
+    let script = vec![
+        OpCode::TRY.byte(),
+        0x64,
+        0x00, // catch +100 (far out of bounds), no finally
+        OpCode::ENDTRY.byte(),
+        0x02, // end the try -> jump to IP5 (no throw)
+        OpCode::PUSH1.byte(),
+        OpCode::RET.byte(),
+    ];
+    let result = interpret(&script).expect("out-of-bounds catch with no throw must HALT");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.stack, vec![StackValue::Integer(1)]);
+}
+
+#[test]
+fn try_out_of_bounds_catch_with_throw_faults_uncatchably() {
+    // A throw routed to an out-of-bounds catch target is an UNCATCHABLE engine
+    // fault (the canonical InstructionPointer setter throws on > Script.Length),
+    // not the catchable pending-error the eager check produced.
+    let script = vec![
+        OpCode::TRY.byte(),
+        0x64,
+        0x00, // catch +100 (out of bounds)
+        OpCode::PUSH1.byte(),
+        OpCode::THROW.byte(),
+        OpCode::RET.byte(),
+    ];
+    let err = interpret(&script).expect_err("throw to out-of-bounds catch must fault");
+    assert!(
+        err.contains("Out of script bounds"),
+        "expected an uncatchable out-of-bounds fault, got: {err}"
+    );
+}
+
+#[test]
+fn try_negative_catch_target_no_finally_throw_faults() {
+    // A backward catch offset whose target is before IP 0 has HasCatch == false
+    // (canonical CatchPointer < 0). With no finally, a throw is canonically routed
+    // to FinallyPointer = -1 -> the IP setter faults uncatchably. The fix must NOT
+    // mis-route to the absent-finally sentinel (IP 0).
+    let script = vec![
+        OpCode::TRY.byte(),
+        0xFF,
+        0x00, // catch -1 -> target IP -1 (absent), no finally
+        OpCode::PUSH1.byte(),
+        OpCode::THROW.byte(),
+        OpCode::RET.byte(),
+    ];
+    let err = interpret(&script).expect_err("no-handler frame must fault on throw");
+    assert!(
+        err.contains("Out of script bounds"),
+        "expected an uncatchable fault for a no-catch/no-finally frame, got: {err}"
+    );
+}
+
+#[test]
 fn equal_keeps_primitive_types_strict() {
     let equal = interpret(&[
         OpCode::PUSH1.byte(),

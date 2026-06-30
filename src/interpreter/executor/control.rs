@@ -25,24 +25,23 @@ pub(super) fn enter_try_short(
     if catch_offset == 0 && finally_offset == 0 {
         return Err("catchOffset and finallyOffset can't be 0 in a TRY block".to_string());
     }
-    let has_catch = catch_offset != 0;
-    let has_finally = finally_offset != 0;
-    let catch_ip = if has_catch {
-        (ip as isize + catch_offset as isize) as usize
-    } else {
-        0
-    };
-    let finally_ip = if has_finally {
-        (ip as isize + finally_offset as isize) as usize
-    } else {
-        0
-    };
-    if catch_ip > script.len() || finally_ip > script.len() {
-        *pending_error = Some(PendingException::message(
-            "TRY target out of bounds".to_string(),
-        ));
-        return Ok(ip);
-    }
+    // Canonical ExceptionHandlingContext: catchPointer = catchOffset==0 ? -1 :
+    // ip+catchOffset, and HasCatch => CatchPointer >= 0. A block is PRESENT only
+    // when its offset is non-zero AND its target lands at IP >= 0 — a backward
+    // offset whose target is before the script start is "absent", exactly like
+    // offset 0. ExecuteTry does NO upper-bound check; an out-of-range target
+    // faults uncatchably LATER, only when assigned to the InstructionPointer
+    // (throw routing / ENDTRY->finally), matching the C# InstructionPointer
+    // setter (`value < 0 || value > Script.Length` throws). Eager-faulting here
+    // diverged: an out-of-bounds target in a try body that completes WITHOUT
+    // throwing HALTs canonically, and a throw to it is an uncatchable engine
+    // fault, not a catchable one routed to an outer try.
+    let catch_target = ip as isize + catch_offset as isize;
+    let finally_target = ip as isize + finally_offset as isize;
+    let has_catch = catch_offset != 0 && catch_target >= 0;
+    let has_finally = finally_offset != 0 && finally_target >= 0;
+    let catch_ip = if has_catch { catch_target as usize } else { 0 };
+    let finally_ip = if has_finally { finally_target as usize } else { 0 };
     try_frames.push(TryFrame {
         catch_ip,
         finally_ip,
@@ -85,24 +84,15 @@ pub(super) fn enter_try_long(
     if catch_offset == 0 && finally_offset == 0 {
         return Err("catchOffset and finallyOffset can't be 0 in a TRY block".to_string());
     }
-    let has_catch = catch_offset != 0;
-    let has_finally = finally_offset != 0;
-    let catch_ip = if has_catch {
-        (ip as isize + catch_offset as isize) as usize
-    } else {
-        0
-    };
-    let finally_ip = if has_finally {
-        (ip as isize + finally_offset as isize) as usize
-    } else {
-        0
-    };
-    if catch_ip > script.len() || finally_ip > script.len() {
-        *pending_error = Some(PendingException::message(
-            "TRY_L target out of bounds".to_string(),
-        ));
-        return Ok(ip);
-    }
+    // See enter_try_short: HasCatch/HasFinally require a non-zero offset AND a
+    // target IP >= 0; the upper-bound check is deferred to the IP-assignment site
+    // (canonical InstructionPointer setter), not done eagerly at TRY_L.
+    let catch_target = ip as isize + catch_offset as isize;
+    let finally_target = ip as isize + finally_offset as isize;
+    let has_catch = catch_offset != 0 && catch_target >= 0;
+    let has_finally = finally_offset != 0 && finally_target >= 0;
+    let catch_ip = if has_catch { catch_target as usize } else { 0 };
+    let finally_ip = if has_finally { finally_target as usize } else { 0 };
     try_frames.push(TryFrame {
         catch_ip,
         finally_ip,
@@ -211,10 +201,13 @@ fn end_try_at(
         return Err("The opcode ENDTRY can't be executed in a FINALLY block.".to_string());
     }
     if frame.has_finally {
-        // The end target is applied LATER by ENDFINALLY (and bounds-checked
-        // there, lazily — canonical stashes it in EndPointer and only validates
-        // when it is assigned to InstructionPointer). We jump to the already
-        // bounds-checked finally entry now.
+        // The finally entry becomes the IP now, so bounds-check it like the
+        // canonical InstructionPointer setter (faults uncatchably on > Length);
+        // TRY no longer eager-checks it. The end target is applied LATER by
+        // ENDFINALLY (bounds-checked there, lazily).
+        if frame.finally_ip > script_len {
+            return Err("Out of script bounds".to_string());
+        }
         frame.end_ip = target_ip;
         frame.in_finally = true;
         return Ok(frame.finally_ip);
