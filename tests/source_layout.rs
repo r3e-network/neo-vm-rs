@@ -90,7 +90,7 @@ fn runtime_opcode_adapters_expose_only_opcode_entrypoints() {
 
 #[test]
 fn byte_splice_semantics_are_not_reimplemented_per_layer() {
-    let abi_source = read_workspace_source("src/abi/stack_value.rs");
+    let abi_source = read_stack_value_source();
     let splice_semantics = read_workspace_source("src/semantics/splice.rs");
     let runtime_bytes = read_workspace_source("src/runtime/ops/bytes.rs");
     let interpreter_byte_ops = read_workspace_source("src/interpreter/executor/byte_ops.rs");
@@ -772,7 +772,7 @@ fn pending_exception_state_is_shared_between_runtime_and_interpreter() {
 fn interpreter_numeric_helpers_call_canonical_rules_directly() {
     let values = read_workspace_source("src/interpreter/helpers/values.rs");
     let push_ops = read_workspace_source("src/interpreter/executor/push_ops.rs");
-    let stack_value = read_workspace_source("src/abi/stack_value.rs");
+    let stack_value = read_stack_value_source();
 
     for duplicate in [
         "fn decode_signed_le_bytes(",
@@ -969,4 +969,19 @@ fn collect_oversized_sources(dir: &Path, oversized: &mut Vec<(String, usize)>) {
 fn read_workspace_source(relative_path: &str) -> String {
     fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path))
         .unwrap_or_else(|error| panic!("source file {relative_path} should be readable: {error}"))
+}
+
+/// Read the combined source of the `stack_value` directory module.
+///
+/// `stack_value` was split from a single file into a directory module
+/// (`mod.rs` plus `tags.rs` and `ops.rs`); concatenating the submodules lets
+/// the structural assertions keep matching content regardless of which
+/// submodule now owns it.
+fn read_stack_value_source() -> String {
+    let mut combined = String::new();
+    for submodule in ["src/abi/stack_value/mod.rs", "src/abi/stack_value/ops.rs"] {
+        combined.push_str(&read_workspace_source(submodule));
+        combined.push('\n');
+    }
+    combined
 }
