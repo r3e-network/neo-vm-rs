@@ -633,18 +633,9 @@ pub(super) fn execute(
                         None,
                     );
                 }
-                StackValue::Buffer(id, _) => {
-                    let updated = StackValue::Buffer(id, Vec::new());
-                    commit_collection_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        consumed_mutations,
-                        None,
-                    );
-                }
+                // Canonical CLEARITEMS is `Pop<CompoundType>()` — Array/Struct/Map
+                // only. A Buffer (not a CompoundType) faults uncatchably; it must
+                // NOT be cleared and HALT.
                 _ => return Err("CLEARITEMS expects a compound value".to_string()),
             }
         }
@@ -683,40 +674,10 @@ pub(super) fn execute(
                     );
                     stack.push(popped);
                 }
-                StackValue::Map(id, mut entries) => {
-                    let (key, value) = entries
-                        .pop()
-                        .ok_or_else(|| "POPITEM on empty map".to_string())?;
-                    let updated = StackValue::Map(id, entries);
-                    commit_collection_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        consumed_mutations,
-                        None,
-                    );
-                    stack.push(key);
-                    stack.push(value);
-                }
-                StackValue::Buffer(id, mut bytes) => {
-                    let byte = bytes
-                        .pop()
-                        .ok_or_else(|| "POPITEM on empty buffer".to_string())?;
-                    let updated = StackValue::Buffer(id, bytes);
-                    commit_collection_update(
-                        &updated,
-                        stack,
-                        locals,
-                        args,
-                        static_fields,
-                        consumed_mutations,
-                        None,
-                    );
-                    stack.push(StackValue::Integer(byte as i64));
-                }
-                _ => return Err("POPITEM expects a compound value".to_string()),
+                // Canonical POPITEM is `Pop<VMArray>()` — Array or Struct only
+                // (Struct extends Array). A Map or Buffer faults uncatchably; it
+                // must NOT pop an entry/byte and HALT.
+                _ => return Err("POPITEM expects an array or struct".to_string()),
             }
         }
         CONVERT => {

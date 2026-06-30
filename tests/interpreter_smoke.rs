@@ -661,6 +661,43 @@ fn rethrow_from_catch_runs_own_finally() {
     );
 }
 
+#[test]
+fn clearitems_on_buffer_faults() {
+    // Canonical CLEARITEMS is Pop<CompoundType>() (Array/Struct/Map); a Buffer is
+    // NOT a CompoundType -> uncatchable fault, not clear-and-HALT.
+    let r = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::NEWBUFFER.byte(),
+        OpCode::CLEARITEMS.byte(),
+        OpCode::RET.byte(),
+    ]);
+    match r {
+        Err(_) => {}
+        Ok(r) => assert_eq!(r.state, VmState::Fault, "CLEARITEMS on a Buffer must fault, got {r:?}"),
+    }
+}
+
+#[test]
+fn popitem_on_map_and_buffer_fault() {
+    // Canonical POPITEM is Pop<VMArray>() (Array or Struct only); a Map or Buffer
+    // faults uncatchably.
+    let map = interpret(&[OpCode::NEWMAP.byte(), OpCode::POPITEM.byte(), OpCode::RET.byte()]);
+    match map {
+        Err(_) => {}
+        Ok(r) => assert_eq!(r.state, VmState::Fault, "POPITEM on a Map must fault, got {r:?}"),
+    }
+    let buf = interpret(&[
+        OpCode::PUSH1.byte(),
+        OpCode::NEWBUFFER.byte(),
+        OpCode::POPITEM.byte(),
+        OpCode::RET.byte(),
+    ]);
+    match buf {
+        Err(_) => {}
+        Ok(r) => assert_eq!(r.state, VmState::Fault, "POPITEM on a Buffer must fault, got {r:?}"),
+    }
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
 
 /// A faulting script may surface either as `Ok` with `VmState::Fault` or as an
