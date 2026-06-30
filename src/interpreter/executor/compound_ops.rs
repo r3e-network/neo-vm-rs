@@ -137,14 +137,14 @@ pub(super) fn execute(
                 return Err("stack underflow for PACKSTRUCT".to_string());
             }
 
+            // Canonical PACKSTRUCT (`@struct.Add(item)`) stores items BY
+            // REFERENCE — it does NOT clone. Clone-on-store (Struct.Clone) is
+            // Append/SetItem/Values only; cloning here over-isolated a packed
+            // Struct element from later mutations through a surviving alias.
             let mut items = Vec::with_capacity(count);
             for _ in 0..count {
                 items.push(pop_item(stack)?);
             }
-            let items = items
-                .into_iter()
-                .map(|item| ids.clone_struct_for_storage(&item))
-                .collect();
             stack.push(ids.r#struct(items));
         }
         PACK => {
@@ -156,14 +156,12 @@ pub(super) fn execute(
                 return Err("stack underflow for PACK".to_string());
             }
 
+            // Canonical PACK (`array.Add(item)`) stores items BY REFERENCE — it
+            // does NOT clone (clone-on-store is Append/SetItem/Values only).
             let mut items = Vec::with_capacity(count);
             for _ in 0..count {
                 items.push(pop_item(stack)?);
             }
-            let items = items
-                .into_iter()
-                .map(|item| ids.clone_struct_for_storage(&item))
-                .collect();
             stack.push(ids.array(items));
         }
         UNPACK => {

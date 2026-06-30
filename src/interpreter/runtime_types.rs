@@ -31,7 +31,33 @@ impl CompoundIds {
 
     pub(crate) fn clone_struct_for_storage(&mut self, value: &StackValue) -> StackValue {
         match value {
-            StackValue::Struct(_, _) => self.deep_clone(value),
+            StackValue::Struct(_, _) => self.struct_clone(value),
+            _ => value.clone(),
+        }
+    }
+
+    /// Canonical NeoVM `Struct.Clone`: deep-copy nested Structs (fresh id) but
+    /// SHARE every other child (Array/Map/Buffer/primitive) BY REFERENCE —
+    /// `other.clone()` preserves the child's id, so the id-keyed alias machinery
+    /// keeps the shared child in sync with later mutations. This replaces the old
+    /// `deep_clone` here, which gave every child a fresh id and broke aliasing: a
+    /// Struct stored via APPEND/SETITEM/VALUES no longer observed mutations made
+    /// to a shared inner Array/Map/Buffer through a surviving reference
+    /// (a consensus divergence vs canonical's by-reference sharing).
+    pub(crate) fn struct_clone(&mut self, value: &StackValue) -> StackValue {
+        match value {
+            StackValue::Struct(_, items) => {
+                let mut cloned = Vec::with_capacity(items.len());
+                for item in items {
+                    match item {
+                        // nested Struct: deep-copy with a fresh id
+                        StackValue::Struct(_, _) => cloned.push(self.struct_clone(item)),
+                        // Array/Map/Buffer/primitive: share by reference (keep id)
+                        other => cloned.push(other.clone()),
+                    }
+                }
+                self.r#struct(cloned)
+            }
             _ => value.clone(),
         }
     }
@@ -211,6 +237,36 @@ mod reference_count_tests {
             let gid = crate::next_stack_item_id();
             assert_eq!(gid & TAG, TAG, "global ids must always set the high bit (id={gid})");
         }
+    }
+
+    #[test]
+    fn struct_clone_shares_non_struct_children_deep_copies_structs() {
+        // Canonical Struct.Clone: share Array/Map/Buffer/primitive children by
+        // reference (same id) so the alias machinery keeps them in sync; deep
+        // copy nested Structs with a fresh id. D-5.
+        let mut ids = CompoundIds::default();
+        let inner_array = ids.array(vec![StackValue::Integer(1)]);
+        let inner_struct = ids.r#struct(vec![StackValue::Integer(2)]);
+        let a_id = compound_id(&inner_array).expect("array has id");
+        let s_id = compound_id(&inner_struct).expect("struct has id");
+        let outer = ids.r#struct(vec![inner_array, inner_struct]);
+        let outer_id = compound_id(&outer).expect("outer has id");
+
+        let cloned = ids.struct_clone(&outer);
+        let StackValue::Struct(cloned_id, items) = &cloned else {
+            panic!("the clone of a Struct must be a Struct, got {cloned:?}");
+        };
+        assert_ne!(*cloned_id, outer_id, "the cloned Struct node gets a fresh id");
+        assert_eq!(
+            compound_id(&items[0]),
+            Some(a_id),
+            "non-Struct (Array) child must be SHARED by reference (same id)"
+        );
+        assert_ne!(
+            compound_id(&items[1]),
+            Some(s_id),
+            "nested Struct child must be DEEP-COPIED with a fresh id"
+        );
     }
 }
 
