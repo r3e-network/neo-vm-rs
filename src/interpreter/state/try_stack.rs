@@ -19,6 +19,20 @@ pub(in crate::interpreter) use inline::TryStack;
 #[cfg(not(target_arch = "riscv32"))]
 pub(in crate::interpreter) use heap::TryStack;
 
+use super::TryFrame;
+
+/// Canonical NeoVM handler test for exception unwinding (`ExecuteThrow`): a try
+/// frame can handle a propagating exception iff it is NOT already running its
+/// finally (State != Finally) AND it is not a spent catch (State==Catch with no
+/// finally). Equivalently: State==Try, or State==Catch WITH a finally still to
+/// run. Routing then sends a State==Try-with-catch frame to its catch and
+/// everything else (finally-only, or a catch-with-finally re-throw) to its
+/// finally. Mirrors v3.9.0 JumpTable.Control.ExecuteThrow's skip condition
+/// `State==Finally || (State==Catch && !HasFinally)`.
+fn frame_can_handle(frame: &TryFrame) -> bool {
+    !frame.in_finally && (!frame.caught || frame.finally_ip != 0)
+}
+
 #[cfg(target_arch = "riscv32")]
 mod inline {
     use super::super::{MAX_TRY_FRAMES_TOTAL, MAX_TRY_NESTING, TryFrame};
@@ -82,11 +96,11 @@ mod inline {
             Some(unsafe { self.frames[self.len - 1].assume_init_mut() })
         }
 
-        pub(in crate::interpreter) fn find_uncaught_index(&self) -> Option<usize> {
+        pub(in crate::interpreter) fn find_handler_index(&self) -> Option<usize> {
             for i in (0..self.len).rev() {
                 // Safety: frames[i] was previously initialized by push()
                 let frame = unsafe { &*self.frames[i].as_ptr() };
-                if !frame.caught {
+                if super::frame_can_handle(frame) {
                     return Some(i);
                 }
             }
@@ -183,8 +197,8 @@ mod heap {
             self.frames.last_mut()
         }
 
-        pub(in crate::interpreter) fn find_uncaught_index(&self) -> Option<usize> {
-            self.frames.iter().rposition(|frame| !frame.caught)
+        pub(in crate::interpreter) fn find_handler_index(&self) -> Option<usize> {
+            self.frames.iter().rposition(super::frame_can_handle)
         }
 
         #[inline]

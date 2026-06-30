@@ -159,7 +159,8 @@ pub(super) fn end_finally(
     ip: usize,
     script_len: usize,
     try_frames: &mut TryStack,
-    pending_error: &Option<PendingException>,
+    pending_error: &mut Option<PendingException>,
+    unwind_exception: &mut Option<PendingException>,
 ) -> Result<Option<usize>, String> {
     let in_finally = try_frames.last_mut().is_some_and(|frame| frame.in_finally);
     if !in_finally {
@@ -167,7 +168,11 @@ pub(super) fn end_finally(
     }
 
     let frame = try_frames.pop().expect("frame checked above");
-    if pending_error.is_some() {
+    if let Some(carried) = unwind_exception.take() {
+        // This finally ran during exception unwinding: now that it has completed,
+        // re-propagate the carried exception to the next outer handler. The loop
+        // top will dispatch it (find_handler_index skips this now-popped frame).
+        *pending_error = Some(carried);
         return Ok(Some(ip));
     }
     if frame.end_ip != 0 {

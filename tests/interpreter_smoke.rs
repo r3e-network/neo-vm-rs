@@ -580,6 +580,87 @@ fn endtry_out_of_bounds_target_faults() {
     }
 }
 
+#[test]
+fn finally_runs_during_exception_unwind() {
+    // F5: a finally body MUST execute when an exception unwinds through it.
+    //   outer TRY(catch=OC, no finally) { inner TRY(no catch, finally=IF) { THROW } }
+    // The inner finally (IF) sets static0 = 7 then ENDFINALLY re-propagates the
+    // exception; the outer catch (OC) drops it and loads static0. If the finally
+    // runs (canonical) -> HALT [7]; pre-fix (finally skipped on the exception
+    // path) -> static0 stays Null.
+    let s = |op: OpCode| op.byte();
+    let script = vec![
+        s(OpCode::INITSSLOT),
+        0x01, // 0-1: one static slot (Null)
+        s(OpCode::TRY),
+        0x0B,
+        0x00, // 2-4: outer TRY catch=+11 (->13), finally=0
+        s(OpCode::TRY),
+        0x00,
+        0x05, // 5-7: inner TRY catch=0, finally=+5 (->10)
+        s(OpCode::PUSH1), // 8: throw value
+        s(OpCode::THROW), // 9: throw -> unwind to inner finally
+        s(OpCode::PUSH7), // 10: IF (inner finally): marker 7
+        s(OpCode::STSFLD0), // 11: static0 = 7
+        s(OpCode::ENDFINALLY), // 12: re-propagate the carried exception
+        s(OpCode::DROP),  // 13: OC (outer catch): drop the exception item
+        s(OpCode::LDSFLD0), // 14: load static0
+        s(OpCode::RET),   // 15: HALT
+    ];
+    let r = interpret(&script).expect("script must HALT");
+    assert_eq!(r.state, VmState::Halt, "expected HALT, got {r:?}");
+    assert_eq!(
+        r.stack,
+        vec![StackValue::Integer(7)],
+        "inner finally must run during unwind (static0=7), got {:?}",
+        r.stack
+    );
+}
+
+#[test]
+fn rethrow_from_catch_runs_own_finally() {
+    // F5 discriminator: when a CATCH body re-throws, the frame's OWN finally must
+    // run before the new exception propagates outward.
+    //   outer TRY(catch=OC, no finally) {
+    //     inner TRY(catch=IC, finally=IF) { THROW1 }
+    //     IC: drop; THROW2          (re-throw from the inner catch)
+    //     IF: static0 = 9           (must run on the re-throw)
+    //   }
+    //   OC: drop; load static0; RET
+    // If the inner finally runs (canonical) -> HALT [9]; if the discriminator is
+    // wrong (caught frame skipped) the finally is skipped -> static0 stays Null.
+    let s = |op: OpCode| op.byte();
+    let script = vec![
+        s(OpCode::INITSSLOT),
+        0x01, // 0-1
+        s(OpCode::TRY),
+        0x0E,
+        0x00, // 2-4: outer TRY catch=+14 (->16), finally=0
+        s(OpCode::TRY),
+        0x05,
+        0x08, // 5-7: inner TRY catch=+5 (->10), finally=+8 (->13)
+        s(OpCode::PUSH1), // 8
+        s(OpCode::THROW), // 9  -> inner catch
+        s(OpCode::DROP),  // 10: IC: drop THROW1
+        s(OpCode::PUSH2), // 11
+        s(OpCode::THROW), // 12: re-throw -> inner finally
+        s(OpCode::PUSH9), // 13: IF: marker 9
+        s(OpCode::STSFLD0), // 14: static0 = 9
+        s(OpCode::ENDFINALLY), // 15: re-propagate THROW2
+        s(OpCode::DROP),  // 16: OC: drop THROW2
+        s(OpCode::LDSFLD0), // 17
+        s(OpCode::RET),   // 18
+    ];
+    let r = interpret(&script).expect("script must HALT");
+    assert_eq!(r.state, VmState::Halt, "expected HALT, got {r:?}");
+    assert_eq!(
+        r.stack,
+        vec![StackValue::Integer(9)],
+        "catch-rethrow must run the frame's own finally (static0=9), got {:?}",
+        r.stack
+    );
+}
+
 fn _assert_result_is_public(_: ExecutionResult) {}
 
 /// A faulting script may surface either as `Ok` with `VmState::Fault` or as an

@@ -62,6 +62,12 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     let mut call_stack = CallStack::new();
     let mut consumed_mutations: Vec<StackValue> = Vec::with_capacity(16);
     let mut pending_error: Option<PendingException> = None;
+    // The exception currently being carried THROUGH a finally body during
+    // unwinding. Held separately from `pending_error` so the finally body runs
+    // with `pending_error == None` (the loop top does not re-fire), while a NEW
+    // throw inside the finally sets `pending_error` and propagates immediately —
+    // matching canonical NeoVM. ENDFINALLY re-propagates this carried exception.
+    let mut unwind_exception: Option<PendingException> = None;
     let mut previous_opcode_was_callt = false;
 
     macro_rules! apply_dispatch {
@@ -75,7 +81,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     'main_loop: loop {
         if pending_error.is_some() {
             // Find the topmost un-caught frame
-            if let Some(frame_index) = try_frames.find_uncaught_index() {
+            if let Some(frame_index) = try_frames.find_handler_index() {
                 let frame_call_depth = try_frames
                     .get_mut(frame_index)
                     .map(|frame| frame.call_depth)
@@ -106,27 +112,42 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let frame = try_frames
                     .get_mut(frame_index)
                     .ok_or_else(|| "missing try frame during exception unwind".to_string())?;
-                frame.caught = true;
                 // Save frame fields into locals BEFORE any allocating operations.
                 // Under PolkaVM's bump allocator, host-call round-trips can reset the
                 // allocator offset, causing subsequent allocations to overwrite the
                 // TryFrame backing buffer.  Copying into stack locals avoids the stale read.
+                let was_caught = frame.caught;
                 let saved_catch_ip = frame.catch_ip;
                 let saved_finally_ip = frame.finally_ip;
-                // NeoVM: error goes to catch first, then finally
+                // Canonical ExecuteThrow routing: a State==Try frame WITH a catch
+                // goes to its catch (consuming the exception); otherwise — a
+                // finally-only frame, or a State==Catch frame re-throwing into its
+                // own finally — goes to the finally CARRYING the exception. Set the
+                // frame's new state here (before any allocation), then drop the
+                // borrow.
+                let route_to_catch = !was_caught && saved_catch_ip != 0;
+                if route_to_catch {
+                    frame.caught = true;
+                } else {
+                    frame.in_finally = true;
+                }
                 let pending = pending_error.take().ok_or_else(|| {
                     "missing pending exception during exception unwind".to_string()
                 })?;
-                if saved_catch_ip != 0 {
+                if route_to_catch {
                     stack.push(pending.into_catch_item());
                     ip = saved_catch_ip;
-                } else if saved_finally_ip != 0 {
-                    frame.in_finally = true;
-                    ip = saved_finally_ip;
-                    // Keep pending_error for re-throw after ENDFINALLY
-                    pending_error = Some(pending);
+                    // A new throw raised during an outer finally supersedes the
+                    // carried exception (canonical overwrites UncaughtException);
+                    // the catch consumes it, so drop any carried one.
+                    unwind_exception = None;
                 } else {
-                    continue;
+                    // finally route: run the finally body with pending_error==None,
+                    // carrying the exception for ENDFINALLY to re-propagate. This
+                    // also overwrites any previously-carried exception (a new throw
+                    // supersedes). (find_handler_index guarantees finally_ip != 0.)
+                    ip = saved_finally_ip;
+                    unwind_exception = Some(pending);
                 }
                 continue;
             } else {
@@ -735,9 +756,13 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             ENDFINALLY => {
-                if let Some(next_ip) =
-                    control::end_finally(ip, script.len(), &mut try_frames, &pending_error)?
-                {
+                if let Some(next_ip) = control::end_finally(
+                    ip,
+                    script.len(),
+                    &mut try_frames,
+                    &mut pending_error,
+                    &mut unwind_exception,
+                )? {
                     ip = next_ip;
                     continue;
                 }
