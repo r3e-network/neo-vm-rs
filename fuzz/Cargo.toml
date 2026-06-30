@@ -1,0 +1,22 @@
+[package]
+name = "neo-vm-rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+neo-vm-rs = { path = "..", features = ["std"] }
+
+[[bin]]
+name = "interpret"
+path = "fuzz_targets/interpret.rs"
+test = false
+doc = false
+bench = false
+
+# Standalone — do not join any parent workspace.
+[workspace]
