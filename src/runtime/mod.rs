@@ -1,4 +1,30 @@
-//! Shared NeoVM execution context used by host-specific runtimes.
+//! Runtime ABI for the **dual-target (NeoVM → Rust → RISC-V) compiler path**.
+//!
+//! neo-vm-rs has TWO intentional execution models, both built on the shared
+//! pure-rule layer in [`crate::semantics`]:
+//!
+//! 1. **Direct interpreter** (`crate::interpreter`) — a `match opcode` dispatch
+//!    loop that executes NeoVM bytecode in-process. This is the consensus path
+//!    compiled into the frozen `guest.polkavm` blob and reached via
+//!    `crate::interpret`.
+//!
+//! 2. **Compiled-contract runtime** (this module) — [`VmContext`] + the
+//!    [`RuntimeStack`] trait + [`ops`]. The `NeoVmToRustTranslator` (in the
+//!    devpack) translates a contract's NeoVM bytecode into straight-line Rust
+//!    that calls these methods (`ctx.push`, `ctx.try_enter`, `ctx.check_exception`,
+//!    `ctx.call_push`, the `ops::*` opcode helpers, …). The CALLERS therefore
+//!    live in GENERATED contract code, NOT in this source tree — a plain source
+//!    grep will (misleadingly) show many of these methods as "unused".
+//!
+//! Both models share [`crate::semantics`] as the single source of truth for
+//! opcode rules, so behavior stays consistent between interpreting a script and
+//! compiling it.
+//!
+//! NOTE: the try/finally methods here ([`VmContext::check_exception`],
+//! [`VmContext::end_finally`]) currently carry the F5 finally-on-exception-unwind
+//! defect that was fixed in the interpreter (the `unwind_exception` single-cell
+//! design). A compiled contract that uses try/finally would inherit it; the
+//! analogous fix must be coordinated with the translator's emitted dispatch.
 
 pub mod ops;
 mod pending_exception;

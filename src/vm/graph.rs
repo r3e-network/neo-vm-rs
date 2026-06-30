@@ -8,7 +8,7 @@ static NEXT_STACK_ITEM_ID: AtomicUsize = AtomicUsize::new(1);
 /// High-bit tag reserving a compound-id band that the per-execution
 /// `CompoundIds` allocator (which counts up from 0 and cannot reach 2^63 within
 /// any single execution) can never occupy.
-const GLOBAL_ID_TAG: u64 = 1u64 << 63;
+pub(crate) const GLOBAL_ID_TAG: u64 = 1u64 << 63;
 
 /// Generates a unique identity for compound VM stack items created OUTSIDE the
 /// per-execution `CompoundIds` allocator (the ABI/host boundary, plus a few

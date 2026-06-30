@@ -9,6 +9,17 @@ pub(crate) struct CompoundIds {
 impl CompoundIds {
     fn alloc(&mut self) -> u64 {
         let id = self.next;
+        // Consensus keystone: the per-execution CompoundIds band (counting up
+        // from 0) MUST stay disjoint from the high-bit global band
+        // (next_stack_item_id). The id-keyed alias machinery matches purely on the
+        // u64 id with no type tag, so a band collision would conflate two distinct
+        // compounds. This can only happen if one execution allocates 2^63
+        // compounds — impossible under the stack/gas limits — but assert it so a
+        // future change can never silently ship a collision.
+        debug_assert!(
+            id < crate::vm::GLOBAL_ID_TAG,
+            "CompoundIds overflowed into the global id band"
+        );
         self.next += 1;
         id
     }
