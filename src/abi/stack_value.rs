@@ -189,10 +189,10 @@ pub fn default_value_for_type_tag(type_tag: u8) -> StackValue {
         COMPACT_TAG_BOOLEAN => StackValue::Boolean(false),
         COMPACT_TAG_INTEGER | COMPACT_TAG_BIG_INTEGER => StackValue::Integer(0),
         COMPACT_TAG_BYTESTRING => StackValue::ByteString(Vec::new()),
-        COMPACT_TAG_BUFFER => StackValue::Buffer(crate::next_stack_item_id() as u64, Vec::new()),
-        COMPACT_TAG_ARRAY => StackValue::Array(crate::next_stack_item_id() as u64, Vec::new()),
-        COMPACT_TAG_STRUCT => StackValue::Struct(crate::next_stack_item_id() as u64, Vec::new()),
-        COMPACT_TAG_MAP => StackValue::Map(crate::next_stack_item_id() as u64, Vec::new()),
+        COMPACT_TAG_BUFFER => StackValue::Buffer(crate::next_stack_item_id(), Vec::new()),
+        COMPACT_TAG_ARRAY => StackValue::Array(crate::next_stack_item_id(), Vec::new()),
+        COMPACT_TAG_STRUCT => StackValue::Struct(crate::next_stack_item_id(), Vec::new()),
+        COMPACT_TAG_MAP => StackValue::Map(crate::next_stack_item_id(), Vec::new()),
         COMPACT_TAG_NULL => StackValue::Null,
         _ => StackValue::Null,
     }
@@ -392,7 +392,7 @@ pub fn concat_splice_values(left: &StackValue, right: &StackValue) -> Option<Sta
     let mut bytes = stack_value_span_bytes(left)?;
     bytes.extend_from_slice(&stack_value_span_bytes(right)?);
     Some(StackValue::Buffer(
-        crate::next_stack_item_id() as u64,
+        crate::next_stack_item_id(),
         bytes,
     ))
 }
@@ -404,7 +404,7 @@ pub fn slice_splice_value(value: &StackValue, index: usize, count: usize) -> Opt
     let end = index.checked_add(count)?;
     bytes
         .get(index..end)
-        .map(|slice| StackValue::Buffer(crate::next_stack_item_id() as u64, slice.to_vec()))
+        .map(|slice| StackValue::Buffer(crate::next_stack_item_id(), slice.to_vec()))
 }
 
 /// Encode an integer using NeoVM's minimal little-endian two's-complement form.
@@ -530,20 +530,20 @@ impl<'de> Deserialize<'de> for StackValue {
                     "BigInteger" => Ok(StackValue::BigInteger(map.next_value()?)),
                     "ByteString" => Ok(StackValue::ByteString(map.next_value()?)),
                     "Buffer" => Ok(StackValue::Buffer(
-                        crate::next_stack_item_id() as u64,
+                        crate::next_stack_item_id(),
                         map.next_value()?,
                     )),
                     "Boolean" => Ok(StackValue::Boolean(map.next_value()?)),
                     "Array" => Ok(StackValue::Array(
-                        crate::next_stack_item_id() as u64,
+                        crate::next_stack_item_id(),
                         map.next_value()?,
                     )),
                     "Struct" => Ok(StackValue::Struct(
-                        crate::next_stack_item_id() as u64,
+                        crate::next_stack_item_id(),
                         map.next_value()?,
                     )),
                     "Map" => Ok(StackValue::Map(
-                        crate::next_stack_item_id() as u64,
+                        crate::next_stack_item_id(),
                         map.next_value()?,
                     )),
                     "Interop" => Ok(StackValue::Interop(map.next_value()?)),
@@ -742,7 +742,7 @@ impl StackValue {
             return Some(Self::Null);
         }
         self.to_byte_string_bytes()
-            .map(|b| Self::Buffer(crate::next_stack_item_id() as u64, b))
+            .map(|b| Self::Buffer(crate::next_stack_item_id(), b))
     }
 }
 

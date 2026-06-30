@@ -188,6 +188,30 @@ mod reference_count_tests {
         let arr = StackValue::Array(1, items);
         assert!(count_references(&[arr], &[], &[], &[]) > 2048);
     }
+
+    #[test]
+    fn compound_ids_disjoint_from_global_atomic() {
+        // The per-execution CompoundIds allocator and the process-global
+        // next_stack_item_id() MUST occupy disjoint id bands. Otherwise the
+        // id-keyed alias machinery (replace_alias/find_affected_indices) and the
+        // refcounter (count_references) — which match purely by id with no type
+        // check — would conflate two distinct compounds: type-confusion
+        // corruption + MaxStackSize under-count. CompoundIds counts up from 0
+        // (high bit always clear); global ids always set the high bit.
+        const TAG: u64 = 1u64 << 63;
+        let mut ids = CompoundIds::default();
+        for _ in 0..1000 {
+            let id = match ids.array(vec::Vec::new()) {
+                StackValue::Array(id, _) => id,
+                other => panic!("expected Array, got {other:?}"),
+            };
+            assert_eq!(id & TAG, 0, "CompoundIds must never set the high bit (id={id})");
+        }
+        for _ in 0..1000 {
+            let gid = crate::next_stack_item_id();
+            assert_eq!(gid & TAG, TAG, "global ids must always set the high bit (id={gid})");
+        }
+    }
 }
 
 #[inline]

@@ -115,7 +115,7 @@ pub fn map_entry_index_by<T>(
 pub fn new_array(count: i64) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWARRAY: negative count")?;
     Ok(StackValue::Array(
-        crate::next_stack_item_id() as u64,
+        crate::next_stack_item_id(),
         vec![StackValue::Null; count],
     ))
 }
@@ -124,7 +124,7 @@ pub fn new_array(count: i64) -> Result<StackValue, String> {
 pub fn new_array_t(count: i64, type_tag: u8) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWARRAY_T: negative count")?;
     Ok(StackValue::Array(
-        crate::next_stack_item_id() as u64,
+        crate::next_stack_item_id(),
         vec![new_array_default_value_for_neovm_type_tag(type_tag); count],
     ))
 }
@@ -133,7 +133,7 @@ pub fn new_array_t(count: i64, type_tag: u8) -> Result<StackValue, String> {
 pub fn new_struct(count: i64) -> Result<StackValue, String> {
     let count = non_negative_count(count, "NEWSTRUCT: negative count")?;
     Ok(StackValue::Struct(
-        crate::next_stack_item_id() as u64,
+        crate::next_stack_item_id(),
         vec![StackValue::Null; count],
     ))
 }
@@ -145,7 +145,7 @@ pub fn new_buffer(size: i64) -> Result<StackValue, String> {
         return Err("NEWBUFFER: size exceeds MaxItemSize".into());
     }
     Ok(StackValue::Buffer(
-        crate::next_stack_item_id() as u64,
+        crate::next_stack_item_id(),
         vec![0u8; size],
     ))
 }
@@ -153,7 +153,7 @@ pub fn new_buffer(size: i64) -> Result<StackValue, String> {
 /// Create an empty ordered map.
 #[must_use]
 pub fn new_map() -> StackValue {
-    StackValue::Map(crate::next_stack_item_id() as u64, Vec::new())
+    StackValue::Map(crate::next_stack_item_id(), Vec::new())
 }
 
 /// Append a value to an array or struct.
@@ -329,7 +329,7 @@ pub fn values(value: StackValue) -> Result<StackValue, String> {
             pairs.into_iter().map(|(_, value)| value).collect(),
         )),
         StackValue::Array(_, items) | StackValue::Struct(_, items) => {
-            Ok(StackValue::Array(crate::next_stack_item_id() as u64, items))
+            Ok(StackValue::Array(crate::next_stack_item_id(), items))
         }
         _ => Err("VALUES: not a map or array".into()),
     }
@@ -338,7 +338,7 @@ pub fn values(value: StackValue) -> Result<StackValue, String> {
 /// Pack already ordered values as an array.
 #[must_use]
 pub fn pack(items: Vec<StackValue>) -> StackValue {
-    StackValue::Array(crate::next_stack_item_id() as u64, items)
+    StackValue::Array(crate::next_stack_item_id(), items)
 }
 
 /// Unpack array/struct values followed by their count.
@@ -405,13 +405,13 @@ pub fn pop_item(value: StackValue) -> Result<Vec<StackValue>, String> {
 /// Pack values as a struct.
 #[must_use]
 pub fn pack_struct(items: Vec<StackValue>) -> StackValue {
-    StackValue::Struct(crate::next_stack_item_id() as u64, items)
+    StackValue::Struct(crate::next_stack_item_id(), items)
 }
 
 /// Pack key/value pairs as a map.
 #[must_use]
 pub fn pack_map(pairs: Vec<(StackValue, StackValue)>) -> StackValue {
-    StackValue::Map(crate::next_stack_item_id() as u64, pairs)
+    StackValue::Map(crate::next_stack_item_id(), pairs)
 }
 
 pub(crate) fn non_negative_count(value: i64, error: &'static str) -> Result<usize, String> {

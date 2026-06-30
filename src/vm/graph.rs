@@ -5,9 +5,27 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT_STACK_ITEM_ID: AtomicUsize = AtomicUsize::new(1);
 
-/// Generates a unique identity for compound VM stack items.
-pub fn next_stack_item_id() -> usize {
-    NEXT_STACK_ITEM_ID.fetch_add(1, Ordering::SeqCst)
+/// High-bit tag reserving a compound-id band that the per-execution
+/// `CompoundIds` allocator (which counts up from 0 and cannot reach 2^63 within
+/// any single execution) can never occupy.
+const GLOBAL_ID_TAG: u64 = 1u64 << 63;
+
+/// Generates a unique identity for compound VM stack items created OUTSIDE the
+/// per-execution `CompoundIds` allocator (the ABI/host boundary, plus a few
+/// interpreter paths such as NEWBUFFER/CONVERT that historically used this
+/// counter).
+///
+/// The returned id has its high bit set so it lives in a band DISJOINT from
+/// `CompoundIds` (0,1,2,…). This makes a cross-allocator id collision
+/// impossible: the alias machinery (`replace_alias`/`find_affected_indices`) and
+/// the reference counter (`count_references`) key purely on the u64 id with no
+/// type check, so two distinct compounds sharing an id would corrupt each other
+/// (type confusion) and under-count the MaxStackSize gate. The two allocators
+/// previously overlapped in the low range — a reachable, blob-affecting hazard.
+/// Compound ids are never serialized and only ever compared for equality, so the
+/// (process-global, non-deterministic) low bits stay consensus-invisible.
+pub fn next_stack_item_id() -> u64 {
+    (NEXT_STACK_ITEM_ID.fetch_add(1, Ordering::SeqCst) as u64) | GLOBAL_ID_TAG
 }
 
 /// Tarjan's algorithm for finding strongly connected components.

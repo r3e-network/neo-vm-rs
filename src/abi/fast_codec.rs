@@ -292,7 +292,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 "truncated buffer length",
                 "truncated buffer data",
             )?;
-            StackValue::Buffer(crate::next_stack_item_id() as u64, data)
+            StackValue::Buffer(crate::next_stack_item_id(), data)
         }
         STACK_VALUE_CODEC_TAG_BOOLEAN => {
             let val = read_exact(bytes, &mut pos, 1, "truncated boolean")?[0] != 0;
@@ -309,7 +309,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 items.push(item);
                 pos += consumed;
             }
-            StackValue::Array(crate::next_stack_item_id() as u64, items)
+            StackValue::Array(crate::next_stack_item_id(), items)
         }
         STACK_VALUE_CODEC_TAG_STRUCT => {
             let len = read_u32(bytes, &mut pos, "truncated struct length")? as usize;
@@ -322,7 +322,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 items.push(item);
                 pos += consumed;
             }
-            StackValue::Struct(crate::next_stack_item_id() as u64, items)
+            StackValue::Struct(crate::next_stack_item_id(), items)
         }
         STACK_VALUE_CODEC_TAG_MAP => {
             let len = read_u32(bytes, &mut pos, "truncated map length")? as usize;
@@ -337,7 +337,7 @@ fn decode_value_depth(bytes: &[u8], depth: usize) -> Result<(StackValue, usize),
                 pos += v_consumed;
                 pairs.push((k, v));
             }
-            StackValue::Map(crate::next_stack_item_id() as u64, pairs)
+            StackValue::Map(crate::next_stack_item_id(), pairs)
         }
         STACK_VALUE_CODEC_TAG_INTEROP => {
             let val = read_u64(bytes, &mut pos, "truncated interop")?;
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn roundtrip_buffer() {
         let stack = vec![StackValue::Buffer(
-            crate::next_stack_item_id() as u64,
+            crate::next_stack_item_id(),
             vec![0, 0, 0, 0],
         )];
         let encoded = encode_stack(&stack);
@@ -402,7 +402,7 @@ mod tests {
     #[test]
     fn roundtrip_buffer_empty() {
         let stack = vec![StackValue::Buffer(
-            crate::next_stack_item_id() as u64,
+            crate::next_stack_item_id(),
             vec![],
         )];
         let encoded = encode_stack(&stack);
@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn roundtrip_array() {
         let stack = vec![StackValue::Array(
-            crate::next_stack_item_id() as u64,
+            crate::next_stack_item_id(),
             vec![
                 StackValue::Integer(1),
                 StackValue::Boolean(true),
@@ -446,7 +446,7 @@ mod tests {
     #[test]
     fn roundtrip_map() {
         let stack = vec![StackValue::Map(
-            crate::next_stack_item_id() as u64,
+            crate::next_stack_item_id(),
             vec![
                 (StackValue::Integer(1), StackValue::ByteString(vec![0xAA])),
                 (StackValue::Boolean(false), StackValue::Null),

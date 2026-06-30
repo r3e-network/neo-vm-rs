@@ -54,14 +54,14 @@ pub fn convert_value(value: StackValue, target_type: u8) -> Result<StackValue, S
         COMPACT_TAG_ARRAY => match value {
             StackValue::Array(_, _) => Ok(value),
             StackValue::Struct(_, items) => {
-                Ok(StackValue::Array(crate::next_stack_item_id() as u64, items))
+                Ok(StackValue::Array(crate::next_stack_item_id(), items))
             }
             _ => Err("CONVERT: cannot convert to Array".into()),
         },
         COMPACT_TAG_STRUCT => match value {
             StackValue::Struct(_, _) => Ok(value),
             StackValue::Array(_, items) => Ok(StackValue::Struct(
-                crate::next_stack_item_id() as u64,
+                crate::next_stack_item_id(),
                 items,
             )),
             _ => Err("CONVERT: cannot convert to Struct".into()),
