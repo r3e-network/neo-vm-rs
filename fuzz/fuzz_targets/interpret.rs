@@ -15,14 +15,15 @@ use std::collections::BTreeSet;
 
 /// Step limit. The pure interpreter is intentionally GAS-LESS (gas is metered
 /// externally by the PolkaVM host in production, which bounds runaway loops), so
-/// a `JMP`-to-self would spin forever and a gas-less allocating loop would pile
-/// up transient allocations (RSS grows with the step count even though the final
-/// stack stays bounded by MaxStackSize). We bound execution via the
-/// per-instruction hook so both become a clean `Err` fault instead of a fuzz
-/// timeout/OOM — WITHOUT altering the consensus VM. 100k opcodes dwarfs any real
-/// script (and any state worth reaching for crash-finding) while keeping peak
-/// RSS and exec time per input comfortably bounded.
-const STEP_LIMIT: u64 = 100_000;
+/// a `JMP`-to-self spins forever, a gas-less allocating loop piles up transient
+/// RSS, and a loop that incrementally builds a large (but MaxStackSize-bounded)
+/// structure makes the per-instruction reference-count RECOMPUTE cost O(steps^2)
+/// (a real perf characteristic of the full recompute vs canonical's incremental
+/// ReferenceCounter — bounded by gas in production). We cap executed instructions
+/// via the per-instruction hook so all three become a clean `Err` fault instead
+/// of a fuzz timeout/OOM — WITHOUT altering the consensus VM. 20k opcodes still
+/// reaches deep states for crash-finding while keeping per-input time/RSS bounded.
+const STEP_LIMIT: u64 = 20_000;
 
 /// Deterministic syscall provider: returns `Ok` from `syscall` without touching
 /// the stack so SYSCALL/CALLT exercise the dispatch path with no external

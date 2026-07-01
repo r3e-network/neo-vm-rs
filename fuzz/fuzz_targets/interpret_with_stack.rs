@@ -14,7 +14,7 @@ use neo_vm_rs::{
 };
 use std::collections::BTreeSet;
 
-const STEP_LIMIT: u64 = 100_000;
+const STEP_LIMIT: u64 = 20_000;
 
 struct FuzzSyscalls {
     steps: u64,
