@@ -18,5 +18,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "interpret_with_stack"
+path = "fuzz_targets/interpret_with_stack.rs"
+test = false
+doc = false
+bench = false
+
 # Standalone — do not join any parent workspace.
 [workspace]
