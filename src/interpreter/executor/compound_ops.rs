@@ -410,12 +410,22 @@ pub(super) fn execute(
                         *pending_error = Some(PendingException::message(msg));
                         finish!(Dispatch::Continue);
                     }
-                    let byte = match value {
-                        StackValue::Integer(value) if (-128..=255).contains(&value) => value as u8,
-                        StackValue::ByteString(value) if value.len() == 1 => value[0],
-                        _ => return Err("SETITEM on buffer expects a byte value".to_string()),
-                    };
-                    bytes[index as usize] = byte;
+                    // Canonical SetItem (Buffer, JumpTable.Compound.cs): the
+                    // value is ANY PrimitiveType coerced via `(int)GetInteger()`
+                    // (Integer/Boolean/ByteString/BigInteger — signed-LE, <=32
+                    // bytes), range-checked to a byte [sbyte.MinValue,
+                    // byte.MaxValue] = [-128, 255], and written as `(byte)b`.
+                    // A non-PrimitiveType value, an out-of-Int32 / >32-byte
+                    // value, or one outside [-128, 255] is an UNCATCHABLE fault
+                    // (InvalidOperationException). The old arm rejected Boolean,
+                    // BigInteger, and multi-byte/empty ByteString values that
+                    // canonical accepts (a HALT-vs-FAULT divergence); a length-1
+                    // ByteString happens to match either way.
+                    let b = integer_value_for_collection_index_strict(&value)?;
+                    if !(-128..=255).contains(&b) {
+                        return Err("SETITEM on buffer: value is not a byte".to_string());
+                    }
+                    bytes[index as usize] = b as u8;
                     let updated = StackValue::Buffer(id, bytes);
                     let affected = find_affected_indices(id, stack);
                     commit_collection_update(

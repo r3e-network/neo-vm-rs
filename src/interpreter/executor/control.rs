@@ -51,6 +51,7 @@ pub(super) fn enter_try_short(
         caught: false,
         in_finally: false,
         end_ip: 0,
+        has_end_target: false,
     })?;
     Ok(ip + 3)
 }
@@ -102,6 +103,7 @@ pub(super) fn enter_try_long(
         caught: false,
         in_finally: false,
         end_ip: 0,
+        has_end_target: false,
     })?;
     Ok(ip + 9)
 }
@@ -173,8 +175,9 @@ pub(super) fn end_finally(
         *pending_error = Some(carried);
         return Ok(Some(ip));
     }
-    if frame.end_ip != 0 {
-        // The stashed ENDTRY end target becomes the IP now — bounds-check it
+    if frame.has_end_target {
+        // Canonical ENDFINALLY assigns IP = EndPointer unconditionally; the
+        // stashed end target (possibly IP 0) becomes the IP now — bounds-check it
         // like the canonical InstructionPointer setter (faults on > Length).
         if frame.end_ip > script_len {
             return Err("Out of script bounds".to_string());
@@ -209,6 +212,7 @@ fn end_try_at(
             return Err("Out of script bounds".to_string());
         }
         frame.end_ip = target_ip;
+        frame.has_end_target = true;
         frame.in_finally = true;
         return Ok(frame.finally_ip);
     }

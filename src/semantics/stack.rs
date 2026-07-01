@@ -97,6 +97,13 @@ pub(crate) fn rot<T>(stack: &mut Vec<T>) -> Result<(), String> {
 
 pub(crate) fn roll<T>(stack: &mut Vec<T>, index: i64) -> Result<(), String> {
     let index = non_negative_index("ROLL", index)?;
+    // Canonical Roll (JumpTable.Stack.cs): `if (n == 0) return;` — an
+    // unconditional no-op that never touches the stack. This matters when the
+    // stack is empty after popping the index (ROLL 0 on a one-item stack):
+    // canonical HALTs, the bounds check below would otherwise fault.
+    if index == 0 {
+        return Ok(());
+    }
     let len = stack.len();
     if index >= len {
         return Err(alloc::format!("ROLL: index {index} out of range"));

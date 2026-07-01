@@ -223,6 +223,7 @@ mod tests {
             caught: false,
             in_finally: false,
             end_ip: 0,
+            has_end_target: false,
         }
     }
 

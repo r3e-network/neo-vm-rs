@@ -15,4 +15,10 @@ pub(in crate::interpreter) struct TryFrame {
     pub(in crate::interpreter) caught: bool,
     pub(in crate::interpreter) in_finally: bool,
     pub(in crate::interpreter) end_ip: usize,
+    /// Whether ENDTRY has stashed an end target into `end_ip`. Canonical
+    /// `ExceptionHandlingContext.EndPointer` defaults to -1 and ENDFINALLY
+    /// unconditionally assigns `IP = EndPointer`. Like the catch/finally
+    /// sentinel, testing `end_ip != 0` mis-treats a stashed target of exactly
+    /// IP 0 (a backward ENDTRY offset) as "unset"; this flag keeps them distinct.
+    pub(in crate::interpreter) has_end_target: bool,
 }

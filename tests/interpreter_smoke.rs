@@ -215,6 +215,88 @@ fn try_negative_catch_target_no_finally_throw_faults() {
 }
 
 #[test]
+fn setitem_buffer_accepts_boolean_value() {
+    // Canonical SetItem(Buffer) accepts any PrimitiveType via `(int)GetInteger()`;
+    // a Boolean writes 0/1. Main previously faulted (only Integer/len-1 ByteString).
+    let script = vec![
+        OpCode::PUSH1.byte(),
+        OpCode::NEWBUFFER.byte(), // Buffer[0x00], size 1
+        OpCode::DUP.byte(),       // keep an aliasing ref
+        OpCode::PUSH0.byte(),     // index 0
+        OpCode::PUSHT.byte(),     // value = Boolean(true)
+        OpCode::SETITEM.byte(),   // buffer[0] = 1
+        OpCode::PUSH0.byte(),
+        OpCode::PICKITEM.byte(), // read buffer[0]
+        OpCode::RET.byte(),
+    ];
+    let result = interpret(&script).expect("SETITEM buffer with a Boolean value must HALT");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.stack, vec![StackValue::Integer(1)]);
+}
+
+#[test]
+fn setitem_buffer_accepts_multibyte_bytestring_value() {
+    // A multi-byte ByteString value is coerced via signed-LE GetInteger: [5,0]=5.
+    // Main previously accepted ONLY a length-1 ByteString.
+    let script = vec![
+        OpCode::PUSH1.byte(),
+        OpCode::NEWBUFFER.byte(),
+        OpCode::DUP.byte(),
+        OpCode::PUSH0.byte(),
+        OpCode::PUSHDATA1.byte(),
+        0x02,
+        0x05,
+        0x00, // ByteString [5,0] -> integer 5
+        OpCode::SETITEM.byte(),
+        OpCode::PUSH0.byte(),
+        OpCode::PICKITEM.byte(),
+        OpCode::RET.byte(),
+    ];
+    let result =
+        interpret(&script).expect("SETITEM buffer with a multi-byte ByteString must HALT");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.stack, vec![StackValue::Integer(5)]);
+}
+
+#[test]
+fn roll_zero_on_empty_stack_is_noop() {
+    // Canonical ROLL: `if (n == 0) return;` — ROLL 0 with only the index on the
+    // stack (empty after the pop) HALTs; it must not fault the bounds check.
+    let script = vec![OpCode::PUSH0.byte(), OpCode::ROLL.byte(), OpCode::RET.byte()];
+    let result = interpret(&script).expect("ROLL 0 on an empty stack must HALT (no-op)");
+    assert_eq!(result.state, VmState::Halt);
+    assert!(result.stack.is_empty());
+}
+
+#[test]
+fn endfinally_end_target_at_ip_zero_is_honored() {
+    // ENDTRY's end target computed to IP 0 (a backward offset) must be honored by
+    // ENDFINALLY (canonical EndFinally assigns IP = EndPointer unconditionally).
+    // Main previously used end_ip==0 as the "unset" sentinel and fell through. A
+    // stack-depth phase flag distinguishes the initial run from the post-finally
+    // jump to IP 0: correct -> HALT [7]; the old fall-through -> HALT [1].
+    let script = vec![
+        OpCode::DEPTH.byte(),     // IP0
+        OpCode::JMPIF.byte(),
+        0x0A, // IP1 -> handler at IP11 when depth > 0
+        OpCode::TRY.byte(),
+        0x00,
+        0x05, // IP3 finally-only try, finally at IP8
+        OpCode::ENDTRY.byte(),
+        0xFA, // IP6 end target -6 -> IP0
+        OpCode::PUSH1.byte(),      // IP8 finally body
+        OpCode::ENDFINALLY.byte(), // IP9 -> jump to end target IP0
+        OpCode::RET.byte(),        // IP10 (the old fall-through path)
+        OpCode::DROP.byte(),       // IP11 handler
+        OpCode::PUSH7.byte(),      // IP12
+        OpCode::RET.byte(),        // IP13
+    ];
+    let result = interpret(&script).expect("ENDTRY end target at IP 0 must execute");
+    assert_eq!(result.state, VmState::Halt);
+    assert_eq!(result.stack, vec![StackValue::Integer(7)]);
+}
+
+#[test]
 fn equal_keeps_primitive_types_strict() {
     let equal = interpret(&[
         OpCode::PUSH1.byte(),
