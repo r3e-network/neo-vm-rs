@@ -1,8 +1,21 @@
-//! Shared NeoVM semantics and interpreter for Neo N4 execution profiles.
+//! Shared NeoVM semantics + execution engines for Neo N4 execution profiles.
 //!
-//! This crate is `no_std + alloc` compatible. Host runtimes such as PolkaVM and
-//! proving runtimes such as SP1 can share the same VM-facing types and
-//! interpreter behavior without inheriting each other's host or proving stack.
+//! This is the single, canonical NeoVM implementation shared by three projects,
+//! so the opcode logic is never re-implemented per project. It is
+//! `no_std + alloc` compatible. The common core (opcode **semantics**, the
+//! **value model**, opcodes/limits) is always compiled; the two execution
+//! engines are cargo features so each consumer pulls only what it needs:
+//!
+//! - `interpreter` (default) — the direct `match opcode` dispatch loop
+//!   ([`interpret`]). Used by the standalone **neo-vm** and by **riscvm**'s
+//!   in-process (PolkaVM guest) execution.
+//! - `runtime` (default) — the [`VmContext`] + [`RuntimeStack`] ABI for
+//!   straight-line / compiled execution. Used by **riscvm**'s NeoVM→Rust→RISC-V
+//!   compiler and by **neo-zkvm**'s proving/trace backend.
+//!
+//! Both engines are built on the shared [`semantics`] rule layer (single source
+//! of truth for opcode behavior), so they can never diverge. Selecting features:
+//! neo-vm → `interpreter`; neo-zkvm → `runtime`; riscvm → both (the default).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -10,11 +23,19 @@ extern crate alloc;
 
 mod abi;
 mod host;
+// Shared exception carrier used by BOTH execution engines; lives at the crate
+// root so neither engine depends on the other and the `interpreter` / `runtime`
+// features can be selected independently.
+mod pending_exception;
+#[cfg(feature = "interpreter")]
 mod interpreter;
+#[cfg(feature = "runtime")]
 pub mod runtime;
 pub mod script_builder;
 pub mod semantics;
 mod vm;
+
+pub(crate) use pending_exception::PendingException;
 
 pub use abi::interoperable::{Interoperable, InteroperableError};
 pub use abi::{
@@ -40,6 +61,7 @@ pub use abi::{
 };
 pub use abi::{callback_codec, fast_codec, result_codec};
 pub use host::{interop_hash, syscall_arg_count};
+#[cfg(feature = "interpreter")]
 pub use interpreter::{
     CALLT_MARKER, CALLT_MARKER_HI, INITIALIZER_COMPLETE_MARKER, SyscallProvider, interpret,
     interpret_with_stack_and_syscalls, interpret_with_stack_and_syscalls_at,
@@ -48,6 +70,7 @@ pub use interpreter::{
     interpret_with_stack_and_syscalls_at_with_result_limit, interpret_with_syscalls,
     last_interpreter_ip, last_result_limit, last_result_stack_len, last_result_stage,
 };
+#[cfg(feature = "runtime")]
 pub use runtime::{RuntimeStack, VmContext};
 pub use vm::{
     DEFAULT_MAX_INVOCATION_DEPTH, DEFAULT_MAX_STACK_DEPTH, ExceptionHandlingContext,

@@ -743,28 +743,32 @@ fn syscall_metadata_comes_from_one_declaration_table() {
 
 #[test]
 fn pending_exception_state_is_shared_between_runtime_and_interpreter() {
+    let lib = read_workspace_source("src/lib.rs");
+    let exception = read_workspace_source("src/pending_exception.rs");
     let runtime_mod = read_workspace_source("src/runtime/mod.rs");
-    let runtime_exception = read_workspace_source("src/runtime/pending_exception.rs");
     let interpreter_state = read_workspace_source("src/interpreter/state.rs");
 
+    // The single generic type lives at the CRATE ROOT (engine-independent), so
+    // the `interpreter` and `runtime` features can be selected separately while
+    // still sharing one exception representation.
     assert!(
-        runtime_mod.contains("pub(crate) use pending_exception::")
-            && runtime_mod.contains("PendingException"),
-        "runtime should expose the shared pending-exception representation crate-internally"
+        exception.contains("pub(crate) enum PendingException<V>"),
+        "src/pending_exception.rs should own the single generic PendingException type"
     );
     assert!(
-        runtime_exception.contains("pub(crate) enum PendingException<V>"),
-        "pending_exception.rs should own the single generic PendingException type"
+        lib.contains("mod pending_exception;")
+            && lib.contains("pub(crate) use pending_exception::PendingException;"),
+        "lib.rs should expose the shared PendingException crate-internally (always-on)"
+    );
+    // Both engines USE the crate-root type; neither redefines it.
+    assert!(
+        runtime_mod.contains("PendingException") && !runtime_mod.contains("enum PendingException"),
+        "runtime should use the shared crate-root PendingException, not redefine it"
     );
     assert!(
-        interpreter_state.contains(
-            "pub(super) type PendingException = crate::runtime::PendingException<StackValue>;"
-        ),
-        "interpreter state should alias the runtime PendingException instead of redefining it"
-    );
-    assert!(
-        !interpreter_state.contains("enum PendingException"),
-        "interpreter state must not keep a duplicate PendingException definition"
+        interpreter_state.contains("crate::PendingException<StackValue>")
+            && !interpreter_state.contains("enum PendingException"),
+        "interpreter state should alias the crate-root PendingException, not redefine it"
     );
 }
 

@@ -30,14 +30,12 @@
 //! next PC or `-1` to re-propagate — are unchanged).
 
 pub mod ops;
-mod pending_exception;
 mod try_frame;
 
 use alloc::{format, string::String, string::ToString, vec, vec::Vec};
-pub(crate) use pending_exception::PendingException;
 use try_frame::TryFrame;
 
-use crate::{ExecutionResult, StackValue, VmState};
+use crate::{ExecutionResult, PendingException, StackValue, VmState};
 
 /// Minimal stack/fault interface required by shared runtime opcode adapters.
 pub trait RuntimeStack {

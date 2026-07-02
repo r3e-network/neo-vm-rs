@@ -10,8 +10,15 @@ description = "Shared NeoVM semantics for Neo N4 RISC-V and zkVM execution profi
 path = "src/lib.rs"
 
 [features]
-default = ["std"]
+# Default = the full VM (both engines), so existing consumers are unaffected.
+default = ["std", "interpreter", "runtime"]
 std = ["serde/std"]
+# The direct `match opcode` dispatch loop — `interpret()`. Used by the standalone
+# neo-vm and by riscvm's in-process (PolkaVM guest) execution.
+interpreter = []
+# The `VmContext` + `RuntimeStack` ABI for straight-line / compiled execution.
+# Used by riscvm's NeoVM->Rust->RISC-V compiler and by neo-zkvm's proving backend.
+runtime = []
 
 [dependencies]
 num-bigint = { version = "0.4", default-features = false }

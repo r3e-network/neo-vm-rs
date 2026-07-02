@@ -12,7 +12,7 @@ pub(super) use try_stack::TryStack;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, Ordering};
 
-pub(super) type PendingException = crate::runtime::PendingException<StackValue>;
+pub(super) type PendingException = crate::PendingException<StackValue>;
 
 /// Diagnostic-only globals for the most recent interpreter state. **Not
 /// thread-safe**: multiple concurrent interpreter instances will race on
