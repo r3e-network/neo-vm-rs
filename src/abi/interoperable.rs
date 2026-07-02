@@ -16,6 +16,10 @@ use crate::StackValue;
 /// - `to_stack_value` ↔ `ToStackItem(IReferenceCounter?)`
 /// - `clone_box` ↔ `Clone()`
 /// - `from_replica` ↔ `FromReplica(IInteroperable)`
+// `from_*` here take `&mut self` deliberately: they POPULATE self (deserialize
+// into an existing instance), mirroring C# `IInteroperable.FromStackItem` /
+// `FromReplica`, so clippy's "from_* takes no self" convention does not apply.
+#[allow(clippy::wrong_self_convention)]
 pub trait Interoperable: core::fmt::Debug + Send + Sync {
     /// Populate this instance from a [`StackValue`].
     ///

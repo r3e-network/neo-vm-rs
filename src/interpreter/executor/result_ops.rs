@@ -18,7 +18,7 @@ pub(super) fn fault_result(
         stack: stack.to_vec(),
         fault_message: Some(fault_message),
         fault_ip: Some(ip as u32),
-        fault_locals: Some(crate::abi::fast_codec::encode_stack(&locals)),
+        fault_locals: Some(crate::abi::fast_codec::encode_stack(locals)),
     }
 }
 

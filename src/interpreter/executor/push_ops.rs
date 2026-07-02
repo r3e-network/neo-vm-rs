@@ -181,7 +181,7 @@ pub(super) fn execute(
             if target < 0 || target as usize > script.len() {
                 return Err("PUSHA target out of bounds".to_string());
             }
-            stack.push(StackValue::Pointer(target as i64));
+            stack.push(StackValue::Pointer(target));
             ip += 5;
             finish!(Dispatch::Continue);
         }

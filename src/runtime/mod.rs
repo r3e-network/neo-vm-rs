@@ -357,13 +357,12 @@ impl VmContext {
     /// Ends a try/catch block and returns the next program counter.
     #[must_use]
     pub fn end_try(&mut self, target_pc: i32) -> i32 {
-        if let Some(frame) = self.try_stack.last_mut() {
-            if frame.finally_pc != 0 && !frame.in_finally {
+        if let Some(frame) = self.try_stack.last_mut()
+            && frame.finally_pc != 0 && !frame.in_finally {
                 frame.end_pc = target_pc;
                 frame.in_finally = true;
                 return frame.finally_pc;
             }
-        }
         self.try_stack.pop();
         target_pc
     }
@@ -371,8 +370,8 @@ impl VmContext {
     /// Ends a finally block and returns the continuation program counter.
     #[must_use]
     pub fn end_finally(&mut self) -> i32 {
-        if let Some(frame) = self.try_stack.pop() {
-            if frame.in_finally {
+        if let Some(frame) = self.try_stack.pop()
+            && frame.in_finally {
                 // If this finally ran during exception unwinding, re-propagate the
                 // carried exception (the loop-top check_exception then dispatches
                 // it to the next outer handler, or faults if none).
@@ -384,7 +383,6 @@ impl VmContext {
                     return frame.end_pc;
                 }
             }
-        }
         self.fault("ENDFINALLY without matching finally context");
         -1
     }
