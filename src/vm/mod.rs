@@ -10,6 +10,9 @@ mod script_validation;
 
 pub use exception_handling::{ExceptionHandlingContext, ExceptionHandlingState};
 pub use graph::{Tarjan, next_stack_item_id};
+// Only the `interpreter` reads this tag directly (to distinguish global ids);
+// the const stays defined in `graph` for `next_stack_item_id` on every build.
+#[cfg(feature = "interpreter")]
 pub(crate) use graph::GLOBAL_ID_TAG;
 pub use instruction::{
     FromOperand, Instruction, InstructionError, InstructionErrorKind, InstructionResult,

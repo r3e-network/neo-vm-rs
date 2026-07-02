@@ -110,6 +110,9 @@ pub(crate) fn trim_le_bytes(mut bytes: Vec<u8>) -> Vec<u8> {
     bytes
 }
 
+// Only the `interpreter` engine's PUSHINT path trims raw LE literals; keep the
+// helper in the shared numeric layer but silence dead-code in runtime-only builds.
+#[cfg_attr(not(feature = "interpreter"), allow(dead_code))]
 pub(crate) fn trim_le_bytes_slice(bytes: &[u8]) -> Vec<u8> {
     if bytes.is_empty() {
         return Vec::new();

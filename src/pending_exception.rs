@@ -1,7 +1,15 @@
 use alloc::{format, string::String};
 
+// Shared exception-carrier vocabulary for BOTH engines. Its full surface is used
+// across the crate, but each single-engine build (interpreter- or runtime-only)
+// exercises only a subset — the `#[allow(dead_code)]`s below mark the members that
+// are engine-specific rather than genuinely dead. The default (both engines) uses
+// every member, so a real dead member would still surface on the canonical build.
 #[derive(Debug, Clone)]
 pub(crate) enum PendingException<V> {
+    // Constructed only by the `interpreter` (host-error strings); the `runtime`
+    // carries `ThrownValue` exclusively but still matches this in its renderers.
+    #[allow(dead_code)]
     Message(String),
     ThrownValue(V),
 }
@@ -17,6 +25,8 @@ impl PendingExceptionValue for crate::StackValue {
 }
 
 impl<V> PendingException<V> {
+    // interpreter-only constructor
+    #[allow(dead_code)]
     pub(crate) fn message(message: String) -> Self {
         Self::Message(message)
     }
@@ -37,6 +47,8 @@ impl<V> PendingException<V> {
 }
 
 impl<V: core::fmt::Debug> PendingException<V> {
+    // runtime-only fault renderer (borrows)
+    #[allow(dead_code)]
     pub(crate) fn fault_message(&self) -> String {
         match self {
             Self::Message(message) => message.clone(),
@@ -44,6 +56,8 @@ impl<V: core::fmt::Debug> PendingException<V> {
         }
     }
 
+    // interpreter-only fault renderer (consumes)
+    #[allow(dead_code)]
     pub(crate) fn into_fault_message(self) -> String {
         match self {
             Self::Message(message) => message,
