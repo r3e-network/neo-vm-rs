@@ -582,7 +582,7 @@ mod tests {
                     ctx.throw_ex();
                 }
                 5 => {
-                    ctx.pop();
+                    let _ = ctx.pop();
                     ctx.push(StackValue::Integer(2));
                     ctx.throw_ex();
                 }
