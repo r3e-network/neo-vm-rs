@@ -131,6 +131,10 @@ pub fn dec_value(value: StackValue) -> Result<StackValue, String> {
 }
 
 /// Raise `base` to `exponent`.
+///
+/// Rejects exponents that would produce a result larger than NeoVM's max
+/// integer size **before** calling `BigInt::pow`, which would otherwise
+/// allocate multi-gigabyte intermediates (DoS via a single POW opcode).
 pub fn pow_values(base: StackValue, exponent: StackValue) -> Result<StackValue, String> {
     let exponent = numeric_bigint(exponent)?;
     if exponent < BigInt::from(0) {
@@ -146,10 +150,21 @@ pub fn pow_values(base: StackValue, exponent: StackValue) -> Result<StackValue, 
     let exponent = exponent
         .to_u32()
         .ok_or_else(|| "exponent too large for POW".to_string())?;
-    numeric_stack_value(
-        numeric_bigint(base)?.pow(exponent),
-        "integer overflow for POW",
-    )
+    let base = numeric_bigint(base)?;
+
+    // Result bit-length is roughly base.bits() * exponent.
+    // Max integer is 32 bytes = 256 bits. Allow a small margin for sign/encoding.
+    const MAX_RESULT_BITS: u64 = (numeric::MAX_INTEGER_SIZE as u64) * 8;
+    if exponent > 0 && base != BigInt::from(0) && base != BigInt::from(1) && base != BigInt::from(-1)
+    {
+        let base_bits = base.bits().max(1);
+        let estimated = base_bits.saturating_mul(u64::from(exponent));
+        if estimated > MAX_RESULT_BITS {
+            return Err("integer overflow for POW".into());
+        }
+    }
+
+    numeric_stack_value(base.pow(exponent), "integer overflow for POW")
 }
 
 /// Integer square root.
@@ -306,4 +321,31 @@ pub fn within_values(
     let lower = numeric_bigint(lower)?;
     let upper = numeric_bigint(upper)?;
     Ok(value >= lower && value < upper)
+}
+
+
+#[cfg(test)]
+mod pow_guard_tests {
+    use super::*;
+    use crate::StackValue;
+
+    #[test]
+    fn huge_pow_is_rejected_before_alloc() {
+        // 20 ** 539_950_890 would allocate multi-GB without the guard.
+        let err = pow_values(
+            StackValue::Integer(20),
+            StackValue::Integer(539_950_890),
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("overflow") || err.contains("too large"),
+            "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn small_pow_still_works() {
+        let v = pow_values(StackValue::Integer(2), StackValue::Integer(10)).unwrap();
+        assert_eq!(v, StackValue::Integer(1024));
+    }
 }
