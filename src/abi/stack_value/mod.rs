@@ -1,6 +1,6 @@
 //! Canonical NeoVM stack value types.
 
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::semantics::numeric;
@@ -157,82 +157,139 @@ impl Serialize for StackValue {
 impl<'de> Deserialize<'de> for StackValue {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         use core::fmt;
-        use serde::de::{self, MapAccess, SeqAccess, Visitor};
+        use serde::de::{self, EnumAccess, VariantAccess, Visitor};
 
-        struct SvVisitor;
+        const VARIANTS: &[&str] = &[
+            "Integer",
+            "BigInteger",
+            "ByteString",
+            "Buffer",
+            "Boolean",
+            "Array",
+            "Struct",
+            "Map",
+            "Interop",
+            "Iterator",
+            "Null",
+            "Pointer",
+        ];
 
-        impl<'de> Visitor<'de> for SvVisitor {
-            type Value = StackValue;
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "a NeoVM StackValue")
-            }
+        /// Accepts both bincode variant indices and JSON variant names.
+        enum Field {
+            Integer,
+            BigInteger,
+            ByteString,
+            Buffer,
+            Boolean,
+            Array,
+            Struct,
+            Map,
+            Interop,
+            Iterator,
+            Null,
+            Pointer,
+        }
 
-            fn visit_str<E: de::Error>(self, v: &str) -> Result<StackValue, E> {
-                match v {
-                    "Null" => Ok(StackValue::Null),
-                    _ => Err(de::Error::unknown_variant(v, &["Null"])),
+        impl<'de> Deserialize<'de> for Field {
+            fn deserialize<D2: serde::Deserializer<'de>>(d: D2) -> Result<Self, D2::Error> {
+                struct FieldVisitor;
+                impl Visitor<'_> for FieldVisitor {
+                    type Value = Field;
+                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                        write!(f, "StackValue variant identifier")
+                    }
+                    fn visit_u64<E: de::Error>(self, v: u64) -> Result<Field, E> {
+                        match v {
+                            0 => Ok(Field::Integer),
+                            1 => Ok(Field::BigInteger),
+                            2 => Ok(Field::ByteString),
+                            3 => Ok(Field::Buffer),
+                            4 => Ok(Field::Boolean),
+                            5 => Ok(Field::Array),
+                            6 => Ok(Field::Struct),
+                            7 => Ok(Field::Map),
+                            8 => Ok(Field::Interop),
+                            9 => Ok(Field::Iterator),
+                            10 => Ok(Field::Null),
+                            11 => Ok(Field::Pointer),
+                            other => Err(de::Error::invalid_value(
+                                de::Unexpected::Unsigned(other),
+                                &"variant index 0..=11",
+                            )),
+                        }
+                    }
+                    fn visit_str<E: de::Error>(self, v: &str) -> Result<Field, E> {
+                        match v {
+                            "Integer" => Ok(Field::Integer),
+                            "BigInteger" => Ok(Field::BigInteger),
+                            "ByteString" => Ok(Field::ByteString),
+                            "Buffer" => Ok(Field::Buffer),
+                            "Boolean" => Ok(Field::Boolean),
+                            "Array" => Ok(Field::Array),
+                            "Struct" => Ok(Field::Struct),
+                            "Map" => Ok(Field::Map),
+                            "Interop" => Ok(Field::Interop),
+                            "Iterator" => Ok(Field::Iterator),
+                            "Null" => Ok(Field::Null),
+                            "Pointer" => Ok(Field::Pointer),
+                            other => Err(de::Error::unknown_variant(other, VARIANTS)),
+                        }
+                    }
+                    fn visit_bytes<E: de::Error>(self, v: &[u8]) -> Result<Field, E> {
+                        match core::str::from_utf8(v) {
+                            Ok(s) => self.visit_str(s),
+                            Err(_) => Err(de::Error::invalid_value(
+                                de::Unexpected::Bytes(v),
+                                &"utf-8 variant name",
+                            )),
+                        }
+                    }
                 }
-            }
-
-            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<StackValue, M::Error> {
-                let key: Option<String> = map.next_key()?;
-                let key = match key {
-                    Some(k) => k,
-                    None => return Err(de::Error::custom("expected StackValue variant key")),
-                };
-                match key.as_str() {
-                    "Integer" => Ok(StackValue::Integer(map.next_value()?)),
-                    "BigInteger" => Ok(StackValue::BigInteger(map.next_value()?)),
-                    "ByteString" => Ok(StackValue::ByteString(map.next_value()?)),
-                    "Buffer" => Ok(StackValue::Buffer(
-                        crate::next_stack_item_id(),
-                        map.next_value()?,
-                    )),
-                    "Boolean" => Ok(StackValue::Boolean(map.next_value()?)),
-                    "Array" => Ok(StackValue::Array(
-                        crate::next_stack_item_id(),
-                        map.next_value()?,
-                    )),
-                    "Struct" => Ok(StackValue::Struct(
-                        crate::next_stack_item_id(),
-                        map.next_value()?,
-                    )),
-                    "Map" => Ok(StackValue::Map(
-                        crate::next_stack_item_id(),
-                        map.next_value()?,
-                    )),
-                    "Interop" => Ok(StackValue::Interop(map.next_value()?)),
-                    "Iterator" => Ok(StackValue::Iterator(map.next_value()?)),
-                    "Null" => Ok(StackValue::Null),
-                    "Pointer" => Ok(StackValue::Pointer(map.next_value()?)),
-                    _ => Err(de::Error::unknown_variant(
-                        &key,
-                        &[
-                            "Integer",
-                            "BigInteger",
-                            "ByteString",
-                            "Buffer",
-                            "Boolean",
-                            "Array",
-                            "Struct",
-                            "Map",
-                            "Interop",
-                            "Iterator",
-                            "Null",
-                            "Pointer",
-                        ],
-                    )),
-                }
-            }
-
-            fn visit_seq<A: SeqAccess<'de>>(self, _seq: A) -> Result<StackValue, A::Error> {
-                Err(de::Error::custom(
-                    "StackValue is not a JSON array; use {\"Variant\": value} format",
-                ))
+                d.deserialize_identifier(FieldVisitor)
             }
         }
 
-        d.deserialize_any(SvVisitor)
+        struct SvVisitor;
+        impl<'de> Visitor<'de> for SvVisitor {
+            type Value = StackValue;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "a NeoVM StackValue enum")
+            }
+            fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<StackValue, A::Error> {
+                let (variant, access) = data.variant::<Field>()?;
+                match variant {
+                    Field::Integer => Ok(StackValue::Integer(access.newtype_variant()?)),
+                    Field::BigInteger => Ok(StackValue::BigInteger(access.newtype_variant()?)),
+                    Field::ByteString => Ok(StackValue::ByteString(access.newtype_variant()?)),
+                    Field::Buffer => Ok(StackValue::Buffer(
+                        crate::next_stack_item_id(),
+                        access.newtype_variant()?,
+                    )),
+                    Field::Boolean => Ok(StackValue::Boolean(access.newtype_variant()?)),
+                    Field::Array => Ok(StackValue::Array(
+                        crate::next_stack_item_id(),
+                        access.newtype_variant()?,
+                    )),
+                    Field::Struct => Ok(StackValue::Struct(
+                        crate::next_stack_item_id(),
+                        access.newtype_variant()?,
+                    )),
+                    Field::Map => Ok(StackValue::Map(
+                        crate::next_stack_item_id(),
+                        access.newtype_variant()?,
+                    )),
+                    Field::Interop => Ok(StackValue::Interop(access.newtype_variant()?)),
+                    Field::Iterator => Ok(StackValue::Iterator(access.newtype_variant()?)),
+                    Field::Null => {
+                        access.unit_variant()?;
+                        Ok(StackValue::Null)
+                    }
+                    Field::Pointer => Ok(StackValue::Pointer(access.newtype_variant()?)),
+                }
+            }
+        }
+
+        d.deserialize_enum("StackValue", VARIANTS, SvVisitor)
     }
 }
 
@@ -930,5 +987,25 @@ mod tests {
             None
         );
         assert_eq!(super::slice_splice_value(&StackValue::Null, 0, 1), None);
+    }
+}
+
+
+
+#[cfg(test)]
+mod serde_roundtrip_tests {
+    use super::*;
+
+    #[test]
+    fn json_roundtrip_integer_and_null() {
+        let v = StackValue::Integer(7);
+        let json = serde_json::to_string(&v).unwrap();
+        let decoded: StackValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, StackValue::Integer(7));
+
+        let n = StackValue::Null;
+        let json = serde_json::to_string(&n).unwrap();
+        let decoded: StackValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, StackValue::Null);
     }
 }

@@ -338,7 +338,9 @@ mod pow_guard_tests {
         )
         .unwrap_err();
         assert!(
-            err.contains("overflow") || err.contains("too large"),
+            err.contains("overflow")
+                || err.contains("too large")
+                || err.contains("exceeds maximum"),
             "unexpected: {err}"
         );
     }
