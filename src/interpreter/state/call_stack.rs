@@ -13,6 +13,8 @@ pub(in crate::interpreter) type RestoredCallFrame = (usize, Vec<StackValue>, Vec
 pub(in crate::interpreter) struct CallStack {
     frames: [core::mem::MaybeUninit<CallFrame>; MAX_CALL_DEPTH],
     len: usize,
+    shared_frames: Option<Vec<RestoredCallFrame>>,
+    shared_root_count: usize,
     #[cfg(target_arch = "riscv32")]
     retained_len: usize,
 }
@@ -24,6 +26,8 @@ impl CallStack {
             // Safety: MaybeUninit does not require initialization
             frames: unsafe { core::mem::MaybeUninit::uninit().assume_init() },
             len: 0,
+            shared_frames: None,
+            shared_root_count: 0,
             #[cfg(target_arch = "riscv32")]
             retained_len: 0,
         }
@@ -31,7 +35,36 @@ impl CallStack {
 
     #[inline]
     pub(in crate::interpreter) fn len(&self) -> usize {
-        self.len
+        self.shared_frames.as_ref().map_or(self.len, Vec::len)
+    }
+
+    pub(in crate::interpreter) fn reference_root_count(&self) -> usize {
+        self.shared_root_count
+    }
+
+    pub(in crate::interpreter) fn new_shared() -> Self {
+        let mut stack = Self::new();
+        stack.shared_frames = Some(Vec::new());
+        stack
+    }
+
+    pub(in crate::interpreter) fn push_shared(
+        &mut self,
+        return_ip: usize,
+        locals: Vec<StackValue>,
+        args: Vec<StackValue>,
+        initialized: bool,
+    ) -> Result<(), String> {
+        let frames = self
+            .shared_frames
+            .as_mut()
+            .ok_or_else(|| "missing reference call frames".to_string())?;
+        if frames.len() >= MAX_CALL_DEPTH {
+            return Err("call depth exceeds maximum".to_string());
+        }
+        self.shared_root_count += locals.len() + args.len();
+        frames.push((return_ip, locals, args, initialized));
+        Ok(())
     }
 
     #[cfg(target_arch = "riscv32")]
@@ -114,6 +147,13 @@ impl CallStack {
     pub(in crate::interpreter) fn pop_and_restore(
         &mut self,
     ) -> Result<Option<RestoredCallFrame>, String> {
+        if let Some(frames) = &mut self.shared_frames {
+            let frame = frames.pop();
+            if let Some((_, locals, args, _)) = &frame {
+                self.shared_root_count -= locals.len() + args.len();
+            }
+            return Ok(frame);
+        }
         if self.len == 0 {
             return Ok(None);
         }

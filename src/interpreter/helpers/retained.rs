@@ -27,6 +27,9 @@ pub(crate) fn encode_retained_value_to_slice(
     mut pos: usize,
 ) -> Result<usize, String> {
     match value {
+        StackValue::Reference(_) => {
+            return Err("reference values cannot use legacy retained codec".to_string());
+        }
         StackValue::Integer(value) => {
             ensure_retained_capacity(buf, pos, 9)?;
             buf[pos] = STACK_VALUE_CODEC_TAG_INTEGER;

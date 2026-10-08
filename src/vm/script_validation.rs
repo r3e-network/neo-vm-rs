@@ -25,6 +25,12 @@ impl ValidatedScript {
 /// Parsed instruction metadata used by script disassembly and validation callers.
 pub type ScriptInstruction = Instruction;
 
+#[derive(Clone, Copy)]
+enum TargetOrigin {
+    FollowingInstruction,
+    CurrentInstruction,
+}
+
 /// Validates NeoVM bytecode and rejects invalid control-flow/type operands.
 pub fn validate_strict_script(script: &[u8]) -> ValidationResult<()> {
     validate_script(script, true).map(|_| ())
@@ -32,6 +38,30 @@ pub fn validate_strict_script(script: &[u8]) -> ValidationResult<()> {
 
 /// Validates NeoVM bytecode and returns instruction offsets for ABI checks.
 pub fn validate_script(script: &[u8], strict: bool) -> ValidationResult<ValidatedScript> {
+    validate_script_with_origin(script, strict, TargetOrigin::FollowingInstruction)
+}
+
+/// Validates bytecode using Neo.VM 3.9 current-instruction-relative targets.
+///
+/// This opt-in reference profile leaves the legacy validation entry points unchanged.
+pub fn validate_strict_script_reference(script: &[u8]) -> ValidationResult<()> {
+    validate_script_reference(script, true).map(|_| ())
+}
+
+/// Parses bytecode and optionally applies Neo.VM 3.9 strict structural validation.
+///
+/// Relative control-flow targets must start an instruction, including both TRY
+/// operands. A zero TRY operand points to the TRY instruction for this structural
+/// check; execution separately decides whether a handler is present.
+pub fn validate_script_reference(script: &[u8], strict: bool) -> ValidationResult<ValidatedScript> {
+    validate_script_with_origin(script, strict, TargetOrigin::CurrentInstruction)
+}
+
+fn validate_script_with_origin(
+    script: &[u8],
+    strict: bool,
+    origin: TargetOrigin,
+) -> ValidationResult<ValidatedScript> {
     let instructions = parse_script_instructions(script)?;
     let instruction_offsets = instructions
         .iter()
@@ -40,7 +70,7 @@ pub fn validate_script(script: &[u8], strict: bool) -> ValidationResult<Validate
 
     if strict {
         for instruction in &instructions {
-            validate_instruction(instruction, &instruction_offsets)?;
+            validate_instruction(instruction, &instruction_offsets, origin)?;
         }
     }
 
@@ -68,6 +98,13 @@ pub fn parse_script_instructions(script: &[u8]) -> ValidationResult<Vec<ScriptIn
 
 /// Calculates the absolute target for a jump-like instruction.
 pub fn instruction_jump_target(instruction: &Instruction) -> ValidationResult<usize> {
+    instruction_jump_target_with_origin(instruction, TargetOrigin::FollowingInstruction)
+}
+
+fn instruction_jump_target_with_origin(
+    instruction: &Instruction,
+    origin: TargetOrigin,
+) -> ValidationResult<usize> {
     let offset = match instruction.opcode() {
         OpCode::JMP
         | OpCode::JMPIF
@@ -97,11 +134,18 @@ pub fn instruction_jump_target(instruction: &Instruction) -> ValidationResult<us
         }
     };
 
-    jump_target(instruction, offset)
+    jump_target(instruction, offset, origin)
 }
 
 /// Calculates the absolute catch/finally targets for a TRY instruction.
 pub fn instruction_try_targets(instruction: &Instruction) -> ValidationResult<(usize, usize)> {
+    instruction_try_targets_with_origin(instruction, TargetOrigin::FollowingInstruction)
+}
+
+fn instruction_try_targets_with_origin(
+    instruction: &Instruction,
+    origin: TargetOrigin,
+) -> ValidationResult<(usize, usize)> {
     let (catch_offset, finally_offset) = match instruction.opcode() {
         OpCode::TRY => (
             i64::from(read_i8(instruction, 0)?),
@@ -117,14 +161,15 @@ pub fn instruction_try_targets(instruction: &Instruction) -> ValidationResult<(u
     };
 
     Ok((
-        jump_target(instruction, catch_offset)?,
-        jump_target(instruction, finally_offset)?,
+        jump_target(instruction, catch_offset, origin)?,
+        jump_target(instruction, finally_offset, origin)?,
     ))
 }
 
 fn validate_instruction(
     instruction: &ScriptInstruction,
     instruction_offsets: &BTreeSet<usize>,
+    origin: TargetOrigin,
 ) -> ValidationResult<()> {
     match instruction.opcode() {
         OpCode::JMP
@@ -138,7 +183,7 @@ fn validate_instruction(
         | OpCode::JMPLE
         | OpCode::CALL
         | OpCode::ENDTRY => {
-            validate_jump_target(instruction, instruction_offsets)?;
+            validate_jump_target(instruction, instruction_offsets, origin)?;
         }
         OpCode::PUSHA
         | OpCode::JMP_L
@@ -152,13 +197,13 @@ fn validate_instruction(
         | OpCode::JMPLE_L
         | OpCode::CALL_L
         | OpCode::ENDTRY_L => {
-            validate_jump_target(instruction, instruction_offsets)?;
+            validate_jump_target(instruction, instruction_offsets, origin)?;
         }
         OpCode::TRY => {
-            validate_try_targets(instruction, instruction_offsets)?;
+            validate_try_targets(instruction, instruction_offsets, origin)?;
         }
         OpCode::TRY_L => {
-            validate_try_targets(instruction, instruction_offsets)?;
+            validate_try_targets(instruction, instruction_offsets, origin)?;
         }
         OpCode::NEWARRAY_T | OpCode::ISTYPE | OpCode::CONVERT => {
             let type_byte = read_u8(instruction, 0)?;
@@ -188,8 +233,9 @@ fn validate_instruction(
 fn validate_jump_target(
     instruction: &ScriptInstruction,
     instruction_offsets: &BTreeSet<usize>,
+    origin: TargetOrigin,
 ) -> ValidationResult<()> {
-    let target = instruction_jump_target(instruction)?;
+    let target = instruction_jump_target_with_origin(instruction, origin)?;
     if instruction_offsets.contains(&target) {
         Ok(())
     } else {
@@ -204,8 +250,9 @@ fn validate_jump_target(
 fn validate_try_targets(
     instruction: &ScriptInstruction,
     instruction_offsets: &BTreeSet<usize>,
+    origin: TargetOrigin,
 ) -> ValidationResult<()> {
-    let (catch_target, finally_target) = instruction_try_targets(instruction)?;
+    let (catch_target, finally_target) = instruction_try_targets_with_origin(instruction, origin)?;
     if !instruction_offsets.contains(&catch_target) {
         return Err(format!(
             "invalid catch target at position {}: {:?}",
@@ -223,7 +270,28 @@ fn validate_try_targets(
     Ok(())
 }
 
-fn jump_target(instruction: &ScriptInstruction, offset: i64) -> ValidationResult<usize> {
+fn jump_target(
+    instruction: &ScriptInstruction,
+    offset: i64,
+    origin: TargetOrigin,
+) -> ValidationResult<usize> {
+    if let TargetOrigin::CurrentInstruction = origin {
+        // Neo.VM 3.9 Script strict mode uses checked(ip + signed operand),
+        // where ip is an Int32. It does not use the following instruction.
+        let target = i32::try_from(instruction.pointer())
+            .ok()
+            .zip(i32::try_from(offset).ok())
+            .and_then(|(pointer, offset)| pointer.checked_add(offset))
+            .ok_or_else(|| format!("jump target overflow at {}", instruction.pointer()))?;
+        return usize::try_from(target).map_err(|_| {
+            format!(
+                "negative jump target at position {}: {:?}",
+                instruction.pointer(),
+                instruction.opcode()
+            )
+        });
+    }
+
     let next_ip = instruction
         .pointer()
         .checked_add(instruction.size())

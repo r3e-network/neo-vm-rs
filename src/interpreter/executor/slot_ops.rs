@@ -70,7 +70,8 @@ pub(super) fn execute(
             }
             // NeoVM keeps arguments and locals in separate slot arrays. Arguments
             // are consumed from the evaluation stack before local slots are created.
-            let new_args = if cfg!(target_arch = "riscv32") && arg_count > 0 {
+            let new_args = if cfg!(target_arch = "riscv32") && !ids.is_reference() && arg_count > 0
+            {
                 let buf = unsafe { RETAINED_ARGS_BUF.as_mut_slice() };
                 ensure_retained_capacity(buf, 0, 4)?;
                 buf[0..4].copy_from_slice(&(arg_count as u32).to_le_bytes());

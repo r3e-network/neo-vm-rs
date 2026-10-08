@@ -1,14 +1,50 @@
-use super::executor::interpret_with_stack_and_syscalls_at_internal;
+use super::boundary::interpret_abi as interpret_internal;
 use crate::{ExecutionResult, StackValue as AbiStackValue};
-use alloc::{string::String, vec::Vec};
+use alloc::{format, string::String, vec::Vec};
 
 mod no_syscalls;
+mod reference_api;
+pub use reference_api::*;
 
 use no_syscalls::NoSyscalls;
 
 pub fn interpret(script: &[u8]) -> Result<ExecutionResult, String> {
     let mut host = NoSyscalls;
     interpret_with_stack_and_syscalls_at(script, Vec::new(), 0, &mut host)
+}
+
+/// Distinguishes an uncatchable VM fault from a catchable, typed NeoVM exception.
+///
+/// V3 hosts must preserve `Throw` across ordinary contract calls and turn native
+/// invocation failures and exhausted gas into `Fault`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum VmException {
+    Fault(String),
+    Throw(AbiStackValue),
+}
+
+impl From<String> for VmException {
+    fn from(message: String) -> Self {
+        Self::Fault(message)
+    }
+}
+
+impl core::fmt::Display for VmException {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Fault(message) => formatter.write_str(message),
+            Self::Throw(value) => write!(formatter, "THROW: {value:?}"),
+        }
+    }
+}
+
+impl VmException {
+    fn into_legacy_message(self) -> String {
+        match self {
+            Self::Fault(message) => message,
+            Self::Throw(value) => format!("THROW: {value:?}"),
+        }
+    }
 }
 
 pub trait SyscallProvider {
@@ -25,6 +61,30 @@ pub trait SyscallProvider {
 
     fn initializer_complete(&mut self, _ip: usize) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Opt-in typed SYSCALL boundary. The default preserves the old provider's
+    /// catchable UTF-8 error payload; native V3 providers override this method.
+    fn typed_syscall(
+        &mut self,
+        api: u32,
+        ip: usize,
+        stack: &mut Vec<AbiStackValue>,
+    ) -> Result<(), VmException> {
+        self.syscall(api, ip, stack)
+            .map_err(|message| VmException::Throw(AbiStackValue::ByteString(message.into_bytes())))
+    }
+
+    /// Opt-in typed CALLT boundary. Override this together with `typed_syscall`
+    /// when contract calls must preserve a child VM's thrown stack item.
+    fn typed_callt(
+        &mut self,
+        token: u16,
+        ip: usize,
+        stack: &mut Vec<AbiStackValue>,
+    ) -> Result<(), VmException> {
+        self.callt(token, ip, stack)
+            .map_err(|message| VmException::Throw(AbiStackValue::ByteString(message.into_bytes())))
     }
 
     /// Handle CALLT opcode. The default encodes the token with a distinctive
@@ -129,6 +189,96 @@ pub fn interpret_with_stack_and_syscalls_at_with_initializer_and_result_limit<
         initial_ip,
         Some(initializer_ip),
         Some(result_stack_limit),
+        host,
+    )
+}
+
+fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
+    script: &[u8],
+    initial_stack: Vec<AbiStackValue>,
+    initial_ip: usize,
+    initializer_ip: Option<usize>,
+    result_stack_limit: Option<usize>,
+    host: &mut H,
+) -> Result<ExecutionResult, String> {
+    interpret_internal(
+        script,
+        initial_stack,
+        initial_ip,
+        initializer_ip,
+        result_stack_limit,
+        false,
+        host,
+    )
+    .map_err(VmException::into_legacy_message)
+}
+
+/// Executes with typed exception propagation, without changing legacy entry points.
+pub fn interpret_with_stack_and_syscalls_at_typed<H: SyscallProvider>(
+    script: &[u8],
+    initial_stack: Vec<AbiStackValue>,
+    initial_ip: usize,
+    host: &mut H,
+) -> Result<ExecutionResult, VmException> {
+    interpret_internal(script, initial_stack, initial_ip, None, None, true, host)
+}
+
+/// Typed execution retaining only the requested HALT result items.
+pub fn interpret_with_stack_and_syscalls_at_with_result_limit_typed<H: SyscallProvider>(
+    script: &[u8],
+    initial_stack: Vec<AbiStackValue>,
+    initial_ip: usize,
+    result_stack_limit: usize,
+    host: &mut H,
+) -> Result<ExecutionResult, VmException> {
+    interpret_internal(
+        script,
+        initial_stack,
+        initial_ip,
+        None,
+        Some(result_stack_limit),
+        true,
+        host,
+    )
+}
+
+/// Typed execution beginning with the contract initializer.
+pub fn interpret_with_stack_and_syscalls_at_with_initializer_typed<H: SyscallProvider>(
+    script: &[u8],
+    initial_stack: Vec<AbiStackValue>,
+    initial_ip: usize,
+    initializer_ip: usize,
+    host: &mut H,
+) -> Result<ExecutionResult, VmException> {
+    interpret_internal(
+        script,
+        initial_stack,
+        initial_ip,
+        Some(initializer_ip),
+        None,
+        true,
+        host,
+    )
+}
+
+/// Typed initializer execution retaining only the requested HALT result items.
+pub fn interpret_with_stack_and_syscalls_at_with_initializer_and_result_limit_typed<
+    H: SyscallProvider,
+>(
+    script: &[u8],
+    initial_stack: Vec<AbiStackValue>,
+    initial_ip: usize,
+    initializer_ip: usize,
+    result_stack_limit: usize,
+    host: &mut H,
+) -> Result<ExecutionResult, VmException> {
+    interpret_internal(
+        script,
+        initial_stack,
+        initial_ip,
+        Some(initializer_ip),
+        Some(result_stack_limit),
+        true,
         host,
     )
 }

@@ -37,11 +37,19 @@ pub use abi::{
 pub use abi::{callback_codec, fast_codec, result_codec};
 pub use host::{interop_hash, syscall_arg_count};
 pub use interpreter::{
-    CALLT_MARKER, CALLT_MARKER_HI, INITIALIZER_COMPLETE_MARKER, SyscallProvider, interpret,
+    CALLT_MARKER, CALLT_MARKER_HI, INITIALIZER_COMPLETE_MARKER, ReferenceSyscallProvider,
+    SharedExecutionResult, SharedVmException, SyscallProvider, VmException, interpret,
     interpret_with_stack_and_syscalls, interpret_with_stack_and_syscalls_at,
+    interpret_with_stack_and_syscalls_at_reference, interpret_with_stack_and_syscalls_at_typed,
     interpret_with_stack_and_syscalls_at_with_initializer,
     interpret_with_stack_and_syscalls_at_with_initializer_and_result_limit,
-    interpret_with_stack_and_syscalls_at_with_result_limit, interpret_with_syscalls,
+    interpret_with_stack_and_syscalls_at_with_initializer_and_result_limit_reference,
+    interpret_with_stack_and_syscalls_at_with_initializer_and_result_limit_typed,
+    interpret_with_stack_and_syscalls_at_with_initializer_reference,
+    interpret_with_stack_and_syscalls_at_with_initializer_typed,
+    interpret_with_stack_and_syscalls_at_with_result_limit,
+    interpret_with_stack_and_syscalls_at_with_result_limit_reference,
+    interpret_with_stack_and_syscalls_at_with_result_limit_typed, interpret_with_syscalls,
     last_interpreter_ip, last_result_limit, last_result_stack_len, last_result_stage,
 };
 pub use runtime::{RuntimeStack, VmContext};
@@ -53,5 +61,9 @@ pub use vm::{
 };
 pub use vm::{
     instruction_jump_target, instruction_try_targets, next_stack_item_id,
-    parse_script_instructions, validate_script, validate_strict_script,
+    parse_script_instructions, validate_script, validate_script_reference, validate_strict_script,
+    validate_strict_script_reference,
 };
+
+/// Opt-in shared values for V3 engine families.
+pub mod reference;

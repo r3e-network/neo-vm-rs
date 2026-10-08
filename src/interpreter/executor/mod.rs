@@ -1,19 +1,23 @@
-use super::api::SyscallProvider;
+use super::boundary::{RuntimeException as VmException, RuntimeHost, RuntimeResult};
 mod byte_ops;
+mod call_ops;
+mod comparison_ops;
 mod compound_ops;
 mod control;
 mod numeric_ops;
 mod push_ops;
+mod reference_coercion_ops;
+mod reference_ops;
 mod result_ops;
 mod slot_ops;
 mod stack_ops;
+mod typed_control;
+mod typed_item_ops;
 use super::helpers::*;
 use super::opcodes::*;
 use super::runtime_types::{CompoundIds, StackValue, to_abi_value};
 use super::state::*;
-use crate::{
-    ExecutionResult, StackValue as AbiStackValue, semantics::comparison as comparison_rules,
-};
+use crate::{StackValue as AbiStackValue, semantics::comparison as comparison_rules};
 use alloc::{
     format,
     string::{String, ToString},
@@ -21,37 +25,40 @@ use alloc::{
 };
 use core::sync::atomic::Ordering;
 
-pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
+pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: RuntimeHost>(
     script: &[u8],
-    initial_stack: Vec<AbiStackValue>,
+    mut method_initial_stack: Vec<StackValue>,
+    mut ids: CompoundIds,
     initial_ip: usize,
     initializer_ip: Option<usize>,
     result_stack_limit: Option<usize>,
+    typed_exceptions: bool,
+    reference_mode: bool,
+    base_invocation_depth: usize,
     host: &mut H,
-) -> Result<ExecutionResult, String> {
+) -> Result<RuntimeResult, VmException> {
     LAST_INTERPRETER_IP.store(u32::MAX, Ordering::Relaxed);
     LAST_RESULT_STAGE.store(0, Ordering::Relaxed);
     LAST_RESULT_STACK_LEN.store(0, Ordering::Relaxed);
     LAST_RESULT_LIMIT.store(u32::MAX, Ordering::Relaxed);
 
     if initial_ip > script.len() {
-        return Err("initial instruction pointer out of bounds".to_string());
+        return Err(VmException::Fault(
+            "initial instruction pointer out of bounds".to_string(),
+        ));
     }
     if initializer_ip.is_some_and(|ip| ip > script.len()) {
-        return Err("initializer instruction pointer out of bounds".to_string());
+        return Err(VmException::Fault(
+            "initializer instruction pointer out of bounds".to_string(),
+        ));
     }
-    let mut ids = CompoundIds::default();
-    let mut method_initial_stack = initial_stack
-        .into_iter()
-        .map(|item| ids.import_abi(item))
-        .collect::<Vec<_>>();
     let mut running_initializer = initializer_ip.is_some();
-    let retained_initializer_method_stack_len = if running_initializer {
+    let retained_initializer_method_stack_len = if running_initializer && !reference_mode {
         retain_initializer_method_stack(&method_initial_stack)?
     } else {
         None
     };
-    let mut stack = if running_initializer {
+    let mut stack = if running_initializer && !reference_mode {
         Vec::new()
     } else {
         core::mem::take(&mut method_initial_stack)
@@ -63,9 +70,14 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     let mut slots_initialized = false;
     let mut static_fields_initialized = false;
     let mut try_frames = TryStack::new();
-    let mut call_stack = CallStack::new();
+    let mut call_stack = if reference_mode {
+        CallStack::new_shared()
+    } else {
+        CallStack::new()
+    };
     let mut consumed_mutations: Vec<StackValue> = Vec::with_capacity(16);
     let mut pending_error: Option<PendingException> = None;
+    let mut deferred_exception: Option<PendingException> = None;
     let mut previous_opcode_was_callt = false;
 
     macro_rules! apply_dispatch {
@@ -77,9 +89,24 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
     }
 
     'main_loop: loop {
+        host.check_references(
+            stack.len()
+                + locals.len()
+                + args.len()
+                + static_fields.len()
+                + method_initial_stack.len()
+                + call_stack.reference_root_count(),
+        )?;
         if pending_error.is_some() {
-            // Find the topmost un-caught frame
-            if let Some(frame_index) = try_frames.find_uncaught_index() {
+            let handler = if typed_exceptions {
+                // Neo has one UncaughtException slot: a new throw replaces it,
+                // and entering any catch clears the previous exception.
+                deferred_exception = None;
+                typed_control::find_handler(&mut try_frames, pending_error.as_ref().unwrap())?
+            } else {
+                try_frames.find_uncaught_index()
+            };
+            if let Some(frame_index) = handler {
                 let frame_call_depth = try_frames
                     .get_mut(frame_index)
                     .map(|frame| frame.call_depth)
@@ -110,6 +137,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let frame = try_frames
                     .get_mut(frame_index)
                     .ok_or_else(|| "missing try frame during exception unwind".to_string())?;
+                let enter_catch = !typed_exceptions || !frame.caught;
                 frame.caught = true;
                 // Save frame fields into locals BEFORE any allocating operations.
                 // Under PolkaVM's bump allocator, host-call round-trips can reset the
@@ -121,41 +149,69 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let pending = pending_error.take().ok_or_else(|| {
                     "missing pending exception during exception unwind".to_string()
                 })?;
-                if saved_catch_ip != 0 {
+                let absent = if typed_exceptions {
+                    typed_control::ABSENT
+                } else {
+                    0
+                };
+                if enter_catch && saved_catch_ip != absent {
                     stack.push(pending.into_catch_item());
-                    ip = saved_catch_ip;
-                } else if saved_finally_ip != 0 {
+                    ip = if typed_exceptions {
+                        typed_control::checked_destination(saved_catch_ip, script.len())?
+                    } else {
+                        saved_catch_ip
+                    };
+                } else if saved_finally_ip != absent {
                     frame.in_finally = true;
-                    ip = saved_finally_ip;
-                    // Keep pending_error for re-throw after ENDFINALLY
-                    pending_error = Some(pending);
+                    ip = if typed_exceptions {
+                        typed_control::checked_destination(saved_finally_ip, script.len())?
+                    } else {
+                        saved_finally_ip
+                    };
+                    if typed_exceptions {
+                        // Execute finally before resuming this exception's unwind.
+                        deferred_exception = Some(pending);
+                    } else {
+                        pending_error = Some(pending);
+                    }
                 } else {
                     continue;
                 }
                 continue;
             } else {
-                return Err(pending_error
+                let pending = pending_error
                     .take()
-                    .ok_or_else(|| "missing pending exception without try frame".to_string())?
-                    .into_fault_message());
+                    .ok_or_else(|| "missing pending exception without try frame".to_string())?;
+                return Err(if typed_exceptions {
+                    typed_control::into_exception(pending)
+                } else {
+                    VmException::Fault(pending.into_fault_message())
+                });
             }
         }
 
         // Stack overflow check: NeoVM faults when stack exceeds 2048 items.
         if stack.len() > MAX_STACK_SIZE {
-            return Err("stack overflow".to_string());
+            return Err(VmException::Fault("stack overflow".to_string()));
         }
 
-        if ip >= script.len() {
-            break;
-        }
-
-        let opcode = script[ip];
+        let opcode = match script.get(ip) {
+            Some(opcode) => *opcode,
+            None if reference_mode => RET,
+            None => break,
+        };
         record_interpreter_ip(ip);
         host.on_instruction(opcode)?;
+        if reference_mode {
+            reference_coercion_ops::validate(opcode, script, ip, &stack)?;
+        }
         let callt_result_pending_store = previous_opcode_was_callt;
         previous_opcode_was_callt = false;
         match opcode {
+            PUSHA if reference_mode => {
+                ip = call_ops::push_reference_pointer(script, ip, &mut stack, &ids)?;
+                continue;
+            }
             PUSHINT8
             | PUSHINT16
             | PUSHINT32
@@ -222,9 +278,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPEQ",
                 )?;
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                if vm_equal(&left, &right) {
+                if comparison_ops::jump_equal(&mut stack, reference_mode)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPEQ")?;
                     continue;
                 }
@@ -232,6 +286,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             ABORT => {
+                if typed_exceptions {
+                    return Err(VmException::Fault("ABORT".to_string()));
+                }
                 // ABORT is uncatchable — always FAULT. Return via the Ok(Fault) channel
                 // so we can attribute the faulting IP; the host converts this back to an
                 // Err(String) at the FFI boundary (lib.rs fault-message override).
@@ -245,6 +302,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             ASSERT => {
                 let value = pop_boolean(&mut stack)?;
                 if !value {
+                    if typed_exceptions {
+                        return Err(VmException::Fault("ASSERT failed".to_string()));
+                    }
                     // ASSERT is uncatchable — always FAULT. Same Ok(Fault) channel as ABORT
                     // so the faulting IP is preserved.
                     return Ok(result_ops::fault_result(
@@ -257,7 +317,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             }
             SYSCALL => {
                 if ip + 5 > script.len() {
-                    return Err("truncated SYSCALL operand".to_string());
+                    return Err(VmException::Fault("truncated SYSCALL operand".to_string()));
                 }
 
                 let api = u32::from_le_bytes([
@@ -266,8 +326,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     script[ip + 3],
                     script[ip + 4],
                 ]);
-                if let Err(e) = invoke_syscall(
-                    host,
+                if let Err(e) = host.syscall(
                     api,
                     ip,
                     &mut stack,
@@ -276,11 +335,19 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut static_fields,
                     &mut consumed_mutations,
                     &mut ids,
+                    typed_exceptions,
+                    base_invocation_depth + usize::from(running_initializer) + call_stack.len(),
                 ) {
                     if try_frames.is_empty() {
                         return Err(e);
                     }
-                    pending_error = Some(PendingException::message(e));
+                    pending_error = Some(match e {
+                        VmException::Fault(message) if !typed_exceptions => {
+                            PendingException::message(message)
+                        }
+                        VmException::Fault(message) => return Err(VmException::Fault(message)),
+                        VmException::Throw(value) => PendingException::thrown_value(value),
+                    });
                     continue;
                 }
                 ip += 5;
@@ -288,11 +355,10 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
             }
             CALLT => {
                 if ip + 3 > script.len() {
-                    return Err("truncated CALLT operand".to_string());
+                    return Err(VmException::Fault("truncated CALLT operand".to_string()));
                 }
                 let token = u16::from_le_bytes([script[ip + 1], script[ip + 2]]);
-                if let Err(e) = invoke_callt(
-                    host,
+                if let Err(e) = host.callt(
                     token,
                     ip,
                     &mut stack,
@@ -301,11 +367,19 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut static_fields,
                     &mut consumed_mutations,
                     &mut ids,
+                    typed_exceptions,
+                    base_invocation_depth + usize::from(running_initializer) + call_stack.len(),
                 ) {
                     if try_frames.is_empty() {
                         return Err(e);
                     }
-                    pending_error = Some(PendingException::message(e));
+                    pending_error = Some(match e {
+                        VmException::Fault(message) if !typed_exceptions => {
+                            PendingException::message(message)
+                        }
+                        VmException::Fault(message) => return Err(VmException::Fault(message)),
+                        VmException::Throw(value) => PendingException::thrown_value(value),
+                    });
                     continue;
                 }
                 previous_opcode_was_callt = true;
@@ -371,11 +445,15 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut consumed_mutations,
                     &mut try_frames,
                     &mut pending_error,
+                    typed_exceptions,
                 )?);
             }
             // EXCEPTION HANDLING OPCODES
             THROW => {
                 let msg = pop_item(&mut stack)?;
+                if typed_exceptions && try_frames.is_empty() {
+                    return Err(VmException::Throw(msg));
+                }
                 let err_msg = match &msg {
                     StackValue::ByteString(bytes) | StackValue::Buffer(_, bytes) => {
                         match alloc::string::String::from_utf8(bytes.clone()) {
@@ -418,6 +496,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     &mut consumed_mutations,
                     &mut try_frames,
                     &mut pending_error,
+                    typed_exceptions,
                 )?);
             }
             NIP | OVER | PICK | ROT | ROLL | REVERSE3 | REVERSE4 | REVERSEN | TUCK | XDROP => {
@@ -456,57 +535,37 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let return_ip = ip + advance;
                 let saved_init = slots_initialized;
                 reset_consumed_mutations(&mut consumed_mutations);
-                #[cfg(target_arch = "riscv32")]
-                {
-                    call_stack.push_frame_refs(return_ip, &locals, &args, saved_init)?;
-                    // The frame has been encoded into RETAINED_CALL_STACK_BUF. Avoid
-                    // moving or dropping active Vecs immediately after host calls on
-                    // PolkaVM/riscv32; the VM allocator is reset per execution.
-                    // SAFETY: ptr::write replaces the Vec without running Drop.
-                    // The frame's locals/args have been retained into the static
-                    // buffer via the encode step. Dropping would double-free the
-                    // retained data within the guest arena.
-                    unsafe {
-                        core::ptr::write(&mut locals, Vec::new());
-                        core::ptr::write(&mut args, Vec::new());
-                    }
-                }
-                #[cfg(not(target_arch = "riscv32"))]
-                {
-                    let saved_locals = core::mem::take(&mut locals);
-                    let saved_args = core::mem::take(&mut args);
-                    call_stack.push_frame(return_ip, saved_locals, saved_args, saved_init)?;
-                }
+                call_ops::push_frame(
+                    &mut call_stack,
+                    return_ip,
+                    &mut locals,
+                    &mut args,
+                    saved_init,
+                    reference_mode,
+                    base_invocation_depth + usize::from(running_initializer),
+                )?;
                 slots_initialized = false;
                 ip = compute_jump_target_offset(ip, offset, script.len(), "CALL")?;
                 continue;
             }
             CALLA => {
                 let item = pop_item(&mut stack)?;
-                let offset = match item {
-                    StackValue::Pointer(p) => p,
-                    _ => return Err("CALLA expects a pointer".to_string()),
-                };
+                let offset = call_ops::pointer_target(&item, &ids, reference_mode)?;
                 let return_ip = ip + 1;
                 let saved_init = slots_initialized;
                 reset_consumed_mutations(&mut consumed_mutations);
-                #[cfg(target_arch = "riscv32")]
-                {
-                    call_stack.push_frame_refs(return_ip, &locals, &args, saved_init)?;
-                    unsafe {
-                        core::ptr::write(&mut locals, Vec::new());
-                        core::ptr::write(&mut args, Vec::new());
-                    }
-                }
-                #[cfg(not(target_arch = "riscv32"))]
-                {
-                    let saved_locals = core::mem::take(&mut locals);
-                    let saved_args = core::mem::take(&mut args);
-                    call_stack.push_frame(return_ip, saved_locals, saved_args, saved_init)?;
-                }
+                call_ops::push_frame(
+                    &mut call_stack,
+                    return_ip,
+                    &mut locals,
+                    &mut args,
+                    saved_init,
+                    reference_mode,
+                    base_invocation_depth + usize::from(running_initializer),
+                )?;
                 slots_initialized = false;
                 if offset > script.len() {
-                    return Err("CALLA target out of bounds".to_string());
+                    return Err(VmException::Fault("CALLA target out of bounds".to_string()));
                 }
                 ip = offset;
                 continue;
@@ -515,6 +574,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 let msg = pop_bytes(&mut stack)?;
                 let msg_str = String::from_utf8_lossy(&msg);
                 let err_msg = format!("ABORTMSG is executed. Reason: {}", msg_str);
+                if typed_exceptions {
+                    return Err(VmException::Fault(err_msg));
+                }
                 // ABORTMSG is uncatchable — always FAULT
                 return Ok(result_ops::fault_result(&stack, &locals, ip, err_msg));
             }
@@ -527,6 +589,9 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                         "ASSERTMSG is executed with false result. Reason: {}",
                         msg_str
                     );
+                    if typed_exceptions {
+                        return Err(VmException::Fault(err_msg));
+                    }
                     // ASSERTMSG is uncatchable — always FAULT
                     return Ok(result_ops::fault_result(&stack, &locals, ip, err_msg));
                 }
@@ -563,9 +628,7 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                     },
                     "JMPNE",
                 )?;
-                let right = pop_item(&mut stack)?;
-                let left = pop_item(&mut stack)?;
-                if !vm_equal(&left, &right) {
+                if !comparison_ops::jump_equal(&mut stack, reference_mode)? {
                     ip = compute_jump_target_offset(ip, offset, script.len(), "JMPNE")?;
                     continue;
                 }
@@ -680,20 +743,22 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                         &mut method_initial_stack,
                         retained_initializer_method_stack_len,
                     )?;
-                    complete_initializer_retaining_state(
-                        host,
-                        ip,
-                        &mut method_initial_stack,
-                        &mut static_fields,
-                    )?;
-                    stack = core::mem::take(&mut method_initial_stack);
+                    host.complete_initializer(ip, &mut method_initial_stack, &mut static_fields)?;
+                    if !reference_mode {
+                        stack = core::mem::take(&mut method_initial_stack);
+                    }
                     ip = initial_ip;
                     locals = Vec::with_capacity(16);
                     args = Vec::with_capacity(16);
                     slots_initialized = false;
                     try_frames = TryStack::new();
-                    call_stack = CallStack::new();
+                    call_stack = if reference_mode {
+                        CallStack::new_shared()
+                    } else {
+                        CallStack::new()
+                    };
                     pending_error = None;
+                    deferred_exception = None;
                     previous_opcode_was_callt = false;
                     running_initializer = false;
                     reset_consumed_mutations(&mut consumed_mutations);
@@ -702,6 +767,16 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 break 'main_loop;
             }
             TRY => {
+                if typed_exceptions {
+                    ip = typed_control::enter_try(
+                        script,
+                        ip,
+                        false,
+                        call_stack.len(),
+                        &mut try_frames,
+                    )?;
+                    continue;
+                }
                 ip = control::enter_try_short(
                     script,
                     ip,
@@ -712,10 +787,30 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             ENDTRY => {
+                if typed_exceptions {
+                    ip = typed_control::end_try(
+                        script,
+                        ip,
+                        false,
+                        call_stack.len(),
+                        &mut try_frames,
+                    )?;
+                    continue;
+                }
                 ip = control::end_try_short(script, ip, &mut try_frames, &mut pending_error);
                 continue;
             }
             TRY_L => {
+                if typed_exceptions {
+                    ip = typed_control::enter_try(
+                        script,
+                        ip,
+                        true,
+                        call_stack.len(),
+                        &mut try_frames,
+                    )?;
+                    continue;
+                }
                 ip = control::enter_try_long(
                     script,
                     ip,
@@ -726,23 +821,54 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
                 continue;
             }
             ENDTRY_L => {
+                if typed_exceptions {
+                    ip = typed_control::end_try(
+                        script,
+                        ip,
+                        true,
+                        call_stack.len(),
+                        &mut try_frames,
+                    )?;
+                    continue;
+                }
                 ip = control::end_try_long(script, ip, &mut try_frames, &mut pending_error);
                 continue;
             }
             ENDFINALLY => {
+                if typed_exceptions {
+                    pending_error = deferred_exception.take();
+                    ip = typed_control::end_finally(
+                        script.len(),
+                        ip,
+                        call_stack.len(),
+                        &mut try_frames,
+                        pending_error.is_some(),
+                    )?;
+                    continue;
+                }
                 if let Some(next_ip) = control::end_finally(ip, &mut try_frames, &pending_error)? {
                     ip = next_ip;
                     continue;
                 }
             }
             other => {
-                return Err(format!("unsupported opcode 0x{other:02x}"));
+                return Err(VmException::Fault(format!(
+                    "unsupported opcode 0x{other:02x}"
+                )));
             }
         }
         ip += 1;
     }
 
-    Ok(result_ops::finish_halt_result(
+    host.check_references(
+        stack.len()
+            + locals.len()
+            + args.len()
+            + static_fields.len()
+            + method_initial_stack.len()
+            + call_stack.reference_root_count(),
+    )?;
+    result_ops::finish_halt_result(
         stack,
         locals,
         args,
@@ -751,7 +877,8 @@ pub(super) fn interpret_with_stack_and_syscalls_at_internal<H: SyscallProvider>(
         consumed_mutations,
         pending_error,
         result_stack_limit,
-    ))
+        reference_mode,
+    )
 }
 
 fn pop_jump_comparison(

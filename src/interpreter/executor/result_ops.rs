@@ -1,9 +1,13 @@
+use super::super::boundary::{RuntimeException, RuntimeResult};
 use super::super::runtime_types::{StackValue, to_abi_stack};
 use super::super::state::{
     LAST_RESULT_LIMIT, LAST_RESULT_STACK_LEN, LAST_RESULT_STAGE, PendingException,
 };
 use crate::{ExecutionResult, VmState};
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::sync::atomic::Ordering;
 
 pub(super) fn fault_result(
@@ -11,15 +15,15 @@ pub(super) fn fault_result(
     locals: &[StackValue],
     ip: usize,
     fault_message: String,
-) -> ExecutionResult {
-    ExecutionResult {
+) -> RuntimeResult {
+    RuntimeResult::LegacyFault(ExecutionResult {
         fee_consumed_pico: 0,
         state: VmState::Fault,
         stack: to_abi_stack(stack),
         fault_message: Some(fault_message),
         fault_ip: Some(ip as u32),
         fault_locals: Some(crate::abi::fast_codec::encode_stack(&to_abi_stack(locals))),
-    }
+    })
 }
 
 #[inline]
@@ -60,7 +64,8 @@ pub(super) fn finish_halt_result(
     consumed_mutations: Vec<StackValue>,
     pending_error: Option<PendingException>,
     result_stack_limit: Option<usize>,
-) -> ExecutionResult {
+    reference_mode: bool,
+) -> Result<RuntimeResult, RuntimeException> {
     LAST_RESULT_STAGE.store(1, Ordering::Relaxed);
     LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
     LAST_RESULT_LIMIT.store(
@@ -69,25 +74,41 @@ pub(super) fn finish_halt_result(
             .min(u32::MAX as usize) as u32,
         Ordering::Relaxed,
     );
-    trim_halt_stack_for_result_limit(&mut stack, result_stack_limit);
+    if reference_mode {
+        if let Some(keep) = result_stack_limit {
+            if stack.len() != keep {
+                return Err(RuntimeException::Fault(
+                    "return value count does not match the contract ABI".to_string(),
+                ));
+            }
+        }
+    } else {
+        trim_halt_stack_for_result_limit(&mut stack, result_stack_limit);
+    }
     LAST_RESULT_STAGE.store(2, Ordering::Relaxed);
     LAST_RESULT_STACK_LEN.store(stack.len().min(u32::MAX as usize) as u32, Ordering::Relaxed);
-    let abi_stack = to_abi_stack(&stack);
     LAST_RESULT_STAGE.store(3, Ordering::Relaxed);
 
     #[cfg(target_arch = "riscv32")]
-    {
-        core::mem::forget(stack);
+    if !reference_mode {
         core::mem::forget(locals);
         core::mem::forget(args);
         core::mem::forget(static_fields);
         core::mem::forget(method_initial_stack);
         core::mem::forget(consumed_mutations);
         core::mem::forget(pending_error);
+    } else {
+        drop((
+            locals,
+            args,
+            static_fields,
+            method_initial_stack,
+            consumed_mutations,
+            pending_error,
+        ));
     }
     #[cfg(not(target_arch = "riscv32"))]
     {
-        drop(stack);
         drop(locals);
         drop(args);
         drop(static_fields);
@@ -97,12 +118,5 @@ pub(super) fn finish_halt_result(
     }
     LAST_RESULT_STAGE.store(4, Ordering::Relaxed);
 
-    ExecutionResult {
-        fee_consumed_pico: 0,
-        state: VmState::Halt,
-        stack: abi_stack,
-        fault_message: None,
-        fault_ip: None,
-        fault_locals: None,
-    }
+    Ok(RuntimeResult::Halt(stack))
 }

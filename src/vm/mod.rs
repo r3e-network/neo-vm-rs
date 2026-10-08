@@ -21,5 +21,6 @@ pub use opcode::OpCode;
 pub use ordered_dictionary::VmOrderedDictionary;
 pub use script_validation::{
     ScriptInstruction, ValidatedScript, ValidationResult, instruction_jump_target,
-    instruction_try_targets, parse_script_instructions, validate_script, validate_strict_script,
+    instruction_try_targets, parse_script_instructions, validate_script, validate_script_reference,
+    validate_strict_script, validate_strict_script_reference,
 };

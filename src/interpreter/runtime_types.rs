@@ -1,5 +1,9 @@
 use crate::StackValue as AbiStackValue;
-use alloc::vec::Vec;
+use crate::reference::{SharedHeap, SharedScriptIdentity, SharedValue};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum StackValue {
@@ -15,6 +19,7 @@ pub(crate) enum StackValue {
     Interop(u64),
     Iterator(u64),
     Null,
+    Reference(SharedValue),
 }
 
 impl crate::runtime::PendingExceptionValue for StackValue {
@@ -26,9 +31,68 @@ impl crate::runtime::PendingExceptionValue for StackValue {
 #[derive(Default)]
 pub(crate) struct CompoundIds {
     next: u64,
+    shared_heap: Option<SharedHeap>,
+    script_identity: Option<SharedScriptIdentity>,
 }
 
 impl CompoundIds {
+    pub(crate) fn with_shared_heap(heap: SharedHeap) -> Self {
+        Self {
+            next: 0,
+            shared_heap: Some(heap),
+            script_identity: Some(SharedScriptIdentity::new()),
+        }
+    }
+    pub(crate) fn reference_pointer(&self, position: usize) -> StackValue {
+        StackValue::Reference(SharedValue::pointer(
+            self.script_identity
+                .as_ref()
+                .expect("reference entry")
+                .clone(),
+            position,
+        ))
+    }
+    pub(crate) fn reference_pointer_target(&self, value: &StackValue) -> Result<usize, String> {
+        if let StackValue::Reference(value) = value {
+            if let Some((script, position)) = value.pointer_info() {
+                if self
+                    .script_identity
+                    .as_ref()
+                    .is_some_and(|current| current.same_script(&script))
+                {
+                    return Ok(position);
+                }
+                return Err("Pointers can't be shared between scripts".to_string());
+            }
+        }
+        Err("CALLA expects a scoped Pointer".to_string())
+    }
+    pub(crate) fn is_reference(&self) -> bool {
+        self.shared_heap.is_some()
+    }
+    pub(crate) fn shared_heap(&self) -> Option<&SharedHeap> {
+        self.shared_heap.as_ref()
+    }
+    pub(crate) fn import_shared(&mut self, value: SharedValue) -> Result<StackValue, String> {
+        let heap = self
+            .shared_heap
+            .as_ref()
+            .ok_or_else(|| "reference value requires reference execution".to_string())?;
+        heap.validate_value(&value)?;
+        if let Some(primitive) = value.primitive_ref() {
+            Ok(self.import_abi(primitive.clone()))
+        } else {
+            Ok(StackValue::Reference(value))
+        }
+    }
+    fn shared_items(&self, items: Vec<StackValue>) -> Vec<SharedValue> {
+        let heap = self.shared_heap.as_ref().expect("reference mode");
+        items
+            .iter()
+            .map(|v| export_shared(v, heap).expect("runtime values belong to this engine"))
+            .collect()
+    }
+
     fn alloc(&mut self) -> u64 {
         let id = self.next;
         self.next += 1;
@@ -36,18 +100,41 @@ impl CompoundIds {
     }
 
     pub(crate) fn array(&mut self, items: Vec<StackValue>) -> StackValue {
+        if let Some(heap) = &self.shared_heap {
+            return StackValue::Reference(
+                heap.array(self.shared_items(items))
+                    .expect("validated reference children"),
+            );
+        }
         StackValue::Array(self.alloc(), items)
     }
 
     pub(crate) fn r#struct(&mut self, items: Vec<StackValue>) -> StackValue {
+        if let Some(heap) = &self.shared_heap {
+            return StackValue::Reference(
+                heap.structure(self.shared_items(items))
+                    .expect("validated reference children"),
+            );
+        }
         StackValue::Struct(self.alloc(), items)
     }
 
     pub(crate) fn map(&mut self, items: Vec<(StackValue, StackValue)>) -> StackValue {
+        if let Some(heap) = &self.shared_heap {
+            let items = items
+                .iter()
+                .map(|(k, v)| Ok((export_shared(k, heap)?, export_shared(v, heap)?)))
+                .collect::<Result<Vec<_>, String>>()
+                .expect("validated reference children");
+            return StackValue::Reference(heap.map(items).expect("validated map keys"));
+        }
         StackValue::Map(self.alloc(), items)
     }
 
     pub(crate) fn buffer(&mut self, bytes: Vec<u8>) -> StackValue {
+        if let Some(heap) = &self.shared_heap {
+            return StackValue::Reference(heap.buffer(bytes).expect("Buffer allocation"));
+        }
         StackValue::Buffer(self.alloc(), bytes)
     }
 
@@ -90,6 +177,7 @@ impl CompoundIds {
             StackValue::Interop(handle) => StackValue::Interop(*handle),
             StackValue::Iterator(handle) => StackValue::Iterator(*handle),
             StackValue::Null => StackValue::Null,
+            StackValue::Reference(value) => StackValue::Reference(value.clone()),
         }
     }
 
@@ -174,6 +262,7 @@ pub(crate) fn to_abi_value(value: &StackValue) -> AbiStackValue {
         StackValue::Interop(handle) => AbiStackValue::Interop(*handle),
         StackValue::Iterator(handle) => AbiStackValue::Iterator(*handle),
         StackValue::Null => AbiStackValue::Null,
+        StackValue::Reference(value) => value.type_view(),
     }
 }
 
@@ -201,11 +290,13 @@ pub(crate) fn into_abi_value(value: StackValue) -> AbiStackValue {
         StackValue::Interop(handle) => AbiStackValue::Interop(handle),
         StackValue::Iterator(handle) => AbiStackValue::Iterator(handle),
         StackValue::Null => AbiStackValue::Null,
+        StackValue::Reference(value) => value.type_view(),
     }
 }
 
 pub(crate) fn structurally_equal(left: &StackValue, right: &StackValue) -> bool {
     match (left, right) {
+        (StackValue::Reference(l), StackValue::Reference(r)) => l.same_reference(r),
         (StackValue::Integer(l), StackValue::Integer(r)) => l == r,
         (StackValue::BigInteger(l), StackValue::BigInteger(r)) => l == r,
         (StackValue::ByteString(l), StackValue::ByteString(r)) => l == r,
@@ -336,7 +427,8 @@ fn propagate_alias_from_source(targets: &mut [StackValue], source: &StackValue) 
                 propagate_alias_from_source(targets, value);
             }
         }
-        StackValue::Buffer(_, _)
+        StackValue::Reference(_)
+        | StackValue::Buffer(_, _)
         | StackValue::Integer(_)
         | StackValue::BigInteger(_)
         | StackValue::ByteString(_)
@@ -367,7 +459,8 @@ fn replace_alias(target: &mut StackValue, updated: &StackValue) {
                 replace_alias(value, updated);
             }
         }
-        StackValue::Buffer(_, _)
+        StackValue::Reference(_)
+        | StackValue::Buffer(_, _)
         | StackValue::Integer(_)
         | StackValue::BigInteger(_)
         | StackValue::ByteString(_)
@@ -376,5 +469,22 @@ fn replace_alias(target: &mut StackValue, updated: &StackValue) {
         | StackValue::Interop(_)
         | StackValue::Iterator(_)
         | StackValue::Null => {}
+    }
+}
+
+/// Export the live handle, never a tree copy, at an opt-in host/call boundary.
+pub(crate) fn export_shared(value: &StackValue, heap: &SharedHeap) -> Result<SharedValue, String> {
+    match value {
+        StackValue::Reference(value) => {
+            heap.validate_value(value)?;
+            Ok(value.clone())
+        }
+        StackValue::Array(_, _)
+        | StackValue::Struct(_, _)
+        | StackValue::Map(_, _)
+        | StackValue::Buffer(_, _) => {
+            Err("legacy compound entered reference execution".to_string())
+        }
+        _ => SharedValue::primitive(to_abi_value(value)),
     }
 }

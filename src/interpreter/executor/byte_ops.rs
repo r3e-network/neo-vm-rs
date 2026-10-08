@@ -58,6 +58,12 @@ pub(super) fn execute(
             let src_item = pop_item(stack)?;
             let di = pop_integer(stack)?;
             let dst_item = pop_item(stack)?;
+            if let StackValue::Reference(ref target) = dst_item {
+                let mut bytes = target.buffer_bytes()?;
+                splice_rules::memcpy_bytes(&mut bytes, di, &to_abi_value(&src_item), si, count)?;
+                target.write_buffer(0, &bytes)?;
+                return Ok(Dispatch::Fallthrough);
+            }
             let (dst_id, mut dst_bytes) = match dst_item {
                 StackValue::Buffer(id, bytes) => (id, bytes),
                 other => {

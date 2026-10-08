@@ -1,5 +1,8 @@
+use neo_vm_rs::reference::{SharedHeap, SharedValue};
 use neo_vm_rs::{
-    OpCode, StackValue, SyscallProvider, VmState, encode_integer, interpret_with_stack_and_syscalls,
+    ExecutionResult, OpCode, ReferenceSyscallProvider, SharedVmException, StackValue,
+    SyscallProvider, VmState, encode_integer, interpret_with_stack_and_syscalls,
+    interpret_with_stack_and_syscalls_at_reference,
 };
 use num_bigint::BigInt;
 use serde_json::Value;
@@ -16,6 +19,15 @@ const FIXTURE_ROOT: &str = concat!(
 
 #[test]
 fn official_neo_vm_3_9_vmut_suite_matches_shared_interpreter() {
+    run_official_suite(false);
+}
+
+#[test]
+fn official_neo_vm_3_9_vmut_suite_matches_reference_interpreter() {
+    run_official_suite(true);
+}
+
+fn run_official_suite(reference: bool) {
     let root = Path::new(FIXTURE_ROOT);
     assert!(
         root.exists(),
@@ -29,6 +41,7 @@ fn official_neo_vm_3_9_vmut_suite_matches_shared_interpreter() {
 
     let mut checked_cases = 0usize;
     let mut skipped_break_cases = 0usize;
+    let mut failures = Vec::new();
 
     for file in &files {
         let text = fs::read_to_string(file)
@@ -44,9 +57,9 @@ fn official_neo_vm_3_9_vmut_suite_matches_shared_interpreter() {
             let steps = test["steps"]
                 .as_array()
                 .unwrap_or_else(|| panic!("{} test missing steps array", case_name(file, test)));
-            let Some(last_step) = steps.last() else {
-                continue;
-            };
+            let last_step = steps
+                .last()
+                .unwrap_or_else(|| panic!("{} has no final step", case_name(file, test)));
             let state = last_step["result"]["state"].as_str().unwrap_or("");
             if state == "BREAK" {
                 skipped_break_cases += 1;
@@ -69,17 +82,62 @@ fn official_neo_vm_3_9_vmut_suite_matches_shared_interpreter() {
             };
 
             let mut syscalls = OfficialVmTestSyscalls::default();
-            let result = match interpret_with_stack_and_syscalls(&script, Vec::new(), &mut syscalls)
-            {
+            let execution = if reference {
+                interpret_with_stack_and_syscalls_at_reference(
+                    &script,
+                    Vec::new(),
+                    0,
+                    SharedHeap::new(),
+                    1,
+                    &mut syscalls,
+                )
+                .map_err(|error| error.to_string())
+                .map(|result| {
+                    ExecutionResult {
+                        fee_consumed_pico: result.fee_consumed_pico,
+                        state: result.state,
+                        stack: result
+                            .stack
+                            .iter()
+                            .map(|value| value.snapshot(2048))
+                            .collect::<Result<_, _>>()
+                            .unwrap_or_else(|error| panic!("{} diagnostic projection failed after successful VM execution: {error}", case_name(file, test))),
+                        fault_message: None,
+                        fault_ip: None,
+                        fault_locals: None,
+                    }
+                })
+            } else {
+                interpret_with_stack_and_syscalls(&script, Vec::new(), &mut syscalls)
+            };
+            let result = match execution {
                 Ok(result) => result,
                 Err(err) if expected_state == VmState::Fault => {
                     let _ = err;
                     checked_cases += 1;
                     continue;
                 }
+                Err(err) if reference => {
+                    failures.push(format!(
+                        "{} interpreter error: {err}",
+                        case_name(file, test)
+                    ));
+                    checked_cases += 1;
+                    continue;
+                }
                 Err(err) => panic!("{} interpreter error: {err}", case_name(file, test)),
             };
 
+            if reference && result.state != expected_state {
+                failures.push(format!(
+                    "{} state {:?}, expected {:?}",
+                    case_name(file, test),
+                    result.state,
+                    expected_state
+                ));
+                checked_cases += 1;
+                continue;
+            }
             assert_eq!(result.state, expected_state, "{}", case_name(file, test));
 
             // Match Neo.VM's VMJsonTestBase: once the engine reaches FAULT the
@@ -113,7 +171,15 @@ fn official_neo_vm_3_9_vmut_suite_matches_shared_interpreter() {
                             case_name(file, test)
                         )
                     });
-                assert_eq!(actual, expected, "{}", case_name(file, test));
+                if reference && actual != expected {
+                    let summary = format!(
+                        "{} actual stack {actual:?}, expected {expected:?}",
+                        case_name(file, test)
+                    );
+                    failures.push(summary.chars().take(1600).collect());
+                } else {
+                    assert_eq!(actual, expected, "{}", case_name(file, test));
+                }
             }
 
             checked_cases += 1;
@@ -128,6 +194,12 @@ fn official_neo_vm_3_9_vmut_suite_matches_shared_interpreter() {
     assert_eq!(
         skipped_break_cases, 16,
         "official debugger-only BREAK case count drifted"
+    );
+    assert!(
+        failures.is_empty(),
+        "reference VM failures ({}):\n{}",
+        failures.len(),
+        failures.join("\n")
     );
 }
 
@@ -147,6 +219,32 @@ impl SyscallProvider for OfficialVmTestSyscalls {
             }
             0xadde_adde => Err("error".to_string()),
             other => Err(format!("unsupported syscall 0x{other:08x}")),
+        }
+    }
+}
+
+impl ReferenceSyscallProvider for OfficialVmTestSyscalls {
+    fn syscall(
+        &mut self,
+        api: u32,
+        _ip: usize,
+        _depth: usize,
+        stack: &mut Vec<SharedValue>,
+    ) -> Result<(), SharedVmException> {
+        match api {
+            0x7777_7777 => {
+                let handle = self.next_interop_handle;
+                self.next_interop_handle += 1;
+                stack.push(SharedValue::primitive(StackValue::Interop(handle))?);
+                Ok(())
+            }
+            // The official TRY_CATCH fixture's synthetic syscall explicitly throws a VM item.
+            0xadde_adde => Err(SharedVmException::Throw(SharedValue::primitive(
+                StackValue::ByteString(b"error".to_vec()),
+            )?)),
+            other => Err(SharedVmException::Fault(format!(
+                "unsupported syscall 0x{other:08x}"
+            ))),
         }
     }
 }

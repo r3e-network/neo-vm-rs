@@ -5,6 +5,7 @@ use super::super::runtime_types::{
 };
 use super::super::state::{MAX_STACK_SIZE, PendingException, TryStack, remember_consumed_mutation};
 use super::control::Dispatch;
+use super::typed_item_ops::{TypedItemOutcome, typed_item};
 use crate::{
     new_array_default_value_for_neovm_type_tag, semantics::collections as collection_rules,
 };
@@ -51,13 +52,49 @@ pub(super) fn execute(
     consumed_mutations: &mut Vec<StackValue>,
     try_frames: &mut TryStack,
     pending_error: &mut Option<PendingException>,
+    typed_exceptions: bool,
 ) -> Result<Dispatch, String> {
+    if ids.is_reference() {
+        return super::reference_ops::execute(opcode, script, ip_ref, stack, ids, pending_error);
+    }
     let mut ip = *ip_ref;
     macro_rules! finish {
         ($dispatch:expr) => {{
             *ip_ref = ip;
             return Ok($dispatch);
         }};
+    }
+
+    if typed_exceptions && matches!(opcode, PICKITEM | SETITEM) {
+        match typed_item(opcode, stack, ids)? {
+            TypedItemOutcome::Read(value) => stack.push(value),
+            TypedItemOutcome::Write(updated) => {
+                let id = match &updated {
+                    StackValue::Array(id, _)
+                    | StackValue::Struct(id, _)
+                    | StackValue::Map(id, _)
+                    | StackValue::Buffer(id, _) => *id,
+                    _ => unreachable!("item writes only mutate collections"),
+                };
+                let affected = find_affected_indices(id, stack);
+                commit_collection_update(
+                    &updated,
+                    stack,
+                    locals,
+                    args,
+                    static_fields,
+                    consumed_mutations,
+                    Some(&affected),
+                );
+            }
+            TypedItemOutcome::Catch(message) => {
+                *pending_error = Some(PendingException::thrown_value(StackValue::ByteString(
+                    message.into_bytes(),
+                )));
+                finish!(Dispatch::Continue);
+            }
+        }
+        finish!(Dispatch::Fallthrough);
     }
 
     match opcode {

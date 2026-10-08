@@ -95,11 +95,28 @@ pub(crate) fn vm_equal(left: &StackValue, right: &StackValue) -> bool {
     }
 }
 
+pub(crate) fn vm_equal_checked(left: &StackValue, right: &StackValue) -> Result<bool, String> {
+    match (left, right) {
+        (StackValue::Reference(left), StackValue::Reference(right)) => {
+            left.vm_equal(right, 2048, 65535)
+        }
+        (StackValue::Reference(_), _) | (_, StackValue::Reference(_)) => Ok(false),
+        _ => Ok(vm_equal(left, right)),
+    }
+}
+
 pub(crate) fn convert_value(
     kind: u8,
     value: StackValue,
     ids: &mut CompoundIds,
 ) -> Result<StackValue, String> {
+    if ids.is_reference()
+        && kind == StackItemType::Pointer as u8
+        && (matches!(&value, StackValue::Reference(pointer) if pointer.kind() == StackItemType::Pointer)
+            || matches!(&value, StackValue::Null))
+    {
+        return Ok(value);
+    }
     // Validate target type first, even for Null
     match kind {
         NEOVM_STACK_ITEM_TYPE_BOOLEAN
@@ -115,6 +132,27 @@ pub(crate) fn convert_value(
 
     if matches!(value, StackValue::Null) {
         return Ok(StackValue::Null);
+    }
+
+    if let StackValue::Reference(shared) = &value {
+        if kind == NEOVM_STACK_ITEM_TYPE_BOOLEAN {
+            return Ok(StackValue::Boolean(true));
+        }
+        if shared.kind() as u8 == kind {
+            return Ok(value);
+        }
+        let converted = match (shared.kind(), StackItemType::from_byte(kind)) {
+            (StackItemType::Array, Some(StackItemType::Struct)) => {
+                Some(shared.heap().expect("Array").structure(shared.items()?)?)
+            }
+            (StackItemType::Struct, Some(StackItemType::Array)) => {
+                Some(shared.heap().expect("Struct").array(shared.items()?)?)
+            }
+            _ => None,
+        };
+        if let Some(converted) = converted {
+            return ids.import_shared(converted);
+        }
     }
 
     match kind {
@@ -152,20 +190,31 @@ pub(crate) fn is_type(kind: u8, value: &StackValue) -> Result<bool, String> {
         Some(StackItemType::Any) => Err(format!(
             "unsupported ISTYPE kind {NEOVM_STACK_ITEM_TYPE_ANY:#04x}"
         )),
-        Some(_) => Ok(conversion_rules::is_type(&to_abi_value(value), kind)),
+        Some(_) => Ok(match value {
+            StackValue::Reference(value) => value.kind() as u8 == kind,
+            _ => conversion_rules::is_type(&to_abi_value(value), kind),
+        }),
         None => Err(format!("unsupported ISTYPE kind 0x{kind:02x}")),
     }
 }
 
 #[inline]
 pub(crate) fn is_null(value: &StackValue) -> bool {
-    comparison_rules::is_null(&to_abi_value(value))
+    if matches!(value, StackValue::Reference(_)) {
+        false
+    } else {
+        comparison_rules::is_null(&to_abi_value(value))
+    }
 }
 
 #[inline]
 pub(crate) fn pop_boolean(stack: &mut Vec<StackValue>) -> Result<bool, String> {
     let value = stack.pop().ok_or_else(|| "stack underflow".to_string())?;
-    Ok(comparison_rules::boolean_value(&to_abi_value(&value)))
+    if matches!(value, StackValue::Reference(_)) {
+        Ok(true)
+    } else {
+        Ok(comparison_rules::boolean_value(&to_abi_value(&value)))
+    }
 }
 
 pub(crate) fn pop_bytes(stack: &mut Vec<StackValue>) -> Result<Vec<u8>, String> {

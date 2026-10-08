@@ -1,4 +1,5 @@
 use super::*;
+use crate::VmException;
 
 fn stabilize_allocator_after_host_call() {
     if cfg!(target_arch = "riscv32") {
@@ -141,7 +142,8 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
     static_fields: &mut Vec<StackValue>,
     consumed_mutations: &mut Vec<StackValue>,
     ids: &mut CompoundIds,
-) -> Result<(), String> {
+    typed_exceptions: bool,
+) -> Result<(), VmException> {
     let arg_count = crate::syscall_arg_count(api).min(stack.len());
     let keep = stack.len() - arg_count;
 
@@ -152,7 +154,13 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
 
     let retained =
         RetainedHostState::capture(stack, args, locals, static_fields, consumed_mutations)?;
-    match host.syscall(api, ip, &mut abi_args) {
+    let result = if typed_exceptions {
+        host.typed_syscall(api, ip, &mut abi_args)
+    } else {
+        host.syscall(api, ip, &mut abi_args)
+            .map_err(VmException::Fault)
+    };
+    match result {
         Ok(()) => {
             stabilize_allocator_after_host_call();
             if retained.has_stack() {
@@ -188,7 +196,16 @@ pub(crate) fn invoke_syscall<H: SyscallProvider>(
                 retained
                     .restore_stack_best_effort(stack, stack.len().max(POST_SYSCALL_STACK_HEADROOM));
             }
-            core::mem::forget(abi_args);
+            if typed_exceptions && matches!(&e, VmException::Throw(_)) {
+                // Catch resumes after the host consumed its arguments, not before it.
+                stack.truncate(keep);
+                stack.reserve(abi_args.len());
+                for item in abi_args {
+                    stack.push(ids.import_abi(item));
+                }
+            } else {
+                core::mem::forget(abi_args);
+            }
             Err(e)
         }
     }
@@ -307,11 +324,18 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
     static_fields: &mut Vec<StackValue>,
     consumed_mutations: &mut Vec<StackValue>,
     ids: &mut CompoundIds,
-) -> Result<(), String> {
+    typed_exceptions: bool,
+) -> Result<(), VmException> {
     let mut abi_stack = to_abi_stack(stack);
     let retained =
         RetainedHostState::capture(stack, args, locals, static_fields, consumed_mutations)?;
-    match host.callt(token, ip, &mut abi_stack) {
+    let result = if typed_exceptions {
+        host.typed_callt(token, ip, &mut abi_stack)
+    } else {
+        host.callt(token, ip, &mut abi_stack)
+            .map_err(VmException::Fault)
+    };
+    match result {
         Ok(()) => {
             stabilize_allocator_after_host_call();
             if retained.has_stack() {
@@ -319,53 +343,7 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
                 retained.restore_stack(stack, stack.len().max(POST_SYSCALL_STACK_HEADROOM))?;
             }
 
-            let mut imported_stack =
-                Vec::with_capacity(abi_stack.len().max(POST_SYSCALL_STACK_HEADROOM));
-            for item in abi_stack {
-                let imported = ids.import_abi(item);
-                let stabilized = if cfg!(target_arch = "riscv32")
-                    && matches!(
-                        imported,
-                        StackValue::Array(..)
-                            | StackValue::Struct(..)
-                            | StackValue::Map(..)
-                            | StackValue::Buffer(..)
-                    ) {
-                    ids.deep_clone(&imported)
-                } else {
-                    imported
-                };
-                imported_stack.push(stabilized);
-            }
-            let shared_prefix = stack
-                .iter()
-                .zip(imported_stack.iter())
-                .take_while(|(left, right)| structurally_equal(left, right))
-                .count();
-            #[cfg(target_arch = "riscv32")]
-            {
-                let mut preserved_stack = core::mem::take(stack);
-                let mut next_stack =
-                    Vec::with_capacity(imported_stack.len().max(POST_SYSCALL_STACK_HEADROOM));
-
-                if shared_prefix > 0 {
-                    let discarded_preserved = preserved_stack.split_off(shared_prefix);
-                    next_stack.append(&mut preserved_stack);
-                    core::mem::forget(discarded_preserved);
-                } else {
-                    core::mem::forget(preserved_stack);
-                }
-
-                let mut imported_suffix = imported_stack.split_off(shared_prefix);
-                next_stack.append(&mut imported_suffix);
-                core::mem::forget(imported_stack);
-                *stack = next_stack;
-            }
-            #[cfg(not(target_arch = "riscv32"))]
-            {
-                imported_stack[..shared_prefix].clone_from_slice(&stack[..shared_prefix]);
-                *stack = imported_stack;
-            }
+            import_callt_stack(stack, abi_stack, ids);
             Ok(())
         }
         Err(e) => {
@@ -379,9 +357,66 @@ pub(crate) fn invoke_callt<H: SyscallProvider>(
                 retained
                     .restore_stack_best_effort(stack, stack.len().max(POST_SYSCALL_STACK_HEADROOM));
             }
-            // Leak abi_stack on error to avoid talc free-list corruption on RISC-V/PolkaVM
-            core::mem::forget(abi_stack);
+            if typed_exceptions && matches!(&e, VmException::Throw(_)) {
+                import_callt_stack(stack, abi_stack, ids);
+            } else {
+                // Preserve the legacy RISC-V/PolkaVM error ownership convention.
+                core::mem::forget(abi_stack);
+            }
             Err(e)
         }
+    }
+}
+
+fn import_callt_stack(
+    stack: &mut Vec<StackValue>,
+    abi_stack: Vec<crate::StackValue>,
+    ids: &mut CompoundIds,
+) {
+    let mut imported_stack = Vec::with_capacity(abi_stack.len().max(POST_SYSCALL_STACK_HEADROOM));
+    for item in abi_stack {
+        let imported = ids.import_abi(item);
+        let stabilized = if cfg!(target_arch = "riscv32")
+            && matches!(
+                imported,
+                StackValue::Array(..)
+                    | StackValue::Struct(..)
+                    | StackValue::Map(..)
+                    | StackValue::Buffer(..)
+            ) {
+            ids.deep_clone(&imported)
+        } else {
+            imported
+        };
+        imported_stack.push(stabilized);
+    }
+    let shared_prefix = stack
+        .iter()
+        .zip(imported_stack.iter())
+        .take_while(|(left, right)| structurally_equal(left, right))
+        .count();
+    #[cfg(target_arch = "riscv32")]
+    {
+        let mut preserved_stack = core::mem::take(stack);
+        let mut next_stack =
+            Vec::with_capacity(imported_stack.len().max(POST_SYSCALL_STACK_HEADROOM));
+
+        if shared_prefix > 0 {
+            let discarded_preserved = preserved_stack.split_off(shared_prefix);
+            next_stack.append(&mut preserved_stack);
+            core::mem::forget(discarded_preserved);
+        } else {
+            core::mem::forget(preserved_stack);
+        }
+
+        let mut imported_suffix = imported_stack.split_off(shared_prefix);
+        next_stack.append(&mut imported_suffix);
+        core::mem::forget(imported_stack);
+        *stack = next_stack;
+    }
+    #[cfg(not(target_arch = "riscv32"))]
+    {
+        imported_stack[..shared_prefix].clone_from_slice(&stack[..shared_prefix]);
+        *stack = imported_stack;
     }
 }
