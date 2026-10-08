@@ -20,6 +20,7 @@ pub(super) struct Arena {
 }
 pub(super) struct Slot {
     pub node: Node,
+    pub read_only: bool,
     root: Weak<Root>,
 }
 pub(super) struct Root {
@@ -130,6 +131,7 @@ impl SharedHeap {
         arena.subitems += node.subitems();
         let slot = Some(Slot {
             node,
+            read_only: false,
             root: Rc::downgrade(&root),
         });
         if id == arena.slots.len() {

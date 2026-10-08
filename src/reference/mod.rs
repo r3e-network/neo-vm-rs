@@ -4,6 +4,7 @@
 //! pointers, so cycles are representable without Rc cycles. Only explicit snapshots, collection
 //! cloning, comparison, and garbage collection traverse a graph; stack/call copies retain handles.
 
+mod deep_copy;
 mod heap;
 mod operations;
 mod snapshot;
@@ -162,10 +163,13 @@ impl SharedValue {
             return Err("expected compound value".to_string());
         };
         let mut arena = root.arena.borrow_mut();
-        let node = &mut arena.slots[root.id]
+        let slot = arena.slots[root.id]
             .as_mut()
-            .expect("live root keeps node alive")
-            .node;
+            .expect("live root keeps node alive");
+        if slot.read_only {
+            return Err("compound value is read-only".to_string());
+        }
+        let node = &mut slot.node;
         let before = node.subitems();
         let result = action(node);
         let after = node.subitems();
