@@ -59,7 +59,15 @@ internal static class Program
 
     public static void Main(string[] args)
     {
-        var cases = new[]
+        var randomAdd = args.Length > 0 && args[0] == "--random-add";
+        var randomOps = args.Length > 0 && args[0] == "--random-ops";
+        if ((randomAdd || randomOps) && args.Length != 3)
+            throw new ArgumentException("Usage: --random-add|--random-ops <nonzero-uint-seed> <count:1..4096>");
+        var cases = randomAdd
+            ? RandomAddCases.Generate(uint.Parse(args[1]), int.Parse(args[2]))
+            : randomOps
+                ? RandomOpsCases.Generate(uint.Parse(args[1]), int.Parse(args[2]))
+                : new[]
         {
             new Case("add_small_integers", "PUSH2 PUSH3 ADD RET", Bytes(0x12, 0x13, 0x9e, 0x40)),
             new Case("pushint16_little_endian", "PUSHINT16 0x1234 RET", Bytes(0x01, 0x34, 0x12, 0x40)),
@@ -85,12 +93,18 @@ internal static class Program
 
         var doc = new Dictionary<string, object?>
         {
-            ["neo_node_tag"] = "v3.9.2",
-            ["neo_package_version"] = "Neo 3.9.1",
-            ["neo_vm_package_version"] = "Neo.VM 3.9.0",
-            ["source"] = "Generated with NuGet Neo.VM 3.9.0. neo-node v3.9.2 depends on Neo 3.9.1, which depends on Neo.VM 3.9.0.",
+            ["neo_node_tag"] = "v3.10.1",
+            ["neo_package_version"] = "Neo 3.10.1",
+            ["neo_vm_package_version"] = "Neo.VM 3.10.1",
+            ["source"] = "Generated with NuGet Neo.VM 3.10.1. neo-node v3.10.1 depends on Neo 3.10.1, which depends on Neo.VM 3.10.1.",
             ["vectors"] = cases.Select(Run).ToArray(),
         };
+
+        if (randomAdd || randomOps)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(doc));
+            return;
+        }
 
         var json = JsonSerializer
             .Serialize(doc, new JsonSerializerOptions { WriteIndented = true })
